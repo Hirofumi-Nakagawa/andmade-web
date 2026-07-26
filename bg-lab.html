@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Background Lab — ANDMADE</title>
+<!--
+  背景演出の検証ツール（スタンドアロン / ビルド不要）
+  ==================================================
+  About / Contact の背景候補:「シェーダーで描いたような色面 + グレイン +
+  さりげない動き」を、サイトに組み込む前に単体で検証するためのページ。
+  このファイルをブラウザで直接開くだけで動く（サーバー不要・依存ライブラリなし）。
+
+  仕組み:
+  - WebGL のフラグメントシェーダー 1 枚だけで全画面を描画。
+    fbm(フラクタルノイズ)のドメインワープで色面を作り、ストリーク(方向指定可)で
+    「モーションブラーした花」っぽい流れを出し、その上に「花オブジェクト」
+    (ソフトなガウス色斑、キャンバスクリックで配置)を重ね、最後にフィルム
+    グレインを乗せる。
+  - 画像アセットは一切使わない(現行 Contact 背景の「画像を重ねて動かす」方式とは
+    根本的に別物)。動きはノイズ空間をゆっくり滑らせているだけなので単調にならない。
+  - 描画コスト: フルスクリーン 1 パス + ノイズ計算 + 花の距離計算(最大16個)のみ。
+    さらに「解像度スケール」で内部解像度を落とせる(軽い + タダでソフトになる)。
+
+  サイトへの組み込み方(検証で方向性が固まったら):
+  - 右下の「設定をコピー」で現在の全パラメータ(花の配置も含む)が JSON で
+    クリップボードに入る。
+  - この <script> 内の FRAG(フラグメントシェーダー)と、その JSON の値を
+    そのまま React コンポーネント(<canvas> + useEffect)に移植すればよい。
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+  /* ---- コントロールパネル ---- */
+  #panel {
+    position: fixed; top: 16px; right: 16px; width: 252px;
+    max-height: calc(100vh - 32px); overflow-y: auto;
+    background: rgba(20, 20, 20, 0.72); backdrop-filter: blur(12px);
+    color: #eee; font: 11px/1.6 -apple-system, "Helvetica Neue", sans-serif;
+    border-radius: 10px; padding: 14px 16px 12px;
+    user-select: none; z-index: 10;
+  }
+  #panel h1 { font-size: 11px; font-weight: 600; letter-spacing: .08em; margin: 0 0 10px; }
+  #panel h2 {
+    font-size: 10px; font-weight: 600; letter-spacing: .08em; color: #999;
+    margin: 14px 0 2px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.12);
+  }
+  #panel label { display: block; margin-top: 8px; color: #bbb; }
+  #panel .row { display: flex; align-items: center; gap: 8px; }
+  #panel .row output { width: 34px; text-align: right; color: #888; font-variant-numeric: tabular-nums; }
+  #panel input[type=range] { flex: 1; accent-color: #ddd; height: 18px; }
+  #panel select {
+    width: 100%; margin-top: 2px; background: #2a2a2a; color: #eee;
+    border: 1px solid #444; border-radius: 5px; font: inherit; padding: 3px 4px;
+  }
+  #swatches { display: flex; gap: 6px; margin-top: 6px; }
+  input[type=color] {
+    height: 24px; padding: 0; border: 1px solid #444; border-radius: 5px;
+    background: none; cursor: pointer;
+  }
+  #swatches input[type=color] { flex: 1; }
+  #panel .colorRow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  #panel .colorRow input[type=color] { width: 44px; }
+  #panel .colorRow span { color: #bbb; }
+  #panel .btns { display: flex; gap: 6px; margin-top: 10px; }
+  #panel button {
+    flex: 1; background: #2a2a2a; color: #eee; border: 1px solid #444;
+    border-radius: 5px; font: inherit; padding: 4px 0; cursor: pointer;
+  }
+  #panel button:hover { background: #3a3a3a; }
+  #panel .note { color: #777; margin-top: 6px; }
+  #stats { margin-top: 10px; color: #777; display: flex; justify-content: space-between; }
+  #hint { position: fixed; left: 16px; bottom: 12px; color: rgba(255,255,255,.4);
+          font: 10px/1 -apple-system, sans-serif; letter-spacing: .06em; z-index: 10; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="panel">
+  <h1>BACKGROUND LAB</h1>
+
+  <label>パレット
+    <select id="palette"></select>
+  </label>
+  <div id="swatches">
+    <input type="color" data-c="0" /><input type="color" data-c="1" /><input type="color" data-c="2" /><input type="color" data-c="3" /><input type="color" data-c="4" />
+  </div>
+
+  <label>速度 <span class="row"><input type="range" id="speed"    min="0"    max="0.30" step="0.005" /><output></output></span></label>
+  <label>スケール（模様の大きさ）<span class="row"><input type="range" id="scale" min="0.5" max="6" step="0.1" /><output></output></span></label>
+  <label>ワープ（ゆらぎの複雑さ）<span class="row"><input type="range" id="warp" min="0" max="4" step="0.1" /><output></output></span></label>
+  <label>コントラスト <span class="row"><input type="range" id="contrast" min="0.5" max="2" step="0.05" /><output></output></span></label>
+
+  <h2>ブラー（ストリーク）</h2>
+  <label>強さ <span class="row"><input type="range" id="streak" min="0" max="6" step="0.1" /><output></output></span></label>
+  <label>向き（度 / 90=縦）<span class="row"><input type="range" id="blurAngle" min="0" max="180" step="1" /><output></output></span></label>
+
+  <h2>花オブジェクト</h2>
+  <div class="colorRow"><input type="color" id="flowerColor" /><span>次に追加する花の色</span></div>
+  <label>サイズ（追加時）<span class="row"><input type="range" id="flowerSize" min="0.04" max="0.5" step="0.01" /><output></output></span></label>
+  <label>伸び（ブラー向きに沿う）<span class="row"><input type="range" id="flowerStretch" min="0" max="6" step="0.1" /><output></output></span></label>
+  <label>にじみ（輪郭のゆらぎ）<span class="row"><input type="range" id="flowerWobble" min="0" max="1" step="0.05" /><output></output></span></label>
+  <div class="btns">
+    <button id="addFlower">ランダム追加</button>
+    <button id="popFlower">1つ削除</button>
+    <button id="clearFlowers">全消去</button>
+  </div>
+  <div class="note">キャンバスをクリックするとその位置に追加（最大16個 / 現在 <span id="flowerCount">0</span>個）</div>
+
+  <h2>画面上部の色</h2>
+  <div class="colorRow"><input type="color" id="topColor" /><span>上部の色</span></div>
+  <label>範囲（0で無効）<span class="row"><input type="range" id="topRange" min="0" max="0.9" step="0.05" /><output></output></span></label>
+  <label>強さ <span class="row"><input type="range" id="topMix" min="0" max="1" step="0.05" /><output></output></span></label>
+
+  <h2>グレイン</h2>
+  <label>量 <span class="row"><input type="range" id="grain" min="0" max="0.35" step="0.005" /><output></output></span></label>
+  <label>粒度 <span class="row"><input type="range" id="grainSize" min="1" max="6" step="0.5" /><output></output></span></label>
+  <label>速度（更新fps / 0で静止）<span class="row"><input type="range" id="grainFps" min="0" max="60" step="1" /><output></output></span></label>
+
+  <h2>描画</h2>
+  <label>解像度スケール（軽さ/ソフトさ）<span class="row"><input type="range" id="renderScale" min="0.15" max="1" step="0.05" /><output></output></span></label>
+
+  <div class="btns">
+    <button id="pause">一時停止</button>
+    <button id="reseed">シード変更</button>
+  </div>
+  <div class="btns">
+    <button id="copy">設定をコピー</button>
+    <button id="toggleUi">UIを隠す (H)</button>
+  </div>
+  <div id="stats"><span id="fps">-- fps</span><span id="res">--</span></div>
+</div>
+<div id="hint">H: UI表示切替 / Space: 一時停止 / クリック: 花を追加</div>
+
+<script>
+"use strict";
+
+/* ================= フラグメントシェーダー =================
+   サイトに組み込むときはこの文字列をそのまま移植する。 */
+const MAX_FLOWERS = 16;
+
+const FRAG = `
+precision highp float;
+
+const int MAX_FLOWERS = ${MAX_FLOWERS};
+
+uniform vec2  u_res;        // 実描画解像度(px)
+uniform float u_time;       // 経過秒
+uniform float u_seed;       // ノイズ空間のオフセット(シード)
+uniform float u_speed;      // 時間の進み
+uniform float u_scale;      // ノイズ空間の拡大率(小さいほど大きな模様)
+uniform float u_warp;       // ドメインワープ強度
+uniform float u_streak;     // ストリーク(伸ばし)強度
+uniform float u_angle;      // ストリークの向き(度, 90=縦)
+uniform float u_contrast;   // 色のコントラスト
+uniform float u_grain;      // グレイン量
+uniform float u_grainSize;  // グレイン1粒のpxサイズ
+uniform float u_grainFps;   // グレインの更新頻度(0で静止)
+uniform vec3  u_c0, u_c1, u_c2, u_c3, u_c4; // パレット5色
+uniform vec3  u_topCol;     // 画面上部の色
+uniform float u_topRange;   // 上部グラデの範囲(0で無効)
+uniform float u_topMix;     // 上部グラデの強さ
+
+// 花オブジェクト: xy=位置(uv, アスペクト未補正), z=サイズ, w=未使用
+uniform int   u_flowerCount;
+uniform vec4  u_flowers[MAX_FLOWERS];
+uniform vec3  u_flowerCols[MAX_FLOWERS];
+uniform float u_flowerStretch; // ブラー向きに沿った伸び
+uniform float u_flowerWobble;  // 輪郭のにじみ(ノイズ歪み)
+
+// ---- value noise + fbm（定番の軽量実装）----
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i),                 hash(i + vec2(1.0, 0.0)), u.x),
+             mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+             u.y);
+}
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    v += a * noise(p);
+    p = p * 2.03 + vec2(17.0, 9.0);
+    a *= 0.5;
+  }
+  return v;
+}
+
+mat2 rot(float a) {
+  float c = cos(a);
+  float s = sin(a);
+  return mat2(c, -s, s, c);
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  float aspect = u_res.x / u_res.y;
+
+  // ストリークの向き: 90度=縦(従来のデフォルト)を基準に回転。
+  float ang = radians(u_angle - 90.0);
+  mat2 R = rot(ang);
+
+  // ---- ノイズ色面 ----
+  vec2 p = uv;
+  p.x *= aspect;
+  p = R * p;                              // ストリーク軸を回転
+  p.y /= 1.0 + u_streak;                  // 軸に沿って引き伸ばす→流れたブラー感
+  p = p * u_scale + u_seed;               // スケール + シードオフセット
+
+  float t = u_time * u_speed;
+
+  // ドメインワープ2段: q で一度ゆがめた座標を r で再度ゆがめる。
+  // t の係数を層ごとに変える(逆方向も混ぜる)ことで、単純な平行移動に
+  // 見えない「その場でゆっくり融け続ける」動きになる。
+  vec2 q = vec2(fbm(p + vec2(0.0, 0.0) + t * 0.10),
+                fbm(p + vec2(5.2, 1.3) - t * 0.07));
+  vec2 r = vec2(fbm(p + u_warp * q + vec2(1.7, 9.2) + t * 0.15),
+                fbm(p + u_warp * q + vec2(8.3, 2.8) - t * 0.12));
+  float f = fbm(p + u_warp * r);
+
+  // 5色を f / q / r の別々の場で重ねる(1つの値だけで塗り分けると
+  // 等高線っぽい縞が出るため、互いに独立な場で混ぜる)。
+  vec3 col = mix(u_c0, u_c1, smoothstep(0.15, 0.65, f));
+  col = mix(col, u_c2, smoothstep(0.35, 0.85, q.x) * 0.85);
+  col = mix(col, u_c3, smoothstep(0.45, 0.95, r.y) * 0.75);
+  col = mix(col, u_c4, smoothstep(0.55, 1.00, q.y * f * 1.6) * 0.6);
+
+  // ---- 花オブジェクト ----
+  // ソフトなガウス色斑。ストリークと同じ軸に伸ばし(u_flowerStretch)、
+  // q(既に計算済みのワープ場)で輪郭をにじませることで、ただの丸ではなく
+  // 「ぼけた花」らしい不定形になる。位置はごく小さくドリフトさせる。
+  vec2 P = vec2(uv.x * aspect, uv.y);
+  for (int i = 0; i < MAX_FLOWERS; i++) {
+    if (i >= u_flowerCount) break;
+    vec4 fl = u_flowers[i];
+    float fi = float(i);
+    vec2 fpos = vec2(fl.x * aspect, fl.y);
+    // 花ごとに位相をずらした、ごく小さな漂い
+    fpos += 0.015 * vec2(sin(t * 0.6 + fi * 2.1), cos(t * 0.45 + fi * 1.3));
+    vec2 d = R * (P - fpos);
+    d.y /= 1.0 + u_flowerStretch;
+    // 輪郭のにじみ: ワープ場 q を距離に混ぜる
+    d += (q - 0.5) * u_flowerWobble * fl.z;
+    float dist = length(d) / fl.z;
+    float m = exp(-dist * dist * 3.0);   // ガウス減衰(常にソフト)
+    col = mix(col, u_flowerCols[i], m * 0.85);
+  }
+
+  col = (col - 0.5) * u_contrast + 0.5;
+
+  // ---- 画面上部の色 ----
+  // uv.y=1(上端)に向かって u_topCol へ溶かす。範囲0で完全無効。
+  if (u_topRange > 0.0) {
+    float topM = smoothstep(1.0 - u_topRange, 1.0, uv.y);
+    col = mix(col, u_topCol, topM * u_topMix);
+  }
+
+  // ---- フィルムグレイン ----
+  // 表示ピクセル単位のホワイトノイズを u_grainFps で更新
+  // (毎フレーム更新よりチラつきが落ち着き、フィルムっぽくなる。0で静止)
+  float frame = u_grainFps > 0.0 ? floor(u_time * u_grainFps) : 0.0;
+  vec2 gp = floor(gl_FragCoord.xy / u_grainSize);
+  float g = hash(gp + fract(frame * 0.1031) * vec2(37.7, 17.3)) - 0.5;
+  col += g * u_grain;
+
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const VERT = `
+attribute vec2 a_pos;
+void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
+`;
+
+/* ================= パレットプリセット =================
+   添付リファレンス4枚 + サイト既存トーンから起こした5色組。 */
+const PALETTES = {
+  "Silk（ピンク×オレンジ）":   ["#eae3d8", "#dd6da2", "#e2892f", "#b3a0cf", "#57384c"],
+  "Meadow（花畑）":            ["#f0e6de", "#5c7a55", "#df8fb4", "#e0b44e", "#9b8cc4"],
+  "Heat（黄×赤×深緑）":        ["#a9b39a", "#e3c33f", "#d43e1f", "#26402b", "#e5e0d2"],
+  "Dusk（夜×橙×青）":          ["#232920", "#d98e2b", "#8fa3c9", "#47523c", "#ded6c6"],
+  "Cream（サイト基調・淡）":   ["#f6f6f4", "#e4ddd2", "#cdbfae", "#b0b7a8", "#8f8779"],
+  "Contact（黒ベース）":       ["#0a0a0a", "#1c1c22", "#3d3345", "#6b4a3a", "#2a3428"],
+};
+
+/* ================= WebGL セットアップ ================= */
+const canvas = document.getElementById("gl");
+const gl = canvas.getContext("webgl", { antialias: false, alpha: false });
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  throw new Error(gl.getProgramInfoLog(prog));
+}
+gl.useProgram(prog);
+
+// フルスクリーン三角形(クアッドより1頂点少なく、定番の省コスト手法)
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, "a_pos");
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const U = {};
+for (const name of ["u_res","u_time","u_seed","u_speed","u_scale","u_warp","u_streak","u_angle",
+                    "u_contrast","u_grain","u_grainSize","u_grainFps",
+                    "u_c0","u_c1","u_c2","u_c3","u_c4",
+                    "u_topCol","u_topRange","u_topMix",
+                    "u_flowerCount","u_flowerStretch","u_flowerWobble"]) {
+  U[name] = gl.getUniformLocation(prog, name);
+}
+// 花の配列 uniform は要素ごとに location を取る
+const U_flowers = [];
+const U_flowerCols = [];
+for (let i = 0; i < MAX_FLOWERS; i++) {
+  U_flowers.push(gl.getUniformLocation(prog, `u_flowers[${i}]`));
+  U_flowerCols.push(gl.getUniformLocation(prog, `u_flowerCols[${i}]`));
+}
+
+/* ================= パラメータと UI ================= */
+const params = {
+  palette: "Silk（ピンク×オレンジ）",
+  colors: PALETTES["Silk（ピンク×オレンジ）"].slice(),
+  speed: 0.06,       // さりげなさ重視のデフォルト
+  scale: 1.6,
+  warp: 2.2,
+  streak: 2.0,
+  blurAngle: 90,     // 90 = 縦(従来と同じ)
+  contrast: 1.0,
+  grain: 0.12,
+  grainSize: 2,
+  grainFps: 24,
+  renderScale: 0.5,  // 半分解像度: 軽い + 少しソフト
+  seed: Math.random() * 100,
+  // 画面上部の色
+  topColor: "#f0e6de",
+  topRange: 0,       // 0 = 無効(デフォルトはオフ)
+  topMix: 0.8,
+  // 花オブジェクト
+  flowerColor: "#df8fb4",
+  flowerSize: 0.14,
+  flowerStretch: 2.0,
+  flowerWobble: 0.4,
+  flowers: [],       // { x, y (uv, 左下原点), size, color }
+};
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+
+const paletteSel = document.getElementById("palette");
+for (const name of Object.keys(PALETTES)) {
+  const opt = document.createElement("option");
+  opt.value = opt.textContent = name;
+  paletteSel.appendChild(opt);
+}
+const swatches = [...document.querySelectorAll("#swatches input")];
+
+function syncSwatches() {
+  swatches.forEach((el, i) => { el.value = params.colors[i]; });
+}
+paletteSel.addEventListener("change", () => {
+  params.palette = paletteSel.value;
+  params.colors = PALETTES[paletteSel.value].slice();
+  syncSwatches();
+});
+swatches.forEach((el) => {
+  el.addEventListener("input", () => { params.colors[+el.dataset.c] = el.value; });
+});
+
+// スライダー一括バインド
+const sliders = ["speed","scale","warp","streak","blurAngle","contrast",
+                 "grain","grainSize","grainFps","renderScale",
+                 "topRange","topMix","flowerSize","flowerStretch","flowerWobble"];
+for (const key of sliders) {
+  const el = document.getElementById(key);
+  el.value = params[key];
+  const out = el.parentElement.querySelector("output");
+  out.textContent = params[key];
+  el.addEventListener("input", () => {
+    params[key] = parseFloat(el.value);
+    out.textContent = el.value;
+    if (key === "renderScale") resize();
+  });
+}
+
+// 単色ピッカー(上部の色 / 花の色)
+for (const key of ["topColor", "flowerColor"]) {
+  const el = document.getElementById(key);
+  el.value = params[key];
+  el.addEventListener("input", () => { params[key] = el.value; });
+}
+
+/* ---- 花オブジェクトの追加/削除 ---- */
+const flowerCountEl = document.getElementById("flowerCount");
+function syncFlowerCount() { flowerCountEl.textContent = params.flowers.length; }
+
+function addFlower(x, y) {
+  if (params.flowers.length >= MAX_FLOWERS) return;
+  params.flowers.push({ x, y, size: params.flowerSize, color: params.flowerColor });
+  syncFlowerCount();
+}
+document.getElementById("addFlower").addEventListener("click", () => {
+  // 端に寄りすぎない範囲でランダム配置
+  addFlower(0.1 + Math.random() * 0.8, 0.1 + Math.random() * 0.8);
+});
+document.getElementById("popFlower").addEventListener("click", () => {
+  params.flowers.pop();
+  syncFlowerCount();
+});
+document.getElementById("clearFlowers").addEventListener("click", () => {
+  params.flowers = [];
+  syncFlowerCount();
+});
+// キャンバスクリックでその位置に追加(uv は左下原点なので y を反転)
+canvas.addEventListener("click", (e) => {
+  addFlower(e.clientX / innerWidth, 1 - e.clientY / innerHeight);
+});
+
+let paused = false;
+document.getElementById("pause").addEventListener("click", togglePause);
+function togglePause() {
+  paused = !paused;
+  document.getElementById("pause").textContent = paused ? "再開" : "一時停止";
+}
+document.getElementById("reseed").addEventListener("click", () => {
+  params.seed = Math.random() * 100;
+});
+document.getElementById("copy").addEventListener("click", async () => {
+  const btn = document.getElementById("copy");
+  await navigator.clipboard.writeText(JSON.stringify(params, null, 2));
+  btn.textContent = "コピーしました";
+  setTimeout(() => { btn.textContent = "設定をコピー"; }, 1200);
+});
+const panel = document.getElementById("panel");
+const hint = document.getElementById("hint");
+function toggleUi() { panel.classList.toggle("hidden"); hint.classList.toggle("hidden"); }
+document.getElementById("toggleUi").addEventListener("click", toggleUi);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "h" || e.key === "H") toggleUi();
+  if (e.key === " ") { e.preventDefault(); togglePause(); }
+});
+
+/* ================= リサイズ / 描画ループ ================= */
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(innerWidth  * dpr * params.renderScale));
+  const h = Math.max(1, Math.round(innerHeight * dpr * params.renderScale));
+  canvas.width = w;
+  canvas.height = h;
+  gl.viewport(0, 0, w, h);
+  document.getElementById("res").textContent = w + "×" + h;
+}
+window.addEventListener("resize", resize);
+resize();
+syncSwatches();
+syncFlowerCount();
+
+// FPS 計測(指数移動平均でならす)
+let fpsEma = 60;
+let lastT = performance.now();
+let shownTime = 0; // 一時停止中は進めない「見た目の経過時間」
+
+function frame(now) {
+  const dt = (now - lastT) / 1000;
+  lastT = now;
+  if (!paused) shownTime += dt;
+  if (dt > 0) fpsEma = fpsEma * 0.95 + (1 / dt) * 0.05;
+  document.getElementById("fps").textContent = fpsEma.toFixed(0) + " fps";
+
+  gl.uniform2f(U.u_res, canvas.width, canvas.height);
+  gl.uniform1f(U.u_time, shownTime);
+  gl.uniform1f(U.u_seed, params.seed);
+  gl.uniform1f(U.u_speed, params.speed);
+  gl.uniform1f(U.u_scale, params.scale);
+  gl.uniform1f(U.u_warp, params.warp);
+  gl.uniform1f(U.u_streak, params.streak);
+  gl.uniform1f(U.u_angle, params.blurAngle);
+  gl.uniform1f(U.u_contrast, params.contrast);
+  gl.uniform1f(U.u_grain, params.grain);
+  gl.uniform1f(U.u_grainSize, Math.max(1, params.grainSize * params.renderScale));
+  gl.uniform1f(U.u_grainFps, params.grainFps);
+  gl.uniform3fv(U.u_c0, hexToRgb(params.colors[0]));
+  gl.uniform3fv(U.u_c1, hexToRgb(params.colors[1]));
+  gl.uniform3fv(U.u_c2, hexToRgb(params.colors[2]));
+  gl.uniform3fv(U.u_c3, hexToRgb(params.colors[3]));
+  gl.uniform3fv(U.u_c4, hexToRgb(params.colors[4]));
+  gl.uniform3fv(U.u_topCol, hexToRgb(params.topColor));
+  gl.uniform1f(U.u_topRange, params.topRange);
+  gl.uniform1f(U.u_topMix, params.topMix);
+  gl.uniform1i(U.u_flowerCount, params.flowers.length);
+  gl.uniform1f(U.u_flowerStretch, params.flowerStretch);
+  gl.uniform1f(U.u_flowerWobble, params.flowerWobble);
+  for (let i = 0; i < params.flowers.length; i++) {
+    const fl = params.flowers[i];
+    gl.uniform4f(U_flowers[i], fl.x, fl.y, fl.size, 0);
+    gl.uniform3fv(U_flowerCols[i], hexToRgb(fl.color));
+  }
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

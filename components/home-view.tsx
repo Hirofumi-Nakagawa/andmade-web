@@ -1,0 +1,480 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLenis } from "lenis/react";
+import { HeaderSummon } from "@/components/header-summon";
+import { HoveredProjectTitle } from "@/components/hovered-project-title";
+import { MobileHome } from "@/components/mobile-home";
+import { ProjectGridSection } from "@/components/project-grid-section";
+import {
+  ProjectHoverPreview,
+  type HoverPreviewEntry,
+  type HoverPreviewRect,
+} from "@/components/project-hover-preview";
+import { ProjectThumbnailGrid } from "@/components/project-thumbnail-grid";
+import { ProjectViewToggle } from "@/components/project-view-toggle";
+import { RecentNews } from "@/components/recent-news";
+import { SiteFooter } from "@/components/site-footer";
+import { SiteHeader } from "@/components/site-header";
+import { getGridScale } from "@/lib/grid-scale";
+import { PREVIEW_RATIO_ASPECT, getProjectImageSrc, type PreviewRatio, type Project } from "@/lib/projects";
+
+/** Grid used for the hover-preview's random placement — matches grid-overlay.tsx. */
+const GRID_MARGIN_PX = 24;
+const GRID_COLUMN_WIDTH_PX = 58;
+const GRID_COLUMN_COUNT = 24;
+/** Preview boxes never start left of the 5th grid line. */
+const PREVIEW_START_COLUMN = 4;
+const PREVIEW_VERTICAL_MARGIN_PX = 15;
+/** How close to the very bottom of the page counts as "reached the bottom". */
+const BOTTOM_OF_PAGE_TOLERANCE_PX = 2;
+/** Clears the preview if you leave a title and don't hover another within this long. */
+const HOVER_CLEAR_DELAY_MS = 2000;
+/** Matches ProjectHoverPreview's own opacity transition duration (see its
+ *  own duration-300 class) — sped up from the original 500ms to match the
+ *  faster 300ms fade used elsewhere for this kind of dismiss-fade (e.g.
+ *  idle-overlay.tsx/site-intro.tsx's own EXIT_FADE_MS, header-summon.tsx's
+ *  own FADE_MS), per explicit request ("フェードアウトの速度もう少し速くし
+ *  て / 他でフェードアウト使ってる箇所で500msより速くしてる箇所があったらそ
+ *  れに合わせて"). */
+const HOVER_PREVIEW_FADE_MS = 300;
+/** How close the footer needs to be to the bottom of the viewport before the
+ *  bottom-left title text hides, so it never overlaps the footer. */
+const FOOTER_HIDE_MARGIN_PX = 0;
+
+/**
+ * Per-ratio sizing rules: minimum width in grid columns, and — landscape
+ * only, per the brief — a max width in columns. Portrait has no explicit
+ * max; it's naturally bounded by viewport height. The aspect ratio itself
+ * (width / height) comes from the shared PREVIEW_RATIO_ASPECT in lib/projects.ts.
+ */
+const PREVIEW_RATIO_SIZE: Record<PreviewRatio, { minColumns: number; maxColumns?: number }> = {
+  "portrait-3-2": { minColumns: 9 },
+  "landscape-3-2": { minColumns: 14, maxColumns: 18 },
+  "portrait-3-4": { minColumns: 9 },
+  "landscape-8-5": { minColumns: 14, maxColumns: 18 },
+};
+
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * A random rect for the hover preview, sized to the given project's own
+ * fixed aspect ratio (width grid-snapped, height derived from the ratio)
+ * between that ratio's minimum column width and however wide it can go
+ * while still respecting its max column width (landscape only), the
+ * 15px-margined viewport height, and the 5th-column-rightward area — then
+ * placed at a random spot within those same bounds.
+ */
+function generateRandomPreviewRect(previewRatio: PreviewRatio): HoverPreviewRect {
+  const scale = getGridScale();
+  const marginPx = GRID_MARGIN_PX * scale;
+  const columnWidthPx = GRID_COLUMN_WIDTH_PX * scale;
+  const availableColumns = GRID_COLUMN_COUNT - PREVIEW_START_COLUMN;
+
+  const widthOverHeight = PREVIEW_RATIO_ASPECT[previewRatio];
+  const size = PREVIEW_RATIO_SIZE[previewRatio];
+  const viewportHeight = window.innerHeight;
+  const maxHeightPx = Math.max(1, viewportHeight - PREVIEW_VERTICAL_MARGIN_PX * 2);
+  const maxWidthByHeightColumns = Math.floor((maxHeightPx * widthOverHeight) / columnWidthPx);
+
+  const widthCeilingColumns = Math.min(availableColumns, maxWidthByHeightColumns, size.maxColumns ?? availableColumns);
+  const maxWidthColumns = Math.max(size.minColumns, widthCeilingColumns);
+  const widthColumns = randomInt(size.minColumns, maxWidthColumns);
+  const width = widthColumns * columnWidthPx;
+  const height = width / widthOverHeight;
+
+  const maxStartColumn = GRID_COLUMN_COUNT - widthColumns;
+  const startColumn = randomInt(PREVIEW_START_COLUMN, Math.max(PREVIEW_START_COLUMN, maxStartColumn));
+  const left = marginPx + columnWidthPx * startColumn;
+
+  const maxTop = Math.max(PREVIEW_VERTICAL_MARGIN_PX, viewportHeight - PREVIEW_VERTICAL_MARGIN_PX - height);
+  const top = randomInt(PREVIEW_VERTICAL_MARGIN_PX, maxTop);
+
+  return { top, left, width, height };
+}
+
+type HomeViewProps = {
+  /** Real (or placeholder-fallback) project list, fetched server-side in
+   *  app/page.tsx (an async Server Component wrapping this client component)
+   *  via getProjects() and handed down as the initial/only state here.
+   *
+   *  Previously this component (as the default export of app/page.tsx
+   *  itself) started from PLACEHOLDER_PROJECTS and fetched the real list
+   *  client-side from /api/projects after mounting — meaning every mount,
+   *  including a soft-navigation return to "/" from a project detail page,
+   *  briefly painted the dummy placeholder list before the real fetch
+   *  resolved and swapped it in. Reported as "一瞬ダミーの一覧が表示され
+   *  て、それが消えてからcmsに登録された一覧が表示されてるっぽい". Fetching
+   *  server-side instead means the real list is already present in the very
+   *  first render, so that dummy-then-real swap can no longer happen. */
+  initialProjects: Project[];
+};
+
+export function HomeView({ initialProjects }: HomeViewProps) {
+  const [projects] = useState<Project[]>(initialProjects);
+
+  const footerRef = useRef<HTMLDivElement>(null);
+  // Every project title's own DOM element — used only to play the
+  // underline-sweep animation on all of them when the Tx/Th toggle is
+  // clicked (see handleToggleClick below). Previously also fed a live-
+  // measured thumbPositions system that kept the old Img-view thumbnail
+  // overlay (project-image-grid.tsx) pixel-synced to this text list; that
+  // whole overlay approach is gone now that Th mode is its own independent
+  // grid (project-thumbnail-grid.tsx), rendered in place of this text list
+  // rather than layered on top of it, so no positioning/measurement is
+  // needed here anymore.
+  const titleEls = useRef<(HTMLElement | null)[]>(Array(projects.length).fill(null));
+  const [showImages, setShowImages] = useState(false);
+
+  // Tx (ProjectGridSection, a long list) and Th (ProjectThumbnailGrid, a
+  // fixed 4-column grid) render very different total heights — per direct
+  // report ("Thにしたとき、フッターまでスクロールできない。Tx時のページの
+  // 高さのままになってる"): Lenis (smooth-scroll.tsx) computes its own
+  // scrollable height/limit once and doesn't automatically know this in-page
+  // toggle just changed it (it isn't a route change, the one case
+  // lenis-route-resize.tsx already handles), so its cached limit stuck at
+  // whichever height was current when it last measured — capping scroll at
+  // the old Tx-based height even after Th's own (different) content mounted.
+  // Same fix as LenisRouteResize's own: `resize()` after a paint of the new
+  // content, just keyed on `showImages` instead of `pathname`.
+  //
+  // (A follow-up attempt also tried preserving scroll *position* across the
+  // toggle — capturing how far down the page you were as a fraction of max
+  // scroll, then re-applying that same fraction once the new mode's height
+  // settled, since Txt/Img's very different total heights otherwise land the
+  // same raw scrollY on unrelated content — per bug report "txt-imgがスク
+  // ロール途中の位置で、imgからtxtに切り替えたとき、txt-imgがガタっと動く
+  // 挙動がある". Reverted per direct follow-up that it read as *more*
+  // unnatural than the original jump ("②のガタツキは前回より見え感が不自然
+  // なので戻してほしい") — this toggle intentionally just resets to whatever
+  // the new mode's own layout puts at the current scrollY again, no
+  // position-preservation.)
+  const lenis = useLenis();
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => lenis?.resize());
+    return () => cancelAnimationFrame(frame);
+  }, [showImages, lenis]);
+
+  const registerTitleRef = useCallback((index: number, el: HTMLElement | null) => {
+    titleEls.current[index] = el;
+  }, []);
+
+  // Plays the underline-sweep animation (see .underline-sweep-play in
+  // globals.css) on every project title every time the Tx/Th toggle is
+  // clicked, regardless of which button or whether the view actually
+  // changes. Removing then re-adding the class with a forced reflow in
+  // between restarts the CSS animation even if it's already mid-play or
+  // just finished on that same element (simply re-adding an already-present
+  // class doesn't restart it on its own).
+  const handleToggleClick = useCallback(() => {
+    const titles = titleEls.current.filter((el): el is HTMLElement => el !== null);
+    titles.forEach((el) => el.classList.remove("underline-sweep-play"));
+    // Single shared reflow read (rather than one per element) is enough to
+    // flush the removals above before the re-adds below.
+    if (titles[0]) void titles[0].offsetWidth;
+    titles.forEach((el) => {
+      el.classList.add("underline-sweep-play");
+      // Clean the class back off once the animation actually finishes —
+      // leaving it on permanently made `.underline-sweep-play::after`'s
+      // `animation` value identical to `.group:hover .underline-sweep::after`'s
+      // (both resolve to the exact same `underline-sweep 0.6s ...` value), so
+      // after a single Tx/Th click, hovering that title stopped replaying the
+      // sweep entirely: since the *value* of `animation` never actually
+      // changed on hover (only which rule "won" did), the browser correctly
+      // treats it as the same, already-finished animation rather than a new
+      // one — reported as "Tx選択時にホバーした時、下線タイトルがアニメーションしなくなってる".
+      el.addEventListener("animationend", () => el.classList.remove("underline-sweep-play"), { once: true });
+    });
+  }, []);
+
+  // Hover-preview: a max-2-deep stack (current + previous), grid-snapped
+  // placement sized to each project's own fixed ratio, disabled in Img view.
+  const [prevShowImagesForHoverClear, setPrevShowImagesForHoverClear] = useState(showImages);
+  const [hoverEntries, setHoverEntries] = useState<HoverPreviewEntry[]>([]);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [hoverIdle, setHoverIdle] = useState(false);
+  // Mirrors which title is actually under the cursor right now — unlike
+  // hoveredIndex above, this clears the instant the mouse leaves (no 1.5s
+  // idle grace period), since the card-dimming and the big title text
+  // shouldn't linger the way the background image preview deliberately does.
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [atPageBottom, setAtPageBottom] = useState(false);
+  // Whether the footer is (nearly) in view — used to hide the bottom-left
+  // title text before it visually overlaps the footer. More sensitive than
+  // atPageBottom (which only trips once scrolled all the way to the very
+  // bottom, by which point the footer had already been visible for a while).
+  const [footerVisible, setFooterVisible] = useState(false);
+  // True while the footer's "Back to top" smooth-scroll is in progress — the
+  // cursor ends up sitting over the project list as it scrolls up underneath
+  // it, which would otherwise keep re-triggering the hover preview.
+  const [suppressHoverPreview, setSuppressHoverPreview] = useState(false);
+  // Ordinary scrolling has the exact same problem suppressHoverPreview above
+  // works around for the Back-to-top case: Lenis's inertia keeps the page
+  // moving for a while under an otherwise-stationary cursor, so a title can
+  // pass underneath the cursor purely from the page moving, not the mouse
+  // actually moving — firing a real mouseenter/mouseleave anyway, which
+  // would otherwise flash the hover-preview/dim state on and back off as a
+  // row settles into view. This mirrors that same suppression for *any*
+  // scroll (see the effect below), clearing shortly (150ms) after scrolling
+  // actually stops rather than staying suppressed the whole time like the
+  // Back-to-top case does.
+  const [suppressHoverFromScroll, setSuppressHoverFromScroll] = useState(false);
+  const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const unmountTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelPendingClear = useCallback(() => {
+    if (clearTimeoutRef.current) {
+      clearTimeout(clearTimeoutRef.current);
+      clearTimeoutRef.current = null;
+    }
+    if (unmountTimeoutRef.current) {
+      clearTimeout(unmountTimeoutRef.current);
+      unmountTimeoutRef.current = null;
+    }
+  }, []);
+
+  const handleHoverTitle = useCallback(
+    (index: number) => {
+      if (suppressHoverPreview || suppressHoverFromScroll) return;
+      setActiveIndex(index);
+      cancelPendingClear();
+      setHoverIdle(false);
+      if (showImages || index === hoveredIndex) return;
+      setHoveredIndex(index);
+      setHoverEntries((prev) =>
+        [
+          {
+            key: `${index}-${Date.now()}`,
+            rect: generateRandomPreviewRect(projects[index].previewRatio),
+            imageSrc: getProjectImageSrc(projects[index]),
+          },
+          ...prev,
+        ].slice(0, 2),
+      );
+    },
+    [projects, showImages, hoveredIndex, suppressHoverPreview, suppressHoverFromScroll, cancelPendingClear],
+  );
+
+  // While the "Back to top" scroll is in progress, immediately clear any
+  // preview already showing (rather than waiting for the mouse to actually
+  // leave the title, which won't happen since the page is scrolling
+  // underneath a stationary cursor).
+  const handleBackToTopStart = useCallback(() => {
+    setSuppressHoverPreview(true);
+    cancelPendingClear();
+    setHoverEntries([]);
+    setHoveredIndex(null);
+    setHoverIdle(false);
+    setActiveIndex(null);
+  }, [cancelPendingClear]);
+
+  const handleBackToTopEnd = useCallback(() => {
+    setSuppressHoverPreview(false);
+  }, []);
+
+  // Generalizes suppressHoverFromScroll (declared above) to *any* scroll,
+  // clearing shortly (150ms) after scrolling actually stops rather than
+  // staying suppressed the whole time like the Back-to-top case does.
+  useEffect(() => {
+    let idleTimeout: ReturnType<typeof setTimeout> | null = null;
+    const handleScroll = () => {
+      setSuppressHoverFromScroll(true);
+      setActiveIndex(null);
+      // Same fade-then-remove as handleHoverEnd's own idle path below, just
+      // without its 2s grace delay first — scrolling away is a much more
+      // decisive "I'm done looking at this" signal than simply moving the
+      // cursor off a title, which might resume hovering something else any
+      // moment. Previously this cleared hoverEntries immediately, popping
+      // the preview image off instantly instead of fading it out (reported
+      // as "スクロールすると背景画像が消えるけど、その際フェードアウトで消
+      // えるようにして"). cancelPendingClear() first so repeated scroll
+      // events (this fires continuously while scrolling) keep pushing the
+      // actual removal back rather than racing a half-dozen overlapping
+      // timeouts — same guard handleHoverEnd relies on.
+      cancelPendingClear();
+      setHoverIdle(true);
+      unmountTimeoutRef.current = setTimeout(() => {
+        setHoverEntries([]);
+        setHoveredIndex(null);
+        setHoverIdle(false);
+      }, HOVER_PREVIEW_FADE_MS);
+      if (idleTimeout) clearTimeout(idleTimeout);
+      idleTimeout = setTimeout(() => setSuppressHoverFromScroll(false), 150);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (idleTimeout) clearTimeout(idleTimeout);
+    };
+  }, [cancelPendingClear]);
+
+  // Leaving a title without hovering another one within 3s fades the
+  // preview out, then removes it — rather than leaving the last one
+  // showing forever, or cutting it instantly with no transition. The card
+  // dimming and big title text, by contrast, clear immediately (activeIndex).
+  const handleHoverEnd = useCallback(() => {
+    setActiveIndex(null);
+    cancelPendingClear();
+    clearTimeoutRef.current = setTimeout(() => {
+      setHoverIdle(true);
+      unmountTimeoutRef.current = setTimeout(() => {
+        setHoverEntries([]);
+        setHoveredIndex(null);
+        setHoverIdle(false);
+      }, HOVER_PREVIEW_FADE_MS);
+    }, HOVER_CLEAR_DELAY_MS);
+  }, [cancelPendingClear]);
+
+  useEffect(() => cancelPendingClear, [cancelPendingClear]);
+
+  // Switching to Img view clears the whole hover-preview history, so coming
+  // back to Txt later starts fresh instead of showing stale previews. Reset
+  // during render (comparing against a tracked previous value) rather than
+  // inside an effect — see project-view-toggle.tsx / now-playing-ticker.tsx
+  // for the same pattern used elsewhere in this codebase.
+  if (showImages !== prevShowImagesForHoverClear) {
+    setPrevShowImagesForHoverClear(showImages);
+    if (showImages) {
+      setHoverEntries([]);
+      setHoveredIndex(null);
+      setActiveIndex(null);
+    }
+  }
+
+  // Fades everything out only once you've scrolled all the way to the
+  // bottom of the page (not just near the last title — that faded previews
+  // out while there were still several rows left to hover). Also checks the
+  // footer's live position here in the same handler (rather than a separate
+  // effect/listener) so there's only one code path reacting to scroll —
+  // hides the bottom-left title text before it can overlap the footer.
+  useEffect(() => {
+    function checkScrollPosition() {
+      const scrolledToBottom =
+        window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - BOTTOM_OF_PAGE_TOLERANCE_PX;
+      setAtPageBottom(scrolledToBottom);
+
+      const footer = footerRef.current;
+      if (footer) {
+        const footerTop = footer.getBoundingClientRect().top;
+        // The title text sits ~144px tall from the viewport's bottom edge
+        // (bottom-24px + ~120px line box) — hide once the footer is within
+        // FOOTER_HIDE_MARGIN_PX of coming into view, and keep hidden for as
+        // long as it stays there (including once fully scrolled past, when
+        // its top goes negative).
+        setFooterVisible(footerTop <= window.innerHeight + FOOTER_HIDE_MARGIN_PX);
+      }
+    }
+    checkScrollPosition();
+    window.addEventListener("scroll", checkScrollPosition, { passive: true });
+    window.addEventListener("resize", checkScrollPosition);
+    return () => {
+      window.removeEventListener("scroll", checkScrollPosition);
+      window.removeEventListener("resize", checkScrollPosition);
+    };
+  }, []);
+
+  const hoveredProjectTitle =
+    !showImages && !footerVisible && activeIndex != null ? projects[activeIndex].title : null;
+  const hoveredProjectCategory =
+    !showImages && !footerVisible && activeIndex != null ? projects[activeIndex].category : null;
+
+  // pb-[28px] below is PC-only (lg:) — it used to apply unconditionally,
+  // which stacked on top of the SP footer's own pb-[20px] and left too much
+  // space below the footer on SP (reported as "フッター下のマージンがまだ
+  // 空きすぎてる"). 30px → 24px → 28px, both per direct follow-up ("studies
+  // とcontactに合わせて24pxにして", then "やっぱりちょっと下げすぎかな...
+  // 28pxに変更して") — matches app/studies/page.tsx's own bottom-[28px]
+  // SiteFooter offset and app/contact/page.tsx's own bottom-[28px] footer
+  // elements exactly.
+  return (
+    <div id="top" className="relative w-full flow-root bg-(--color-background) lg:pb-[28px]">
+      {/* PC-only tree, split from SP's own (mobile-home.tsx) at Tailwind's
+          default `lg` breakpoint (1024px) — see mobile-home.tsx's own doc
+          comment for why this is a plain CSS split, not a JS viewport
+          check. `contents` (rather than `block`) at `lg:` keeps every child
+          below un-wrapped from this div's own layout/stacking perspective,
+          so it doesn't change how the previously-direct children below
+          behave relative to #top above (same DOM-order-over-z-index
+          reasoning as ProjectHoverPreview vs. the text layer). */}
+      <div className="hidden lg:contents">
+        {!showImages && <ProjectHoverPreview entries={hoverEntries} released={atPageBottom || hoverIdle} />}
+
+        {/* `relative` (no z-index) so this becomes a positioned element with
+            the default "auto" stack level, same as the preview images
+            (position:fixed, z-index:auto) above. Positioned elements at the
+            same "auto" level paint in DOM order, and this comes after the
+            preview, so it wins — without introducing a *new* stacking
+            context (that needs an explicit z-index), which would otherwise
+            isolate the mix-blend-exclusion text inside from the page
+            background it's supposed to blend against. */}
+        <div className="relative">
+          <SiteHeader fadeIn />
+
+        <div className="relative mt-[calc(280px*var(--scale))]">
+          <ProjectViewToggle showImages={showImages} onShowImagesChange={setShowImages} onToggleClick={handleToggleClick} />
+
+          {/* FV-right "recent news" list — per direct follow-up ("トップの
+              FV右側に最近のお知らせを追加したいので...")。See
+              recent-news.tsx's own doc comment for positioning/data details;
+              renders nothing until real microCMS "news" entries exist.
+              No `hidden` prop (unlike SP's own MobileRecentNews) — per direct
+              follow-up specifically scoped to PC ("PCのお知らせはTh時も消さ
+              ない"), reverting PC's own earlier "Th選択時はお知らせはフェー
+              ドアウトで非表示にする" treatment; SP's identical fade-out on Th
+              stays as-is since this follow-up only called out PC. */}
+          <RecentNews />
+
+          {/* mix-blend-exclusion applied here (not on the wrapper) only for
+             Tx mode — Th mode's own title carries it directly instead
+             (project-thumbnail-grid.tsx), since its thumbnail images
+             deliberately opt out of blending (per explicit request "Thのサ
+             ムネはブレンドモード解除して"): mix-blend-mode on an ancestor
+             blends its *entire* rendered subtree as one unit, so keeping it
+             on this shared wrapper would still blend the Th images too. */}
+          <div
+            className={`ml-[calc(198px*var(--grid-scale))] flex w-[var(--content-width-fluid)] flex-col items-start ${showImages ? "" : "mix-blend-exclusion"}`}
+          >
+            {showImages ? (
+              <ProjectThumbnailGrid projects={projects} />
+            ) : (
+              <ProjectGridSection
+                projects={projects}
+                onTitleRef={registerTitleRef}
+                onHoverTitle={handleHoverTitle}
+                onHoverEnd={handleHoverEnd}
+                activeIndex={activeIndex}
+              />
+            )}
+          </div>
+
+          {/* Split out of the mix-blend-exclusion wrapper above (which the
+              project list still needs, for its white text against the
+              hover-preview images) — the footer now renders in literal
+              black instead, no blend-mode dependency, matching the About
+              page (see app/about/page.tsx). */}
+          <div
+            ref={footerRef}
+            className="ml-[calc(198px*var(--grid-scale))] mt-[calc(330px*var(--scale))] w-[var(--content-width-fluid)]"
+          >
+            <SiteFooter onBackToTopStart={handleBackToTopStart} onBackToTopEnd={handleBackToTopEnd} theme="dark" />
+          </div>
+        </div>
+
+        {/* Rendered last so it paints frontmost among this wrapper's "auto"
+            stacked siblings (same DOM-order trick as ProjectHoverPreview vs.
+            the text layer above) — otherwise the footer, coming later in the
+            DOM, painted on top of this and visually broke it up. */}
+        <HoveredProjectTitle title={hoveredProjectTitle} category={hoveredProjectCategory} />
+
+        {/* Also last (after HoveredProjectTitle even) so it's frontmost of
+            all — see header-summon.tsx. */}
+        <HeaderSummon />
+        </div>
+      </div>
+
+      <MobileHome projects={projects} />
+    </div>
+  );
+}

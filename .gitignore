@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
@@ -39,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Static coming-soon holding page — uploaded to the shared server by hand,
+# not part of the Next.js build.
+/coming-soon/
+
+# Local-only Claude Code tool permissions (machine-specific paths).
+.claude/settings.local.json

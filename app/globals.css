@@ -1,26 +1,870 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Shared cream background — only actually consumed by <body> (layout.tsx)
+     and the Top page's own root div (app/page.tsx), since About/Studies/
+     Contact/404 each set their own explicit background instead. Per direct
+     follow-up ("イントロとトップの背景色を#F6F6F4に変更して") — was #f6f4f0;
+     site-intro.tsx's own hardcoded splash background was updated to match. */
+  --background: #f6f6f4;
+  --foreground: #ffffff;
+
+  /*
+   * Two independent responsive knobs, both anchored to the 1440px Figma
+   * canvas. The top/right/bottom margins (24px/24px/30px) stay literal and
+   * unscaled; the left margin (198px, see app/page.tsx / site-header.tsx —
+   * `ml-[calc(198px*var(--grid-scale))]`) scales along with --grid-scale
+   * instead (below), so it stays aligned to the 24-column layout grid (see
+   * grid-overlay.tsx) at every width, not just exactly at 1440px:
+   *
+   * 1. --content-width-fluid — the page content box width (header, footer,
+   *    page wrapper). Stays fixed at 1218px (the design width) below
+   *    1440px. Above 1440px it grows in lockstep with --grid-scale (below)
+   *    — scaling the content box by the same factor as the grid's own
+   *    margins keeps its right edge sitting exactly on the grid's own
+   *    right-hand boundary at every width past 1440px.
+   *
+   * 2. --scale — the typography/spacing multiplier (every internal element's
+   *    font-size, gap, padding, etc. via calc(Npx*var(--scale))). Stays
+   *    locked at 1 (the pixel values as designed) below 1440px, then grows
+   *    with the viewport — damped to 60% of a fully relative scale
+   *    (--scale-damping) so it feels slightly more restrained than the
+   *    content box's own growth. Shares --content-width-fluid's 1440px
+   *    starting point (below, both anchored off --grid-scale) rather than a
+   *    later one — the two used to kick in at different widths (1440px vs
+   *    1680px), so between them the content box would widen while
+   *    everything inside it stayed pixel-locked, throwing off spacing/type
+   *    relative to the grid until 1680px caught up.
+   */
+  --content-width: 1218px; /* design reference width, at the 1440px canvas */
+  --scale-breakpoint: 1440px; /* viewport width above which typography/spacing scaling begins */
+  /* Formula constant so --scale-raw resolves to exactly 1 at --scale-breakpoint. */
+  --scale-margin: calc(var(--scale-breakpoint) - var(--content-width));
+  /* Fully relative scale (1:1 with viewport growth past the breakpoint). */
+  --scale-raw: max(1, calc((100vw - var(--scale-margin)) / var(--content-width)));
+  /* 1 = fully relative (--scale-raw), 0 = locked at the breakpoint size. */
+  --scale-damping: 0.7;
+  --scale: calc(1 + (var(--scale-raw) - 1) * var(--scale-damping));
+
+  /*
+   * Project grid scale (ProjectList / ProjectThumbnailGrid only, used
+   * instead of --scale). ProjectList always renders exactly 3 columns via an
+   * explicit 3-track grid, and ProjectThumbnailGrid exactly 4 — column count
+   * never changes — so instead of reflowing, the cards/thumbnails themselves
+   * resize continuously with the viewport.
+   *
+   * Anchored at the same 1440px Figma canvas as the rest of the page
+   * (--grid-scale must equal exactly 1 there, matching --scale/
+   * --content-width-fluid) rather than some other reference width — an
+   * earlier version of this formula anchored to ~1226px instead, which made
+   * the grid ~21% oversized at the actual 1440px design width. Fully
+   * relative (1:1 with viewport) both below and above 1440px, so it's
+   * already scaling down through 1200px and still scaling up past 1680px —
+   * unlike --scale, this one has no flat middle zone. Below 1024px it
+   * floors at the ratio computed at exactly 1024px (pending a dedicated
+   * mobile layout — no Figma mobile design exists yet, TODO once provided).
+   * (At this ratio the widest PC-only elements stay well inside the literal
+   * 24px right margin at every viewport from 1024px up, so they never
+   * overlap it.)
+   */
+  --grid-scale: max(calc(1024 / 1440), calc(100vw / 1440px));
+
+  /* Below 1440px (--grid-scale < 1) this clamps to the fixed 1218px
+     (unchanged layout, same as always). Above 1440px (--grid-scale > 1) it
+     grows at the same rate as --grid-scale — see point 1 above. */
+  --content-width-fluid: max(var(--content-width), calc(var(--content-width) * var(--grid-scale)));
+
+  /*
+   * Right-edge inset for elements that should always sit a literal 24px from
+   * the actual browser window edge (header "Playing" text, case counter,
+   * footer logo) rather than from the content grid's right edge — which,
+   * below 1440px, stays clamped and drifts away from the window edge as the
+   * viewport widens. Used as `right: var(--edge-right-inset)` inside a box
+   * that starts at `calc(198px * var(--grid-scale))` (the fluid left
+   * margin) and is --content-width-fluid wide; accounts for both so it
+   * still resolves to 0 at the 1440px Figma canvas width (where --grid-scale
+   * is still 1) and stays correct at every other width too — including
+   * above 1440px, where it now resolves negative (pushing these elements
+   * further right, past the content box's own — now grid-aligned — right
+   * edge) to keep landing on the literal 24px window margin regardless.
+   */
+  --edge-right-inset: calc(198px * var(--grid-scale) + var(--content-width-fluid) - 100vw + 24px);
+
+  /*
+   * SP (mobile) layout grid (Figma node 975:44, "sp_index"): 12 columns,
+   * 20px margin, 0px gutter, fully fluid (no --grid-scale-style floor — SP
+   * has no fixed reference canvas the way PC's 1440px one does). Single
+   * source of truth for both grid-overlay.tsx's SP variant and every SP
+   * component's own left-content indent (mobile-home.tsx
+   * — Figma's own `pl-[60px]`, i.e. 2 of these columns) — an earlier version
+   * hardcoded that indent as a literal 60px, which drifted out of alignment
+   * with the (fluid) grid overlay on any viewport width other than Figma's
+   * own 400px reference, reported as "ANDMADE Inc.と一覧、フッターの左面が
+   * グリッドに合ってない".
+   */
+  /* 4px → 8px per direct follow-up ("現状の両サイドの余白が8pxじゃなく4px
+     になってる？...余白は8pxまま") — see mobile-home.tsx's own
+     SP_GRID_MARGIN_PX doc comment for the full history/reasoning; the Tx/Th/
+     "33 Cases" rail there keeps its own 4px exception via a local
+     marginLeft, not by changing this shared variable. */
+  --sp-grid-margin: 8px;
+  --sp-grid-columns: 12;
+  --sp-grid-column-width: calc((100vw - var(--sp-grid-margin) * 2) / var(--sp-grid-columns));
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Akzidenz Grotesk Next, loaded via Adobe Fonts (see the Typekit <link> in
+     app/layout.tsx) — "akzidenz-grotesk-next-pro" is the font-family name
+     Typekit's kit CSS actually serves it under. That kit includes both
+     Regular (400) and Medium (500) static faces, so the existing
+     font-normal/font-medium utility classes already select the right one —
+     no per-component changes needed. Helvetica/Arial are the fallback while
+     the Typekit stylesheet loads. None of these (or Akzidenz itself) cover
+     Japanese, so Gen Interface JP Light (https://gen.typesetting.jp/) is
+     slotted in before the generic sans-serif — the browser picks it up
+     automatically for any character the earlier fonts don't cover (e.g.
+     Spotify track titles in Japanese), while Latin text is unaffected. */
+  --font-sans: "akzidenz-grotesk-next-pro", "Helvetica Neue", Helvetica, Arial, var(--font-gen-interface-jp), sans-serif;
+  --font-courier: var(--font-courier-prime), "Courier New", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  /* Safety net on top of the --grid-scale / --content-width-fluid math: guarantees
+     no horizontal scrollbar can appear at any window width. `clip` (not `hidden`)
+     is deliberate — `hidden` on an axis forces the other axis's overflow to
+     compute as `auto` too, which turns html/body into their own scroll
+     container and breaks `position: sticky` (CaseCounter) and Lenis's scroll
+     handling. `clip` suppresses overflow rendering without that side effect. */
+  overflow-x: clip;
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  /* Same safety net as `html`'s own overflow-x: clip just above, added
+     alongside it (not instead of it) per direct follow-up reporting the
+     page still horizontally scrollable on a real device even with that
+     existing rule in place ("まだページ全体を左右に動かすことができる状態
+     になってる"): `html`'s own rule clips *its* box, but `body` here has no
+     explicit `width`, so a descendant that overflows body's own nominal
+     width can still grow body's own rendered box wider than the viewport in
+     the normal block-layout `width: auto` sense — at that point it's
+     ambiguous/implementation-dependent whether an ancestor's own
+     overflow-x:clip still fully suppresses touch-drag scrolling of that
+     oversized body underneath it. Explicitly clipping here too closes that
+     gap regardless of which element's own box actually ends up oversized.
+     `clip`, not `hidden` — same reason as `html`'s own rule: `hidden` on
+     one axis forces the other to compute as `auto`, turning this element
+     into its own scroll container and breaking position:sticky/Lenis. */
+  overflow-x: clip;
+}
+
+/*
+ * Text-selection "glitch": literal RGB channel-split chromatic aberration,
+ * per explicit spec.
+ */
+::selection {
+  background: #ddd;
+  color: #0022ff;
+  text-shadow:
+    0.04em 0.04em 0 rgba(255, 0, 0, 0.5),
+    0.04em -0.04em 0 rgba(0, 255, 0, 0.5),
+    -0.04em 0.04em 0 rgba(0, 0, 255, 0.5);
+}
+
+/*
+ * Underline-sweep hover: the underline exits to the right, then reappears
+ * from the left (matches justgowiththeflow.com's footer "Get in touch" link).
+ * Applied to project list title links (see project-list.tsx).
+ *
+ * translateX+scaleX with a *fixed* transform-origin:left (set on the
+ * elements below, not here) — not a mid-animation transform-origin switch,
+ * which this rule used before (0%/50% at origin:right, jumping to origin:left
+ * at 50.01%). A fixed origin the whole way through keeps this animation
+ * expressible as pure `transform` keyframes throughout, which browsers can
+ * hand entirely to the compositor thread with no per-frame main-thread
+ * recalculation. The old origin-switching version reportedly dropped frames
+ * on an actual phone despite being smooth in PC Chrome/devtools ("実機だと
+ * ちょっとアニメーションが駒落ちしてる感じ...PCは問題ない") — reassigning
+ * transform-origin mid-flight is far more likely to force a layer/matrix
+ * recompute off the compositor than two ordinary transform functions
+ * animating together, especially for instances sitting inside a
+ * mix-blend-exclusion stacking context (already documented elsewhere in this
+ * codebase as expensive to repaint).
+ *
+ * translateX(100%) resolves its percentage against the box's own *original*
+ * width regardless of the scaleX in the same value (an explicit CSS
+ * Transforms spec rule: percentages in a transform function always resolve
+ * against the element's own reference box, unaffected by other functions in
+ * the same value) — composing it with scaleX reproduces the exact same
+ * frame-by-frame visual result as the old origin-switching version:
+ *   - 0%→50%: scaleX 1→0 alone (fixed origin:left) would shrink from the
+ *     *left*, backwards from what's wanted — translateX 0%→100% riding
+ *     along with it shifts the shrinking point rightward at the same rate,
+ *     landing it exactly on the right edge at 50% (visually identical to the
+ *     old origin:right shrink).
+ *   - 50.01%: an instant, invisible jump (still scaleX(0), so zero-width)
+ *     from that right-edge point back to translateX(0%) — i.e. back onto the
+ *     origin itself — sets up a plain scaleX(0→1) grow-from-the-left for the
+ *     second half, with no further translateX needed.
+ *   - 50.01%→100%: scaleX 0→1 (fixed origin:left) grows rightward from the
+ *     left edge, identical to the old version's second half.
+ * Function order matters — scaleX must be the *rightmost* function (applied
+ * first, before translateX; CSS applies transform functions right-to-left),
+ * or translateX's own displacement would be zeroed out by a subsequent
+ * scaleX(0).
+ */
+@keyframes underline-sweep {
+  0% {
+    transform: translateX(0%) scaleX(1);
+  }
+  50% {
+    transform: translateX(100%) scaleX(0);
+  }
+  50.01% {
+    transform: translateX(0%) scaleX(0);
+  }
+  100% {
+    transform: translateX(0%) scaleX(1);
+  }
+}
+
+.underline-sweep {
+  position: relative;
+  text-decoration: none;
+}
+
+.underline-sweep::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* -0.1em - 1px → -0.1em — per direct follow-up raising this underline 1px
+     ("その下線見出しの下線の位置を1px上に上げて"): `bottom` is a negative
+     offset here (below this text's own box), so removing 1px of that
+     negative value moves it 1px closer to the text, i.e. up.
+     var(--underline-offset, -0.1em) — per a later, narrower follow-up
+     scoped specifically to the news links' own underline ("お知らせの下線
+     テキストの下線位置を1px下げて"): every other .underline-sweep usage
+     site-wide (project titles, Contact page links, etc.) should keep this
+     exact default unchanged, so rather than editing this shared rule's own
+     literal value again (which would move *all* of them), callers can now
+     set `--underline-offset` inline to override just their own instance —
+     see recent-news.tsx/mobile-recent-news.tsx for the one place that does. */
+  bottom: var(--underline-offset, -0.1em);
+  /* var(--underline-thickness, 1px) — same per-instance override pattern as
+     --underline-offset just above, added for a later, still narrower
+     follow-up scoped to just the SP news link's own underline
+     ("SPのお知らせ下線の太さを0.6pxにできる？") — see
+     mobile-recent-news.tsx for the one override site. */
+  height: var(--underline-thickness, 1px);
+  background-color: currentColor;
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+.underline-sweep:hover::after,
+.group:hover .underline-sweep::after {
+  /* Exaggerated ease-out: near-instant start, extra-long slow settle at the end. */
+  animation: underline-sweep 0.6s cubic-bezier(0.16, 1, 0.55, 1);
+}
+
+/*
+ * Same sweep, played programmatically (not on hover) — a random project
+ * title plays this once every time the Tx/Th toggle (project-view-toggle.tsx)
+ * is clicked (see app/page.tsx's handleToggleClick). JS restarts it by
+ * removing then re-adding this class with a forced reflow in between, since
+ * just re-adding an already-present class doesn't restart a running/finished
+ * CSS animation on its own.
+ */
+.underline-sweep-play::after {
+  animation: underline-sweep 0.6s cubic-bezier(0.16, 1, 0.55, 1);
+}
+
+/*
+ * SP project list title underline only (components/mobile-project-list.tsx)
+ * — a genuine element, not a ::after pseudo-element like .underline-sweep
+ * above, so it can be remounted (via `key`) independently of the title text
+ * sitting next to it (that text uses ScrambleText, which must *not* replay
+ * merely because the underline replays — see MobileProjectItem's own doc
+ * comment). Also replaces an earlier version that reused .underline-sweep/
+ * .underline-sweep-play directly (the same class-remove-reflow-re-add
+ * restart trick app/page.tsx's own playUnderlineSweep uses) — that trick
+ * was reported as working fine in desktop devtools but misbehaving on an
+ * actual phone ("pcの検証ツールだと問題ないんだけどスマホで見たら挙動がお
+ * かしい"); a real fresh DOM mount replays a CSS animation with zero JS
+ * reflow-timing tricks needed at all, sidestepping whatever that was.
+ * Positioned via a plain in-flow `margin-top` set inline in
+ * mobile-project-list.tsx itself (not `bottom`/`position:absolute` — an
+ * earlier version of this rule assumed that, but repeated reports of the
+ * underline being invisible on-device led to dropping the absolute-position-
+ * against-a-computed-box approach entirely in favor of normal document flow;
+ * see that component's own doc comment for the full reasoning).
+ * height: 1px — briefly bumped to 2px as a visibility hedge while the
+ * flow-based position fix above was unconfirmed; now that it's confirmed
+ * showing correctly on-device, back to 1px per direct follow-up
+ * ("下線の太さを1pxに").
+ */
+.underline-bar {
+  height: 1px;
+  background-color: currentColor;
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+.underline-bar-play {
+  animation: underline-sweep 0.6s cubic-bezier(0.16, 1, 0.55, 1);
+}
+
+/*
+ * Vertical counterparts of the sweep above — for the Tx-Th divider line
+ * (components/mobile-home.tsx), which plays one or the other depending on
+ * which button was pressed, per direct follow-up ("Tx-Thの線もラインスイー
+ * プでアニメーションさせたい。Thを押したら上→下へ、Txを押したら下→上へ").
+ * Same translateY+scaleY-with-fixed-origin technique as underline-sweep
+ * above (see its own doc comment for the full derivation) rather than a
+ * mid-animation origin switch, for the same jank-avoidance reason.
+ *
+ * "上→下" (top→bottom, Th): the visible tip travels downward continuously
+ * across the whole animation — first retreating down and vanishing at the
+ * bottom edge, then regrowing downward from the top edge. Origin fixed at
+ * top; translateY fakes the first half's "anchored at bottom" retreat the
+ * same way underline-sweep's translateX fakes its "anchored at right" one.
+ *
+ * "下→上" (bottom→top, Tx): the mirror image — tip travels upward
+ * continuously, retreating up to vanish at the top, then regrowing upward
+ * from the bottom. Origin fixed at bottom instead.
+ */
+@keyframes underline-sweep-vertical-down {
+  0% {
+    transform: translateX(-5px) translateY(0%) scaleY(1);
+  }
+  50% {
+    transform: translateX(-5px) translateY(100%) scaleY(0);
+  }
+  50.01% {
+    transform: translateX(-5px) translateY(0%) scaleY(0);
+  }
+  100% {
+    transform: translateX(-5px) translateY(0%) scaleY(1);
+  }
+}
+
+@keyframes underline-sweep-vertical-up {
+  0% {
+    transform: translateX(-5px) translateY(0%) scaleY(1);
+  }
+  50% {
+    transform: translateX(-5px) translateY(-100%) scaleY(0);
+  }
+  50.01% {
+    transform: translateX(-5px) translateY(0%) scaleY(0);
+  }
+  100% {
+    transform: translateX(-5px) translateY(0%) scaleY(1);
+  }
+}
+
+.underline-sweep-vertical-down-play {
+  transform-origin: top;
+  animation: underline-sweep-vertical-down 0.6s cubic-bezier(0.16, 1, 0.55, 1);
+}
+
+.underline-sweep-vertical-up-play {
+  transform-origin: bottom;
+  animation: underline-sweep-vertical-up 0.6s cubic-bezier(0.16, 1, 0.55, 1);
+}
+
+/*
+ * "Now playing" ticker (see components/now-playing-ticker.tsx). Scrolls the
+ * text left by exactly one loop's width (text + gap, set as --ticker-distance
+ * inline) so the trailing duplicate copy lines up seamlessly for an infinite loop.
+ */
+@keyframes now-playing-ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-1 * var(--ticker-distance)));
+  }
+}
+
+/*
+ * Left-to-right character reveal, staggered per character via inline
+ * animation-delay. Shared by the "now playing" ticker
+ * (now-playing-ticker.tsx) and project titles (project-card.tsx).
+ */
+@keyframes char-reveal {
+  from {
+    opacity: 0;
+    transform: translateX(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.char-reveal {
+  display: inline-block;
+  opacity: 0;
+  animation: char-reveal 0.25s ease-out forwards;
+}
+
+/*
+ * Studies page (components/studies-center-image.tsx) — the large center
+ * image reveals via a rectangle expanding outward from its own center,
+ * per explicit spec ("画像真ん中からマスクアニメーションで表示") and the
+ * confirmed "中心から矩形が拡大" answer. `inset(50%)` clips all four sides
+ * in to the exact center point (a zero-size rect); `inset(0%)` is the full,
+ * unclipped box. Applied to a freshly-mounted (new `key`) element each time
+ * the active study changes, so — like `.underline-sweep-play` and
+ * `.char-reveal` elsewhere in this file — it always plays once from a real
+ * DOM mount rather than needing any JS class-toggling to "restart" it.
+ * A brief version replaced this with a scale-up-from-a-small-size reveal
+ * instead — reverted per explicit follow-up feedback ("次の画像幅がグリッド
+ * 5マス分っていうのも無しでそこは元に戻して"), back to this original
+ * clip-path technique.
+ *
+ * `animation-delay` (200ms) holds this reveal fully clipped (invisible) for
+ * a brief moment first — per bug report that the backdrop's own
+ * 120% zoom (.studies-backdrop-settle below) wasn't reading as visible at all
+ * ("拡大はしてないな。切り替わる瞬間やで"): with both animations starting at
+ * the same instant, this reveal's own ease-out curve grows fast enough early
+ * on that it was covering most of the frame well before the backdrop's zoom
+ * became visually obvious, leaving no real window where the zoom alone could
+ * be seen. Delaying this reveal's start guarantees a dedicated beat where
+ * *only* the backdrop's zoom is visible, before this reveal begins growing
+ * over it — an intentional two-step sequence (current image zooms in place,
+ * *then* the next one grows from center), not the mismatched-duration timing
+ * bug fixed earlier for the intro expand (that was two animations describing
+ * the *same* object; this is two different, deliberately sequential ones).
+ */
+/* `to: inset(-1px)` (was `inset(0%)`) — per direct follow-up ("studiesの
+   イメージの四隅のマスク部分、0.数pxのピクセルズレのせいか背面イメージが
+   少し見えることがある"): this layer's box (--scale/--grid-scale-driven,
+   see studies-gallery.tsx) rarely lands on an exact whole device pixel, and
+   `clip-path`'s own edge rasterization doesn't always land on the same
+   sub-pixel boundary as the box's true edge — leaving a hairline gap where
+   the backdrop layer directly underneath (studies-center-image.tsx, same
+   `absolute inset-0` box) can peek through, most visible at the corners
+   where two such hairline edges meet. A 1px *negative* inset overscans this
+   layer's own clip past its true box edge on every side, guaranteeing full
+   coverage regardless of that rounding — the *outer* mask container (that
+   file's own `clipPath`/`overflow-hidden` wrapper) still bounds the
+   ultimately-visible result to the real edge, so this 1px bleed is never
+   itself seen. */
+@keyframes studies-mask-reveal {
+  from {
+    clip-path: inset(50%);
+  }
+  to {
+    clip-path: inset(-1px);
+  }
+}
+
+.studies-mask-reveal {
+  /* fill-mode "both": "backwards" holds the from-keyframe (fully clipped)
+     during the delay, "forwards" keeps the to-keyframe (fully open) once
+     the animation ends — see this rule's own doc comment above for why the
+     delay exists at all. */
+  animation: studies-mask-reveal 0.7s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+  /* Promotes this freshly-mounted element to its own compositing layer
+     immediately, rather than exactly when the clip-path animation first
+     starts — per direct real-device white-flash follow-up (components/
+     studies-center-image.tsx's own preload hook doc comment has the fuller
+     explanation of this class of bug). */
+  will-change: clip-path;
+}
+
+/*
+ * Studies page (components/studies-center-image.tsx) — the single "backdrop"
+ * layer (the study that was showing right before the current one) scales up
+ * to 120% the moment it's demoted from "top" to "backdrop", per explicit
+ * spec ("表示中の画像はマスク内で120%に拡大（マスクは100%のまま）") —
+ * cropped by the fixed-size frame around it (that frame/mask itself never
+ * re-animates on a per-image switch, only once during the mount-time intro —
+ * see .studies-image-expand below), so it reads as a tighter, cropped-in
+ * zoom rather than the box itself growing. Applied to a freshly-mounted (new
+ * `key`) element every time a study is newly demoted to backdrop, so — like
+ * .studies-mask-reveal above — it always plays once from a real DOM mount.
+ * An earlier version tried keeping *every* non-active study permanently
+ * stacked at `inset-0` (not just the single immediately-previous one) —
+ * reverted per bug report ("表示中の画像が切り替わる瞬間別の画像になって、
+ * 画面中央から次の画像が表示されちゃってる"): once opacity/grayscale were
+ * both removed from that stack (per "それはなしで" / "透過10%もなし"), every
+ * non-active entry sat at full, equal opacity, so simple DOM stacking order
+ * meant only the array's *last* non-active entry was ever actually visible
+ * through the others — not necessarily the one that had just stopped being
+ * active — which is exactly what read as "suddenly a different image".
+ * A single dedicated backdrop slot has no such ambiguity: there's only ever
+ * one study back there, and it's always the right one.
+ *
+ * Duration (900ms) matches .studies-mask-reveal's own total completion time
+ * (200ms delay + 700ms reveal = 900ms) so both finish at exactly the same
+ * moment, and the easing is a gentler, symmetric ease-in-out rather than the
+ * sharp front-loaded ease-out used elsewhere on this page — per explicit
+ * feedback that the zoom felt abrupt ("拡大がちょっと不自然。もっとスムーズ
+ * にして"): with the earlier 700ms/aggressive-ease-out pairing, most of the
+ * scale-up happened within the first ~200ms (the reveal's own delay window),
+ * leaving the image sitting at ~120% doing nothing for the remaining ~500ms
+ * while the reveal played out — reading as "quick jump, then stall" instead
+ * of one continuous motion.
+ */
+@keyframes studies-backdrop-settle {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.2);
+  }
+}
+
+.studies-backdrop-settle {
+  animation: studies-backdrop-settle 900ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/*
+ * Studies page (app/studies/page.tsx) — makes the noise overlay flicker
+ * instead of sitting perfectly still, per explicit spec ("背景のノイズはラ
+ * ンダムに動かすこと可能？閲覧に付加がかかって重くなりそうだったら無しでい
+ * い"). Deliberately just jumps `background-position` around a small tiled
+ * SVG (already-rendered, only ~160x160px, see NOISE_SVG in that file) rather
+ * than regenerating the noise itself every frame (a canvas/WebGL approach
+ * would) — repositioning an existing tiny raster is cheap, unlike recomputing
+ * fractal noise continuously. `steps(1, end)` as the timing function (not the
+ * default smooth easing) is what makes each keyframe stop a hard jump rather
+ * than a smooth pan between positions, which is what actually reads as
+ * static rather than sliding.
+ *
+ * An initial version (10 stops over 1.2s, ~120ms/stop) read as barely moving
+ * at all ("背景ノイズは動いてるようには見えない") — shifting a *random*
+ * texture by an arbitrary offset still just looks like "more random noise",
+ * not obvious motion, unless the jumps happen fast enough to read as actual
+ * flicker rather than an occasional, easy-to-miss jump cut. This moved to 16
+ * stops over 0.5s (~31ms/stop, close to real analog-TV-static's own flicker
+ * rate) — much closer to "砂嵐" (a sandstorm/static look) than the original.
+ * Larger, more varied offsets per stop also help each jump read as a clearly
+ * *different* pattern rather than a subtle nudge. Later eased down slightly
+ * to 0.65s (~41ms/stop) per "砂嵐の動きの速度を少しだけ落としてみて" — same
+ * 16 stops, just held a touch longer each.
+ */
+@keyframes studies-noise-flicker {
+  0%,
+  100% {
+    background-position: 0 0;
+  }
+  6.25% {
+    background-position: -83px 41px;
+  }
+  12.5% {
+    background-position: 67px -97px;
+  }
+  18.75% {
+    background-position: -29px 73px;
+  }
+  25% {
+    background-position: 101px 13px;
+  }
+  31.25% {
+    background-position: -61px -47px;
+  }
+  37.5% {
+    background-position: 37px 89px;
+  }
+  43.75% {
+    background-position: -113px 23px;
+  }
+  50% {
+    background-position: 19px -71px;
+  }
+  56.25% {
+    background-position: -47px 107px;
+  }
+  62.5% {
+    background-position: 83px -19px;
+  }
+  68.75% {
+    background-position: -97px -83px;
+  }
+  75% {
+    background-position: 53px 61px;
+  }
+  81.25% {
+    background-position: -13px -37px;
+  }
+  87.5% {
+    background-position: 73px 29px;
+  }
+  93.75% {
+    background-position: -67px -101px;
+  }
+}
+
+.studies-noise-flicker {
+  animation: studies-noise-flicker 0.65s steps(1, end) infinite;
+}
+
+/*
+ * About page background (components/about-background.tsx) briefly had its
+ * own flickering-grain + SVG-liquid-warp treatment (a copy of the
+ * .studies-noise-flicker technique above, plus a feDisplacementMap warp
+ * driven by a per-frame "sum of sines") — reverted per explicit follow-up
+ * ("重くなったから、背景に動き付けてない最初の状態に戻して": the per-frame
+ * SVG filter recompute on a full-viewport fixed element was too expensive).
+ * That component went back to a plain static photo at the time.
+ *
+ * A later, separate follow-up ("aboutページ背景にstudiesページと同じノイズを
+ * 入れて") asked specifically for just the lightweight tiled-noise-flicker
+ * half of that — not the SVG warp — so `.studies-noise-flicker` above is
+ * used directly by AboutBackground again now, unchanged.
+ */
+
+/*
+ * Studies page (components/studies-center-image.tsx) — the center image's
+ * own small-intro-size → full-size expansion (its `expanded` prop). Went
+ * through several damped-spring keyframe versions (one overshoot, two
+ * overshoots) chasing a "気持ちいい" bounce — reverted per repeated bug
+ * reports that any overshoot past 100%, however small, still reads as a
+ * "跳ね返り" (bounce-back) right at the end ("まだ画像の跳ね返りが少しだけ
+ * ある"). Now a single, monotonic ease-out scale-up: rises straight from
+ * SMALL_SCALE to exactly 100% and never exceeds it, so there's no bounce of
+ * any size left to perceive.
+ * 0% matches SMALL_SCALE (232/348, i.e. exactly 2/3) so there's no visual
+ * jump the instant this animation starts from the element's already-applied
+ * small size.
+ */
+@keyframes studies-image-expand {
+  0% {
+    transform: scale(0.6667);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.studies-image-expand {
+  animation: studies-image-expand 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/*
+ * Studies page (components/studies-gallery.tsx) — the "01 - 10" counter's
+ * own gauge, replacing the old plain " - " text separator per explicit spec
+ * ("01と10の間に45px幅のゲージを設置して、切り替わりの秒数に応じてこの
+ * ゲージが伸びて45pxの長さになったら切り替わる仕様にして"). A linear fill
+ * from 0 to the track's own full width (45px, scaled by --scale to match
+ * the counter text/track it sits inside) — `animation-duration` is set
+ * inline (to AUTO_ADVANCE_MS, a JS constant) rather than here, so this class
+ * only supplies the name/timing-function/fill-mode longhands, leaving
+ * duration free to vary without needing a second class or a CSS variable.
+ * `animation-fill-mode: forwards` holds it at the full 45px once done rather
+ * than snapping back to 0 — irrelevant in practice since a fresh `key`
+ * mounts a whole new element (see that element's own comment) well before
+ * this could ever actually finish and sit idle, but correct either way.
+ */
+@keyframes studies-gauge-fill {
+  from {
+    width: 0;
+  }
+  to {
+    width: calc(45px * var(--scale));
+  }
+}
+
+.studies-gauge-fill {
+  animation-name: studies-gauge-fill;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/*
+ * SP's own gauge fill (components/mobile-studies.tsx) no longer uses a
+ * `@keyframes`-based animation like the rule above — per direct real-device
+ * bug report ("ゲージの伸びる黒い線が表示されてない"), it was replaced with
+ * a plain CSS *transition* (width 0 → 45px, triggered by a rAF-deferred state
+ * flip one frame after mount — the same reveal-on-mount technique already
+ * used elsewhere in this codebase, e.g. mobile-studies-thumbnail-rail.tsx's
+ * own entrance slide). `@keyframes` split across a CSS class (animation-name/
+ * timing-function/fill-mode) plus an inline `animation-duration` is a known
+ * source of first-mount quirks on some mobile WebKit/Blink builds (an
+ * animation that doesn't visibly start unless something else forces a
+ * reflow first) — PC's own equivalent below is untouched since it isn't
+ * reported broken, but SP's now uses the more broadly reliable
+ * transition-based mechanism instead of chasing that quirk directly.
+ */
+
+/*
+ * About page hero photo (components/about-background.tsx) — bleeds above its
+ * own normal position specifically on iOS Safari (and any other iOS browser,
+ * all WebKit-mandated by Apple) per direct follow-up ("iOSのSafariで見たと
+ * き、Aboutページの画面上の背景画像と背景ピンクの境界が気になるので、
+ * safariのときは画面上まで画像が表示されるように画像を拡大表示して"): iOS
+ * Safari's own dynamic top toolbar (collapsing/expanding as you scroll) and
+ * its overscroll "rubber-band" region past the very top of the document can
+ * both momentarily reveal a sliver of the page's own flat pink background
+ * above this photo — shifting this wrapper's own `top` negative extends the
+ * photo further up so there's real image content there instead. This wrapper
+ * has its own `overflow-hidden` (see that component), so the *rest* of the
+ * photo's own layout is unaffected — only its position moves.
+ *
+ * A plain `top` offset — not `transform: scale()` (an earlier version of
+ * this exact fix, reverted): that scaled this wrapper up from its own
+ * center, which also grew its `inset-x-0` (full-width) box *horizontally*
+ * past the viewport's own edges, causing real page-wide horizontal overflow
+ * (reported as stray whitespace on the page's own left/right edges — see
+ * git history). `top` alone only ever moves this element vertically, with
+ * no way to affect the page's own horizontal extent.
+ *
+ * `@supports (-webkit-touch-callout: none)` is the standard feature-query
+ * trick for targeting iOS WebKit specifically (that CSS property only exists
+ * there) without a JS user-agent sniff — scoped this way rather than applied
+ * unconditionally so Chrome/desktop, which don't have this dynamic-toolbar/
+ * overscroll seam at all, keep the photo's original, un-shifted position.
+ *
+ * `top: 0` — was a negative offset (-120px, briefly also
+ * `env(safe-area-inset-top)`-aware) that actively backfired against a later,
+ * more basic direct follow-up ("SPのときも背景画像が0pxから表示されるように
+ * して...背景画像の上面から画面に表示させたい"): shifting this *whole*
+ * wrapper's `top` negative doesn't just extend the bottom of its visible
+ * range upward into the bounce area — it *also* drags the wrapper's own top
+ * edge (and so the photo's own real top pixels) up and off-screen by that
+ * same amount, since `overflow-hidden` on this same element clips whatever
+ * no longer fits inside its own box. The net effect at rest (no bounce
+ * happening) was that the photo's own true top edge was never actually
+ * visible at all — what showed at the screen's own top was always ~120px+
+ * *into* the photo instead, reading as "the top of the image isn't shown"
+ * exactly as reported. `top: 0` (i.e. no bleed at all now) means the photo's
+ * own real top pixel is always what's at the screen's own physical top
+ * (`viewport-fit=cover`, see app/about/page.tsx's own `viewport` export,
+ * already handles extending *that* far, with no extra offset needed) —
+ * trading away this class's original purpose (papering over a solid-pink
+ * flash during the elastic overscroll-bounce past the very top) in favor of
+ * the more basic, explicitly-requested behavior. If that bounce flash turns
+ * out to matter later, it needs a fix that doesn't also crop the photo's own
+ * top at rest — e.g. compensating with matching positive inner offset on the
+ * image itself — rather than reintroducing a bare negative `top` here.
+ */
+@supports (-webkit-touch-callout: none) {
+  .ios-about-hero-bleed {
+    top: 0;
+  }
+}
+
+/*
+ * SP Th-mode thumbnail reveal (components/mobile-project-thumbnail-grid.tsx)
+ * — a two-phase left-to-right wipe, per explicit spec: "1. サムネイルの左か
+ * ら右へ、各実績ごとに指定されたカラーがスライドアニメーションで表示され
+ * る 2. その後、同じく左から右にそのカラーのベタ塗りが「はける」ようにア
+ * ニメーションし、はけた後にサムネイル画像が表示される". A single
+ * `clip-path: inset()` animation on one element (that project's own
+ * `backgroundColor`, absolutely positioned over the already-loaded photo
+ * underneath) covers both phases: phase 1 clips in from the *right* edge
+ * (100% → 0%), so the solid color visibly grows in from the left; phase 2
+ * (after a brief hold at full coverage) clips in from the *left* edge
+ * instead (0% → 100%), so that same solid color visibly peels away
+ * leftmost-first, revealing the real photo underneath as it goes — both
+ * phases read as motion moving left-to-right, matching the spec, even
+ * though the underlying clip edge being animated flips between them.
+ *
+ * This class is applied unconditionally (not conditionally added/removed
+ * via a `revealed`-gated className toggle, as an earlier version did) —
+ * `animation-play-state` instead controls whether it's actually running,
+ * toggled inline per-card via that same `revealed` boolean. Per bug report
+ * that the wipe wasn't appearing at all on either PC or SP
+ * ("pc,spともにカラーワイプのアニメーション自体ついてないね"): a
+ * conditional-class approach depends on the browser correctly detecting
+ * "this element's `animation-name` just changed from none to a real value"
+ * on an *existing* DOM node (not a fresh mount) and restarting the
+ * animation from its own start — the exact same category of restart-timing
+ * fragility this codebase has already hit more than once elsewhere (see
+ * playUnderlineSweep's own force-reflow workaround, and
+ * .studies-mask-reveal's own doc comment above, which explicitly prefers a
+ * fresh-mount `key` over "JS class-toggling to restart" for this same
+ * reason). `animation-play-state: paused` sidesteps all of that: the
+ * animation is attached to the element from its very first paint and simply
+ * sits paused at the 0% keyframe (held there by `both`'s own `backwards`
+ * half, the same "class supplies the resting pre-state too" role the old
+ * inline `clip-path` used to fill) until `revealed` flips its play-state to
+ * "running" — no add/remove, no reflow-forcing, nothing that depends on the
+ * browser correctly detecting a mid-lifecycle change to *start* an
+ * animation rather than merely pause/resume an already-attached one.
+ * `animation-delay` is still set inline per-card, reusing that same card's
+ * own entrance stagger delay so the color wipe cascades in sync with the
+ * grid's left-to-right/top-to-bottom entrance rather than starting all at
+ * once — this still works identically under play-state pausing, since the
+ * delay is simply how long the animation stays paused-at-0% after
+ * `animation-play-state` flips to "running" before it actually begins
+ * advancing.
+ */
+@keyframes th-thumbnail-color-wipe {
+  0% {
+    clip-path: inset(0 100% 0 0);
+  }
+  40% {
+    clip-path: inset(0 0% 0 0);
+  }
+  50% {
+    clip-path: inset(0 0% 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 0 100%);
+  }
+}
+
+.th-thumbnail-color-wipe {
+  animation: th-thumbnail-color-wipe 800ms cubic-bezier(0.65, 0, 0.35, 1) both paused;
+  will-change: clip-path;
+}
+
+/*
+ * The photo itself (the <img>, not the color overlay above) — per direct
+ * follow-up ("最初からサムネは表示させずに、カラーワイプが右にスライドす
+ * るタイミングで表示するようにして"): with the color overlay alone, the
+ * <img> underneath was already fully painted from the very first frame, so
+ * whatever sliver of it the still-growing color rect (phase 1, 0-40%
+ * above) hadn't yet reached was visibly showing the raw photo well before
+ * the wipe ever reached it — reading as "the thumbnail is already there
+ * from the start," not "the thumbnail appears as the color wipes past."
+ * This keyframe keeps the image itself fully clipped (invisible) through
+ * the color's own fill-in and hold (0-50% — matching th-thumbnail-color
+ * -wipe's own 0/40/50% stops above), then reveals it left-to-right in
+ * exact lockstep with that same color's own 50-100% peel-away phase.
+ *
+ * `inset(0 X% 0 0)` — clipping from the *right* edge (same axis as
+ * th-thumbnail-color-wipe's own phase-1 fill-in above), X: 100% → 0%, so the
+ * visible region grows starting from the left and extends rightward. A
+ * first version of this clipped from the *left* instead (`inset(0 0 0 X%)`,
+ * the same axis as the color's own phase-2 peel), which seemed like the
+ * matching "mirror" of that phase at a glance, but actually reveals the
+ * image starting from the *right* edge growing leftward — the opposite
+ * direction from the color's own left-to-right peel, reported as "サムネ画
+ * 像自体に左にワイプ付けてる？" (is a leftward wipe being applied to the
+ * thumbnail image itself?). Clipping from the right, not the left, is what
+ * actually grows the visible region left-to-right.
+ *
+ * (Two attempts at fixing an intermittent "1-2 thumbnails blink off then
+ * back on" glitch — reported PC-only, not reproducible on SP, so likely a
+ * machine/GPU-specific compositing quirk rather than something fixable from
+ * the animation authoring alone — were tried and then reverted per direct
+ * follow-up ("①も戻して"): `transform: translateZ(0)` on both this and
+ * th-thumbnail-color-wipe (forcing persistent GPU layers), and starting this
+ * keyframe's own reveal 4 points early (46% instead of 50%, to guard against
+ * the two layers' clip-paths drifting out of sync at their shared boundary).
+ * Neither fixed it; back to the original, simpler two-keyframe design.)
+ */
+@keyframes th-thumbnail-image-reveal {
+  0%,
+  50% {
+    clip-path: inset(0 100% 0 0);
+  }
+  100% {
+    clip-path: inset(0 0% 0 0);
+  }
+}
+
+.th-thumbnail-image-reveal {
+  animation: th-thumbnail-image-reveal 800ms cubic-bezier(0.65, 0, 0.35, 1) both paused;
+  will-change: clip-path;
 }

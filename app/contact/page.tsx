@@ -1,0 +1,265 @@
+import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
+import { ContactHero } from "@/components/contact-hero";
+import { CopyrightYear } from "@/components/copyright-year";
+import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
+import { FlowerShaderBackground } from "@/components/flower-shader-background";
+import { HeaderSummon } from "@/components/header-summon";
+import { MobileContact } from "@/components/mobile-contact";
+import { RevealOnMount } from "@/components/reveal-on-mount";
+import { SiteHeader } from "@/components/site-header";
+
+/** Trial embed of the animated shader background (see that component's own
+ *  doc comment) — per direct follow-up ("この値で、背景画像は添付を使って
+ *  contactページ背景に組み込んでみて"), Contact only for now. */
+const SHADER_BG_IMAGE_SRC = "/images/contact/melt-bg.jpg";
+
+/** The page's own 3-line English tagline — per direct follow-up ("この英字3
+ *  行は下からスライドイン+フェードインは無しで、変わりにカーテンリビールを
+ *  つけて"), curtain-revealed via CurtainRevealLines instead of the usual
+ *  RevealOnMount slide+fade every other block on this page still uses.
+ *  Duplicated in mobile-contact.tsx (not imported) — same convention as
+ *  every other piece of literal copy shared between this page's PC/SP
+ *  trees. */
+const CONTACT_TAGLINE_LINES = [
+  "Every project starts with a conversation.",
+  "Together, we’ll uncover the essence and shape",
+  "it into something clear and lasting.",
+];
+
+// Composes against the root layout's own title template
+// ("%s - ANDMADE Inc.") into "Contact - ANDMADE Inc.".
+// `alternates.canonical` set explicitly here — Next.js's metadata merging
+// replaces the parent's `alternates` object wholesale rather than merging
+// field-by-field, so without this override the page would otherwise
+// incorrectly inherit the root layout's own canonical ("/", the home page).
+export const metadata: Metadata = { title: "Contact", alternates: { canonical: "/contact" } };
+
+/** `font-feature-settings: "ss09" 1` — matches the stylistic set used for
+ *  Gen Interface JP body copy elsewhere (about page, project-card.tsx). */
+const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
+
+/** Below this window *height*, the page stops shrinking any further — see
+ *  `PAGE_HEIGHT` below. */
+const COMPACT_MIN_HEIGHT_PX = 750;
+/** The page's own effective height: exactly the viewport above
+ *  COMPACT_MIN_HEIGHT_PX (unchanged, no-scroll behavior), but frozen at
+ *  COMPACT_MIN_HEIGHT_PX below it rather than continuing to shrink — so the
+ *  ©/photo placeholder (both sized/positioned off this same value, not raw
+ *  `100vh`) stay exactly as they'd look at a 750px-tall window instead of
+ *  cramming further, and the page simply becomes taller than the actual
+ *  window and scrolls (native/Lenis document scroll — nothing about this
+ *  page needs its own scroll container) once the window goes below that. */
+const PAGE_HEIGHT = `max(100vh, ${COMPACT_MIN_HEIGHT_PX}px)`;
+
+/**
+ * Contact page (Figma node 330:1103) — the one dark-themed page on the
+ * site: pure black (#000) background, all text pure white (#fff) — per
+ * direct follow-up ("contactページの背景色は#000に、文字はすべて#fffに"),
+ * replacing the original dark olive (#181609) background and #e5e5e5/#757575
+ * text scheme. Same grid/scale conventions as Home/About (--scale,
+ * --grid-scale, --content-width-fluid, text-box-trim) throughout.
+ *
+ * The footer here is deliberately not the shared SiteFooter component —
+ * Figma's own mockup only shows a plain "©2026 / ANDMADE Inc." line (no
+ * logo, no Inquiries/Social, no Back to top), since this page's own content
+ * already surfaces the Inquiries/Social block directly above it.
+ */
+export default function Contact() {
+  return (
+    <div id="top" className="relative w-full flow-root" style={{ backgroundColor: "#000" }}>
+      <FlowerShaderBackground imageSrc={SHADER_BG_IMAGE_SRC} />
+
+      {/* PC-only tree, split from SP's own (mobile-contact.tsx) at Tailwind's
+         default `lg` breakpoint (1024px) — same plain-CSS split as
+         app/studies/page.tsx's own StudiesGallery/MobileStudies pairing (see
+         that file's own doc comment for why). The shared `#000` background
+         above stays outside this split, unconditional for both trees. */}
+      <div className="hidden lg:contents">
+      <div className="relative overflow-hidden" style={{ height: PAGE_HEIGHT }}>
+        <SiteHeader contact />
+
+        <div className="relative mt-[calc(280px*var(--scale))]">
+          {/* Left margin matches the Home page's Tx/Th toggle
+              (project-view-toggle.tsx: ml-[calc(24px*var(--grid-scale))]),
+              same 12px/medium text — vertically aligned to "Get in touch."'s
+              own *bottom* edge instead (bottom-0, positioned against the
+              wrapper directly below rather than the outer mt-280-offset
+              origin div — that wrapper is a plain, otherwise-unstyled
+              `relative` box sized to ContactHero's own rendered height, so
+              bottom-0 here lands exactly on ContactHero's own bottom edge
+              regardless of its exact trimmed pixel height, without needing
+              to know that height). Only the first line gets trim-start and
+              only the last gets trim-end (matching app/about/page.tsx's
+              paragraphTrimClass convention for stacked multi-line text) —
+              trimming every line would collapse the natural 1.15 leading
+              *between* them along with the unwanted leading above/below the
+              whole block; this way only the outer edges are trimmed, so the
+              block's bottom still lands exactly on "Get in touch."'s own
+              bottom edge. No mix-blend-exclusion since this page has no
+              photo/light background to blend against (plain #fff on
+              black, like the rest of Contact's own text). */}
+          <div className="relative">
+            <RevealOnMount className="absolute bottom-0 ml-[calc(24px*var(--grid-scale))] whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.15] font-normal text-[#fff]">
+              <p className="mb-0 [text-box-edge:cap_alphabetic] [text-box-trim:trim-start]">{`We’re always`}</p>
+              <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-end]">open to new ideas.</p>
+            </RevealOnMount>
+
+            <ContactHero />
+
+            {/* Right-anchored parenthetical caption — per direct follow-up
+                (attached reference: "( Rooted in purpose , Designed with
+                clarity , Built to last )"), 24px from the screen edge via
+                the same var(--edge-right-inset) convention as every other
+                right-anchored PC element on this page (SiteHeader,
+                HeaderSummon, the logo mark above), bottom-aligned to
+                ContactHero's own bottom edge the same way the "We're
+                always/open to new ideas." block on the left is (this
+                wrapping div is unstyled/sized to ContactHero's own rendered
+                height, so bottom-0 here lands exactly on "Get in touch."'s
+                own bottom edge). Each comma-separated segment gets its own
+                5px gap, the same punctuation-spacing convention used for
+                "Instagram, X" elsewhere on this page/SiteFooter. */}
+            <RevealOnMount
+              className="absolute bottom-0 flex items-center gap-[calc(5px*var(--scale))] text-[length:calc(12px*var(--scale))] leading-[1.15] font-normal whitespace-nowrap text-[#fff]"
+              style={{ right: "calc(var(--edge-right-inset) + 24px)" }}
+            >
+              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">(</span>
+              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Rooted in purpose</span>
+              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">,</span>
+              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Designed with clarity</span>
+              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">,</span>
+              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Built to last</span>
+              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">)</span>
+            </RevealOnMount>
+          </div>
+
+          <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(40px*var(--scale))] flex flex-col items-start gap-[calc(40px*var(--scale))]">
+            {/* gap tightened 40px → 35px → 30px (two direct follow-ups, "3行
+                英字の下マージンを5px詰めて" ×2) — the space directly below
+                the 3-line English tagline above (only affects the gap
+                between it and the Japanese paragraph right below it, not the
+                further-down Inquiries/Social block, which sits in the outer
+                flex-col's own separate gap). */}
+            <div className="flex flex-col items-start gap-[calc(30px*var(--scale))] text-[#fff]">
+              <CurtainRevealLines
+                lines={CONTACT_TAGLINE_LINES}
+                className="text-[length:calc(26px*var(--scale))] leading-[1.2]"
+                // pb-[8px] on the trimmed last line only (bumped up from an
+                // initial 4px, which still wasn't quite enough clearance) —
+                // per direct follow-up ("contactの3行英字の3行目の下がマスク
+                // で文字が見切れてる"): text-box-trim:trim-end sizes that line's own
+                // box tightly to the alphabetic baseline (no leading below
+                // it), but this line's actual text ("it into something clear
+                // and lasting.") has real descenders (the "g" in "something"
+                // and "lasting") whose ink dips below that baseline — with
+                // zero clearance there, this line's own overflow-hidden
+                // curtain-reveal mask (see curtain-reveal-lines.tsx) was
+                // clipping those descenders. The wrapping mask div has no
+                // explicit height of its own (it just shrinks to fit this
+                // <p>'s rendered box), so padding-bottom here grows that mask
+                // just enough to give the descenders room, the same
+                // clearance-instead-of-removing-the-trim fix already used for
+                // an identical glyph-overshoot issue in now-playing-ticker.tsx.
+                lineClassNames={[undefined, undefined, "[text-box-edge:cap_alphabetic] [text-box-trim:trim-end] pb-[calc(8px*var(--scale))]"]}
+              />
+              <RevealOnMount
+                className="font-(family-name:--font-gen-interface-jp) text-[length:calc(14px*var(--scale))] leading-[1.75] font-light whitespace-nowrap tracking-[calc(0.7px*var(--scale))]"
+                style={SS09}
+              >
+                <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">プロジェクトのご相談やご質問など、まずはお気軽にお問い合わせください。</p>
+              </RevealOnMount>
+            </div>
+
+            <RevealOnMount className="flex w-[calc(342px*var(--scale))] items-start justify-between leading-[1.6]">
+              <div className="flex flex-col items-start gap-[calc(15px*var(--scale))]">
+                {/* /50 — per direct follow-up ("contactの「Inquiries、
+                    Social」は透過50%に"): these are the small label captions
+                    above the actual email/social links, not the links
+                    themselves, so they stay dimmer than the surrounding
+                    full-white (#fff) text. */}
+                <p className="font-(family-name:--font-courier) text-[length:calc(12px*var(--scale))] text-[#fff]/50 tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+                  Inquiries
+                </p>
+                <a
+                  href="mailto:info@andmade.jp"
+                  className="underline-sweep text-[length:calc(18px*var(--scale))] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                >
+                  info@andmade.jp
+                </a>
+              </div>
+              <div className="flex flex-col items-start gap-[calc(15px*var(--scale))]">
+                <p className="font-(family-name:--font-courier) text-[length:calc(12px*var(--scale))] text-[#fff]/50 tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+                  Social
+                </p>
+                <div className="flex items-center gap-[calc(10px*var(--scale))] text-[length:calc(18px*var(--scale))] text-[#fff]">
+                  <a
+                    href="https://www.instagram.com/andmade_inc"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                  >
+                    Instagram
+                  </a>
+                  <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">,</span>
+                  <a
+                    href="https://x.com/ANDMADE_jp"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                  >
+                    X
+                  </a>
+                </div>
+              </div>
+            </RevealOnMount>
+          </div>
+        </div>
+
+        {/* The bottom-right photo box (originally a flat #858585 Figma
+            placeholder, briefly a shader-effect panel) has been removed
+            entirely. A real photo may go back in this same spot
+            later — reinstating it just means re-adding a wrapper div here
+            (bottom-24px anchored, aspect-[348/464], height derived from
+            PAGE_HEIGHT — see this file's own version history for the exact
+            markup that was here). */}
+
+        <RevealOnMount className="absolute bottom-[28px] ml-[calc(198px*var(--grid-scale))] text-[length:calc(30px*var(--scale))] leading-[1.05] font-medium text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+          <p className="mb-0">
+            ©<CopyrightYear />
+          </p>
+          <p>ANDMADE Inc.</p>
+        </RevealOnMount>
+
+        {/* Same logo mark as SiteFooter (/andmade-mark.svg) — per direct
+            follow-up ("pcのcontactの右下に他ページのフッターに入れてるロゴを
+            #fffで配置して"). No invert filter needed here (unlike
+            SiteFooter's "dark" theme): the SVG's paths are hardcoded
+            fill="white" already, and this page's background is plain black,
+            so it renders white with no extra treatment. Bottom-right
+            anchored like the page's own ©/ANDMADE Inc. block, using the same
+            right-edge convention (var(--edge-right-inset)) and 52px*scale
+            sizing as SiteFooter's own logo.
+
+            Links back to "/" — per direct follow-up ("contactの右下ロゴに
+            トップへの導線追加"), same behavior as SiteFooter's own logo
+            (components/site-footer.tsx). No longer aria-hidden/decorative
+            now that it's an actual navigation link. */}
+        <RevealOnMount
+          className="absolute bottom-[28px] h-[calc(52px*var(--scale))] w-[calc(52px*var(--scale))]"
+          style={{ right: "calc(var(--edge-right-inset) + 24px)" }}
+        >
+          <Link href="/" className="block h-full w-full">
+            <Image src="/andmade-mark.svg" alt="ANDMADE" width={52} height={52} className="h-full w-full" />
+          </Link>
+        </RevealOnMount>
+
+        <HeaderSummon noBlend />
+      </div>
+      </div>
+
+      <MobileContact />
+    </div>
+  );
+}

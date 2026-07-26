@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "lenis": "^1.3.25",
+    "microcms-js-sdk": "^3.4.0",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4"
