@@ -5,6 +5,7 @@ import { useLenis } from "lenis/react";
 import { HeaderSummon } from "@/components/header-summon";
 import { HoveredProjectTitle } from "@/components/hovered-project-title";
 import { MobileHome } from "@/components/mobile-home";
+import { PreloadProjectPreviews } from "@/components/preload-project-previews";
 import { ProjectGridSection } from "@/components/project-grid-section";
 import {
   ProjectHoverPreview,
@@ -17,7 +18,14 @@ import { RecentNews } from "@/components/recent-news";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getGridScale } from "@/lib/grid-scale";
-import { PREVIEW_RATIO_ASPECT, getProjectImageSrc, type PreviewRatio, type Project } from "@/lib/projects";
+import type { NewsItem } from "@/lib/news";
+import {
+  PREVIEW_RATIO_ASPECT,
+  getProjectImageSrc,
+  getProjectImageSrcSet,
+  type PreviewRatio,
+  type Project,
+} from "@/lib/projects";
 
 /** Grid used for the hover-preview's random placement — matches grid-overlay.tsx. */
 const GRID_MARGIN_PX = 24;
@@ -53,6 +61,13 @@ const PREVIEW_RATIO_SIZE: Record<PreviewRatio, { minColumns: number; maxColumns?
   "landscape-3-2": { minColumns: 14, maxColumns: 18 },
   "portrait-3-4": { minColumns: 9 },
   "landscape-8-5": { minColumns: 14, maxColumns: 18 },
+  // Square sits between the two families, so it gets its own middle band
+  // rather than borrowing either: at the portrait minimum (9) a 1:1 box is
+  // noticeably smaller than the portraits it sits alongside, while at the
+  // landscape minimum (14) it becomes as tall as it is wide and starts
+  // fighting the viewport-height clamp. Capped like the landscapes are,
+  // since — unlike portrait — its height grows just as fast as its width.
+  "square-1-1": { minColumns: 11, maxColumns: 15 },
 };
 
 function randomInt(min: number, max: number) {
@@ -110,9 +125,13 @@ type HomeViewProps = {
    *  server-side instead means the real list is already present in the very
    *  first render, so that dummy-then-real swap can no longer happen. */
   initialProjects: Project[];
+  /** Recent announcements, also read at build time in app/page.tsx — see
+   *  recent-news.tsx's own `items` prop. Threaded through to both the PC
+   *  (RecentNews) and SP (MobileHome → MobileRecentNews) trees. */
+  news: NewsItem[];
 };
 
-export function HomeView({ initialProjects }: HomeViewProps) {
+export function HomeView({ initialProjects, news }: HomeViewProps) {
   const [projects] = useState<Project[]>(initialProjects);
 
   const footerRef = useRef<HTMLDivElement>(null);
@@ -249,6 +268,7 @@ export function HomeView({ initialProjects }: HomeViewProps) {
             key: `${index}-${Date.now()}`,
             rect: generateRandomPreviewRect(projects[index].previewRatio),
             imageSrc: getProjectImageSrc(projects[index]),
+            imageSrcSet: getProjectImageSrcSet(projects[index]),
           },
           ...prev,
         ].slice(0, 2),
@@ -424,18 +444,19 @@ export function HomeView({ initialProjects }: HomeViewProps) {
               ない"), reverting PC's own earlier "Th選択時はお知らせはフェー
               ドアウトで非表示にする" treatment; SP's identical fade-out on Th
               stays as-is since this follow-up only called out PC. */}
-          <RecentNews />
+          <RecentNews items={news} />
 
-          {/* mix-blend-exclusion applied here (not on the wrapper) only for
-             Tx mode — Th mode's own title carries it directly instead
-             (project-thumbnail-grid.tsx), since its thumbnail images
-             deliberately opt out of blending (per explicit request "Thのサ
-             ムネはブレンドモード解除して"): mix-blend-mode on an ancestor
-             blends its *entire* rendered subtree as one unit, so keeping it
-             on this shared wrapper would still blend the Th images too. */}
-          <div
-            className={`ml-[calc(198px*var(--grid-scale))] flex w-[var(--content-width-fluid)] flex-col items-start ${showImages ? "" : "mix-blend-exclusion"}`}
-          >
+          {/* No mix-blend-mode here anymore. Tx mode used to blend this whole
+             wrapper (exclusion), which is what made its white text read
+             correctly against the hover-preview images behind it; that's now
+             replaced by plain black text sitting on an animated white plate
+             that wipes in on hover (see project-card.tsx). Th mode never
+             blended at this level in the first place — its own titles carry
+             mix-blend-exclusion directly (project-thumbnail-grid.tsx), since
+             blending here would have taken the thumbnail images with it
+             (mix-blend-mode on an ancestor blends its entire rendered subtree
+             as one unit). */}
+          <div className="ml-[calc(198px*var(--grid-scale))] flex w-[var(--content-width-fluid)] flex-col items-start">
             {showImages ? (
               <ProjectThumbnailGrid projects={projects} />
             ) : (
@@ -449,14 +470,30 @@ export function HomeView({ initialProjects }: HomeViewProps) {
             )}
           </div>
 
-          {/* Split out of the mix-blend-exclusion wrapper above (which the
-              project list still needs, for its white text against the
-              hover-preview images) — the footer now renders in literal
-              black instead, no blend-mode dependency, matching the About
-              page (see app/about/page.tsx). */}
+          {/* Kept out of the list wrapper above — the footer renders in
+              literal black, with no blend-mode dependency, matching the
+              About page (see app/about/page.tsx). It was split out back when
+              that wrapper still blended; the wrapper no longer does (see its
+              own comment), but the separation stays since the two have
+              different left-margin/width needs anyway. */}
+          {/* mt — Img mode targets a visible 300px gap per direct follow-up
+              ("Img選択時にフッターと一覧のマージンがtxt時と同じく300pxになる
+              ようにして"): the thumbnail grid now cancels its own pull-up so
+              its box ends at the last row's real visible bottom (see
+              project-thumbnail-grid.tsx's own marginBottom comment) — but its
+              CaseCounter, a sticky element with a real in-flow
+              h-[calc(15px*var(--scale))], still sits inside that box after
+              the grid, so this margin starts 15px(*scale) below the visible
+              content. 285px here + those 15px = the 300px gap on screen
+              (verified live: 300px request measured 315px until this).
+              Tx keeps its long-standing 330px, whose visible gap (measured
+              from the meta text under the last titles) is the ~300px the
+              follow-up is matching against. */}
           <div
             ref={footerRef}
-            className="ml-[calc(198px*var(--grid-scale))] mt-[calc(330px*var(--scale))] w-[var(--content-width-fluid)]"
+            className={`ml-[calc(198px*var(--grid-scale))] w-[var(--content-width-fluid)] ${
+              showImages ? "mt-[calc(285px*var(--scale))]" : "mt-[calc(330px*var(--scale))]"
+            }`}
           >
             <SiteFooter onBackToTopStart={handleBackToTopStart} onBackToTopEnd={handleBackToTopEnd} theme="dark" />
           </div>
@@ -474,7 +511,15 @@ export function HomeView({ initialProjects }: HomeViewProps) {
         </div>
       </div>
 
-      <MobileHome projects={projects} />
+      <MobileHome projects={projects} news={news} />
+
+      {/* Renders nothing — warms the preview images while the intro plays.
+          Mounted here, outside both the PC tree above and MobileHome, because
+          both of those render on every viewport (shown/hidden via `lg:`
+          classes rather than conditionally mounted), so placing it inside
+          either would warm both platforms' image candidates on both
+          platforms. See its own doc comment. */}
+      <PreloadProjectPreviews projects={projects} />
     </div>
   );
 }

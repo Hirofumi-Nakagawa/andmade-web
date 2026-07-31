@@ -19,8 +19,7 @@ type MobileProjectListProps = {
   onActiveChange: (index: number | null) => void;
   /** Which row (if any) is the one currently shown in the bottom-right
    *  preview — every *other* row's underlined title/category/role/date dims
-   *  to opacity 0.25 (was 0.3, per a further direct follow-up, "非選択項目は
-   *  透過0.25に") while this is set. Several earlier follow-ups iterated on
+   *  to opacity 0.3 while this is set (PC's own equivalent is 0.4). Several earlier follow-ups iterated on
    *  a *percentage transparency* figure (40% → 30% → 20% → 15% → 40% → 30%),
    *  each read as "100% minus that figure" to get an opacity value (e.g.
    *  "透過30%" → opacity 0.7) — repeatedly reported as barely/not visibly
@@ -310,6 +309,67 @@ type MobileProjectItemProps = {
  * uses (its own `<li>` vs. its inner `role="link"` div) rather than one
  * element trying to drive two independent opacity transitions with two
  * different durations/triggers at once. */
+/** The category/role/date plates' own `inset` — 1px past the text box on
+ *  every side, same shorthand form as TITLE_PLATE_INSET above (which adds a
+ *  further 1px on the bottom for the title's larger descenders). */
+const META_PLATE_INSET = "-1px";
+
+/** Plate wipe timing — mirrors PC's own project-card.tsx values. */
+const PLATE_SWEEP_MS = 600;
+const PLATE_SWEEP_EASE = "cubic-bezier(0.16, 1, 0.55, 1)";
+/** Title-to-meta stagger — PC's own PLATE_META_DELAY_MS. */
+const PLATE_META_DELAY_MS = 100;
+
+/** The title plate's own `inset` shorthand (top right bottom left) — PC's
+ *  own TITLE_PLATE_INSET verbatim, same reasoning (descenders hang below a
+ *  text-box-trimmed box, so the bottom edge gets an extra 1px). */
+const TITLE_PLATE_INSET = "-1px -1px -2px -1px";
+
+/**
+ * SP counterpart of PC's own HoverPlate (project-card.tsx): the plate in the
+ * page's own background color that wipes in behind the *selected* row's
+ * text. SP has no hover, so this is driven by an explicit `active` prop off
+ * each row's own `isSelected` rather than a CSS `group-hover`.
+ *
+ * One per line-level box, each absolutely positioned against a
+ * shrink-to-fit parent, so every line's plate hugs that line's own text
+ * width — see PC's own equivalent, including why every visual property here
+ * is an inline style rather than a CSS class.
+ */
+function SelectedPlate({
+  active,
+  inset = "0",
+  delayMs = 0,
+}: {
+  active: boolean;
+  inset?: string;
+  delayMs?: number;
+}) {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none bg-(--color-background)"
+      style={{
+        position: "absolute",
+        inset,
+        transform: active ? "scaleX(1)" : "scaleX(0)",
+        // Origin flips with the state so the plate enters from the left and
+        // *exits to the right* rather than retracting back the way it came:
+        // collapsing toward `right` moves the plate's left edge rightward,
+        // reading as it being wiped off that way. The switch itself is never
+        // visible — at the moment it happens the plate is at whichever scale
+        // makes the other end irrelevant.
+        transformOrigin: active ? "left" : "right",
+        transition: `transform ${PLATE_SWEEP_MS}ms ${PLATE_SWEEP_EASE}`,
+        // Stagger on the way in only (title first, then the meta lines);
+        // on the way out everything leaves together, so a dismissed row
+        // doesn't linger in pieces.
+        transitionDelay: active ? `${delayMs}ms` : "0ms",
+      }}
+    />
+  );
+}
+
 function MobileProjectItem({
   project,
   revealDelayMs,
@@ -426,10 +486,8 @@ function MobileProjectItem({
         // 見出しの下マージンを2px詰めて", then "さらに1px詰めて") — matching
         // project-card.tsx's own identical reductions.
         className="flex cursor-pointer flex-col items-start gap-[9px] transition-opacity duration-300 ease-out"
-        // 0.25 — direct follow-up ("非選択項目は透過0.25に"), from 0.3 (see
-        // that value's own history: "opacity 0.7じゃなくて、0.3ね" — "透過を
-        // 30%に変更" had first been read as "30% transparent", i.e. opacity
-        // 0.7, before being corrected to mean the opacity *value* itself).
+        // 0.3 — SP-specific, deliberately dimmer than PC's own 0.4
+        // (project-card.tsx's opacity-40).
         //
         // touchAction: manipulation — mirrors mobile-menu.tsx's own identical
         // fix on every one of its own tap targets (see that file's own doc
@@ -439,7 +497,7 @@ function MobileProjectItem({
         // firing `click` — a delay that never reproduces in devtools' own
         // mouse-driven touch emulation, only on genuine touch hardware.
         // `manipulation` skips that disambiguation delay entirely.
-        style={{ opacity: isDimmed ? 0.25 : 1, touchAction: "manipulation" }}
+        style={{ opacity: isDimmed ? 0.3 : 1, touchAction: "manipulation" }}
       >
         <span
           // No text-box-trim here — deliberately plain, normal-flow line
@@ -482,8 +540,9 @@ function MobileProjectItem({
           // jumping/reflowing. Titles now always render on one line (can
           // overflow the column visually for a very long title, but never
           // reflows other rows while revealing).
-          className="relative inline-block text-[15px] leading-[1.3] font-medium text-white whitespace-nowrap"
+          className="relative inline-block text-[15px] leading-[1.3] font-medium text-black whitespace-nowrap"
         >
+          <SelectedPlate active={isSelected} inset={TITLE_PLATE_INSET} />
           {/* No `holdWidth` (was set) — per direct follow-up ("PCのスクラン
               ブルテキストは左から順に表示されてるけど、SPのほうは最初から
               文字列の長さ分表示されてる状態でスクランブルアニメーションが
@@ -507,7 +566,10 @@ function MobileProjectItem({
               the reveal just plays faster overall rather than only
               shortening one phase (e.g. faster steps but same lingering
               flicker) and reading unevenly. */}
-          <ScrambleText text={project.title} active={itemRevealed} stepMs={36} jitterMs={28} flickerMs={36} />
+          {/* `relative` so the text paints above its plate. */}
+          <span className="relative">
+            <ScrambleText text={project.title} active={itemRevealed} stepMs={36} jitterMs={28} flickerMs={36} />
+          </span>
           {/* The underline itself — see globals.css's own .underline-bar/
               .underline-bar-play for why this is a real element (keyed,
               remounted on selection) rather than the shared .underline-sweep
@@ -534,22 +596,50 @@ function MobileProjectItem({
           <span
             key={underlineGeneration}
             aria-hidden
-            className={`underline-bar pointer-events-none block ${
+            // `relative` — required now that a SelectedPlate sits behind
+            // this title. The plate is absolutely positioned, and this
+            // underline is a plain in-flow block, so without its own
+            // positioning it paints *under* the plate and disappears the
+            // moment the row becomes selected. (PC has no equivalent problem:
+            // its underline is a ::after, already absolutely positioned and
+            // later in paint order than the plate.)
+            className={`underline-bar pointer-events-none relative block ${
               underlineGeneration > 0 ? "underline-bar-play" : ""
             }`}
             style={{ marginTop: "calc(-0.1em - 2px)" }}
           />
         </span>
         {/* text-[14px] (was 16px) per direct follow-up ("文字サイズ：...16px
-            は14pxに"). */}
-        <div className="flex flex-col items-start gap-[8px] text-[14px] text-white/50">
+            は14pxに"). Briefly tried at 10px, then 12px, across two further
+            direct follow-ups — reverted back to this original 14px per a
+            further direct follow-up asking to undo that whole round of
+            adjustment ("10px→12pxの変更を元に戻してください"). */}
+        {/* Each line is its own `block w-fit` span so its plate hugs that
+            line's real width, exactly as on PC (project-card.tsx).
+
+            All three lines share one <p> and one `leading-[1.25]`, again
+            matching PC. The date used to sit in a *second* <p> with an
+            8px flex `gap` above it, which left a bare 8px band between the
+            role and date plates that no plate covered — visible as a gap in
+            the backing once a row is selected. Consecutive block spans
+            inside a single <p> stack line box to line box with nothing
+            between them, so the plates now meet exactly. The date keeps its
+            own font/tracking overrides on the same span that carries its
+            plate, the same way PC handles it. */}
+        <div className="flex flex-col items-start text-[14px] text-black/50">
           <p className="font-normal leading-[1.25] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-            {project.category}
-            <br />
-            {project.role}
-          </p>
-          <p className="font-(family-name:--font-courier) leading-[1.25] tracking-[-0.7px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-            {project.date}
+            <span className="relative block w-fit">
+              <SelectedPlate active={isSelected} inset={META_PLATE_INSET} delayMs={PLATE_META_DELAY_MS} />
+              <span className="relative">{project.category}</span>
+            </span>
+            <span className="relative block w-fit">
+              <SelectedPlate active={isSelected} inset={META_PLATE_INSET} delayMs={PLATE_META_DELAY_MS} />
+              <span className="relative">{project.role}</span>
+            </span>
+            <span className="relative block w-fit font-(family-name:--font-courier) tracking-[-0.7px]">
+              <SelectedPlate active={isSelected} inset={META_PLATE_INSET} delayMs={PLATE_META_DELAY_MS} />
+              <span className="relative">{project.date}</span>
+            </span>
           </p>
         </div>
       </div>

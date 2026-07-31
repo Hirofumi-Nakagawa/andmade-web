@@ -14,23 +14,25 @@
   仕組み:
   - WebGL のフラグメントシェーダー 1 枚だけで全画面を描画。
     fbm(フラクタルノイズ)のドメインワープで色面を作り、ストリーク(方向指定可)で
-    「モーションブラーした花」っぽい流れを出し、その上に「花オブジェクト」
-    (ソフトなガウス色斑、キャンバスクリックで配置)を重ね、最後にフィルム
-    グレインを乗せる。
+    モーションブラーしたような流れを出し、最後にフィルムグレインを乗せる。
+    (「花オブジェクト」機能は削除 — 参考画像の方向性が「色面グラデの境界を
+    調整して作る」に固まったため。)
+  - グラデの境界は「境界の幅」でくっきり↔なだらかを調整でき、「にじみ」系の
+    3スライダーでエッジを粒状に溶かせる — イースターエッグ背景ロゴの
+    ディゾルブ(グレインでエッジが崩れ、ストリーク軸に沿って伸びる)と同じ手法。
   - 画像アセットは一切使わない(現行 Contact 背景の「画像を重ねて動かす」方式とは
     根本的に別物)。動きはノイズ空間をゆっくり滑らせているだけなので単調にならない。
-  - 描画コスト: フルスクリーン 1 パス + ノイズ計算 + 花の距離計算(最大16個)のみ。
+  - 描画コスト: フルスクリーン 1 パス + ノイズ計算のみ。
     さらに「解像度スケール」で内部解像度を落とせる(軽い + タダでソフトになる)。
 
   サイトへの組み込み方(検証で方向性が固まったら):
-  - 右下の「設定をコピー」で現在の全パラメータ(花の配置も含む)が JSON で
-    クリップボードに入る。
+  - 右下の「設定をコピー」で現在の全パラメータが JSON でクリップボードに入る。
   - この <script> 内の FRAG(フラグメントシェーダー)と、その JSON の値を
     そのまま React コンポーネント(<canvas> + useEffect)に移植すればよい。
 -->
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #111; }
-  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
   /* ---- コントロールパネル ---- */
   #panel {
@@ -92,27 +94,31 @@
   <label>速度 <span class="row"><input type="range" id="speed"    min="0"    max="0.30" step="0.005" /><output></output></span></label>
   <label>スケール（模様の大きさ）<span class="row"><input type="range" id="scale" min="0.5" max="6" step="0.1" /><output></output></span></label>
   <label>ワープ（ゆらぎの複雑さ）<span class="row"><input type="range" id="warp" min="0" max="4" step="0.1" /><output></output></span></label>
+  <label>形の複雑さ（ディテール層数）<span class="row"><input type="range" id="octaves" min="1" max="4" step="1" /><output></output></span></label>
   <label>コントラスト <span class="row"><input type="range" id="contrast" min="0.5" max="2" step="0.05" /><output></output></span></label>
+  <label>カーソル反応（触れた所が歪む）<span class="row"><input type="range" id="cursorStrength" min="0" max="2" step="0.05" /><output></output></span></label>
 
   <h2>ブラー（ストリーク）</h2>
   <label>強さ <span class="row"><input type="range" id="streak" min="0" max="6" step="0.1" /><output></output></span></label>
   <label>向き（度 / 90=縦）<span class="row"><input type="range" id="blurAngle" min="0" max="180" step="1" /><output></output></span></label>
 
-  <h2>花オブジェクト</h2>
-  <div class="colorRow"><input type="color" id="flowerColor" /><span>次に追加する花の色</span></div>
-  <label>サイズ（追加時）<span class="row"><input type="range" id="flowerSize" min="0.04" max="0.5" step="0.01" /><output></output></span></label>
-  <label>伸び（ブラー向きに沿う）<span class="row"><input type="range" id="flowerStretch" min="0" max="6" step="0.1" /><output></output></span></label>
-  <label>にじみ（輪郭のゆらぎ）<span class="row"><input type="range" id="flowerWobble" min="0" max="1" step="0.05" /><output></output></span></label>
-  <div class="btns">
-    <button id="addFlower">ランダム追加</button>
-    <button id="popFlower">1つ削除</button>
-    <button id="clearFlowers">全消去</button>
-  </div>
-  <div class="note">キャンバスをクリックするとその位置に追加（最大16個 / 現在 <span id="flowerCount">0</span>個）</div>
+  <h2>グラデの境界</h2>
+  <label>境界の幅（小=くっきり）<span class="row"><input type="range" id="edgeSoft" min="0.05" max="2" step="0.05" /><output></output></span></label>
+  <label>にじみ量（ディゾルブ）<span class="row"><input type="range" id="edgeNoise" min="0" max="0.6" step="0.01" /><output></output></span></label>
+  <label>にじみの粒度（px）<span class="row"><input type="range" id="edgeNoiseScale" min="1" max="10" step="0.5" /><output></output></span></label>
+  <label>にじみの伸び（ブラー向きに沿う）<span class="row"><input type="range" id="edgeStretch" min="0" max="12" step="0.5" /><output></output></span></label>
+  <div class="colorRow"><input type="color" id="lineColor" /><span>境界線の色</span></div>
+  <label>境界線の太さ（0で無し）<span class="row"><input type="range" id="lineWidth" min="0" max="0.2" step="0.005" /><output></output></span></label>
+  <label>境界線の透過 <span class="row"><input type="range" id="lineAlpha" min="0" max="1" step="0.05" /><output></output></span></label>
+  <label>境界線のカバー率（線が付く割合）<span class="row"><input type="range" id="lineCoverage" min="0" max="1" step="0.05" /><output></output></span></label>
+  <label>境界線のボケ（0=くっきり）<span class="row"><input type="range" id="lineBlur" min="0" max="1" step="0.05" /><output></output></span></label>
+  <div class="note">にじみ=エッグ背景ロゴと同じ「グレインでエッジが溶ける」手法。境界の幅を狭めてにじみを足すと参考画像の質感に寄る。境界線は色面の境目に沿って引かれ、にじみの影響も受ける</div>
 
   <h2>画面上部の色</h2>
   <div class="colorRow"><input type="color" id="topColor" /><span>上部の色</span></div>
-  <label>範囲（0で無効）<span class="row"><input type="range" id="topRange" min="0" max="0.9" step="0.05" /><output></output></span></label>
+  <!-- max=2: 1で画面全高、それ以上はグラデの遷移がさらに長く緩くなり
+       画面下端でも色が残る(smoothstepの下端が画面外に出るだけなので安全) -->
+  <label>範囲（0で無効）<span class="row"><input type="range" id="topRange" min="0" max="2" step="0.05" /><output></output></span></label>
   <label>強さ <span class="row"><input type="range" id="topMix" min="0" max="1" step="0.05" /><output></output></span></label>
 
   <h2>グレイン</h2>
@@ -133,19 +139,15 @@
   </div>
   <div id="stats"><span id="fps">-- fps</span><span id="res">--</span></div>
 </div>
-<div id="hint">H: UI表示切替 / Space: 一時停止 / クリック: 花を追加</div>
+<div id="hint">H: UI表示切替 / Space: 一時停止</div>
 
 <script>
 "use strict";
 
 /* ================= フラグメントシェーダー =================
    サイトに組み込むときはこの文字列をそのまま移植する。 */
-const MAX_FLOWERS = 16;
-
 const FRAG = `
 precision highp float;
-
-const int MAX_FLOWERS = ${MAX_FLOWERS};
 
 uniform vec2  u_res;        // 実描画解像度(px)
 uniform float u_time;       // 経過秒
@@ -156,6 +158,9 @@ uniform float u_warp;       // ドメインワープ強度
 uniform float u_streak;     // ストリーク(伸ばし)強度
 uniform float u_angle;      // ストリークの向き(度, 90=縦)
 uniform float u_contrast;   // 色のコントラスト
+uniform vec2  u_mouse;          // カーソル位置(uv, 左下原点, JS側でスムージング済み)
+uniform float u_cursorStrength; // カーソル周辺の局所歪みの強さ(0で無反応)
+uniform int   u_octaves;        // fbmのディテール層数(少ないほどシンプルな形)
 uniform float u_grain;      // グレイン量
 uniform float u_grainSize;  // グレイン1粒のpxサイズ
 uniform float u_grainFps;   // グレインの更新頻度(0で静止)
@@ -164,12 +169,16 @@ uniform vec3  u_topCol;     // 画面上部の色
 uniform float u_topRange;   // 上部グラデの範囲(0で無効)
 uniform float u_topMix;     // 上部グラデの強さ
 
-// 花オブジェクト: xy=位置(uv, アスペクト未補正), z=サイズ, w=未使用
-uniform int   u_flowerCount;
-uniform vec4  u_flowers[MAX_FLOWERS];
-uniform vec3  u_flowerCols[MAX_FLOWERS];
-uniform float u_flowerStretch; // ブラー向きに沿った伸び
-uniform float u_flowerWobble;  // 輪郭のにじみ(ノイズ歪み)
+// グラデの境界 — 参考画像(Colour Blend Textures)寄せの調整項目。
+uniform float u_edgeSoft;       // 境界の幅の倍率(1=従来のなだらかさ, 小さいほどくっきり)
+uniform float u_edgeNoise;      // 境界のにじみ量(場の値をグレインで揺らす)
+uniform float u_edgeNoiseScale; // にじみグレイン1粒のpxサイズ
+uniform float u_edgeStretch;    // にじみグレインのストリーク軸方向の伸び
+uniform vec3  u_lineColor;      // 境界線の色
+uniform float u_lineWidth;      // 境界線の太さ(場の値単位, 0で無効)
+uniform float u_lineAlpha;      // 境界線の不透明度(0..1)
+uniform float u_lineCoverage;   // 境界のうち線が付く割合(1で全周, 0.4で4割くらい)
+uniform float u_lineBlur;       // 線のボケ(0=輪郭くっきりの帯, 1=中心から端まで全ボケ)
 
 // ---- value noise + fbm（定番の軽量実装）----
 float hash(vec2 p) {
@@ -183,15 +192,20 @@ float noise(vec2 p) {
              mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
              u.y);
 }
+// u_octaves で層数可変(GLSL ES 1.00 はループ上限が定数必須なので break 方式)。
+// 層を減らすと細かい起伏が消え、大きくなだらかな形だけが残る —
+// 「形状をシンプルにして」向けの主レバー。層数に依らず値域の中心が
+// ずれないよう、実際に足した振幅の合計 (1 - 0.5^n) で正規化する。
 float fbm(vec2 p) {
   float v = 0.0;
   float a = 0.5;
   for (int i = 0; i < 4; i++) {
+    if (i >= u_octaves) break;
     v += a * noise(p);
     p = p * 2.03 + vec2(17.0, 9.0);
     a *= 0.5;
   }
-  return v;
+  return v / (1.0 - pow(0.5, float(u_octaves)));
 }
 
 mat2 rot(float a) {
@@ -211,6 +225,17 @@ void main() {
   // ---- ノイズ色面 ----
   vec2 p = uv;
   p.x *= aspect;
+  // カーソル反応: 全体を平行移動させるのではなく、カーソルが触れた場所の
+  // 揺らぎだけを局所的に歪ませる — per direct follow-up ("カーソルが揺らぎに
+  // 触れたら、揺らぎが少し歪むとか、そういう感じ")。カーソルからの距離の
+  // ガウス減衰内だけ、サンプル位置を放射方向に押し出す(レンズで押した
+  // ような膨らみ)。dvec は中心でゼロになるので正規化不要 = NaN も出ない。
+  // 位置はJS側でスムージング済みなので、歪みもゆったり追従する。
+  vec2 mp = u_mouse - 0.5;
+  mp.x *= aspect;
+  vec2 dvec = (uv - 0.5) * vec2(aspect, 1.0) - mp;
+  float infl = exp(-dot(dvec, dvec) / (2.0 * 0.15 * 0.15));
+  p += dvec * infl * u_cursorStrength;
   p = R * p;                              // ストリーク軸を回転
   p.y /= 1.0 + u_streak;                  // 軸に沿って引き伸ばす→流れたブラー感
   p = p * u_scale + u_seed;               // スケール + シードオフセット
@@ -226,35 +251,62 @@ void main() {
                 fbm(p + u_warp * q + vec2(8.3, 2.8) - t * 0.12));
   float f = fbm(p + u_warp * r);
 
-  // 5色を f / q / r の別々の場で重ねる(1つの値だけで塗り分けると
-  // 等高線っぽい縞が出るため、互いに独立な場で混ぜる)。
-  vec3 col = mix(u_c0, u_c1, smoothstep(0.15, 0.65, f));
-  col = mix(col, u_c2, smoothstep(0.35, 0.85, q.x) * 0.85);
-  col = mix(col, u_c3, smoothstep(0.45, 0.95, r.y) * 0.75);
-  col = mix(col, u_c4, smoothstep(0.55, 1.00, q.y * f * 1.6) * 0.6);
-
-  // ---- 花オブジェクト ----
-  // ソフトなガウス色斑。ストリークと同じ軸に伸ばし(u_flowerStretch)、
-  // q(既に計算済みのワープ場)で輪郭をにじませることで、ただの丸ではなく
-  // 「ぼけた花」らしい不定形になる。位置はごく小さくドリフトさせる。
-  vec2 P = vec2(uv.x * aspect, uv.y);
-  for (int i = 0; i < MAX_FLOWERS; i++) {
-    if (i >= u_flowerCount) break;
-    vec4 fl = u_flowers[i];
-    float fi = float(i);
-    vec2 fpos = vec2(fl.x * aspect, fl.y);
-    // 花ごとに位相をずらした、ごく小さな漂い
-    fpos += 0.015 * vec2(sin(t * 0.6 + fi * 2.1), cos(t * 0.45 + fi * 1.3));
-    vec2 d = R * (P - fpos);
-    d.y /= 1.0 + u_flowerStretch;
-    // 輪郭のにじみ: ワープ場 q を距離に混ぜる
-    d += (q - 0.5) * u_flowerWobble * fl.z;
-    float dist = length(d) / fl.z;
-    float m = exp(-dist * dist * 3.0);   // ガウス減衰(常にソフト)
-    col = mix(col, u_flowerCols[i], m * 0.85);
+  // ---- 境界のにじみ(ディゾルブ) ----
+  // エッグ背景ロゴのブラーと同じ考え方: ガウスぼかしではなく、粒(グレイン)
+  // でエッジそのものを崩す。ストリーク軸に沿って引き伸ばした座標で
+  // グレインをサンプルし、その値を smoothstep に入る「場」に足すことで、
+  // 色面の境界だけが粒状に溶けて伸びる(色面の内部はほぼ変化しない —
+  // smoothstep の遷移帯の中でしか値の揺れが効かないため)。
+  // グレインの更新はフィルムグレインと同じ u_grainFps に同期。
+  float dn = 0.0;
+  if (u_edgeNoise > 0.0) {
+    float eFrame = u_grainFps > 0.0 ? floor(u_time * u_grainFps) : 0.0;
+    vec2 gp = R * gl_FragCoord.xy;
+    gp.y /= 1.0 + u_edgeStretch;
+    gp = floor(gp / max(u_edgeNoiseScale, 1.0));
+    float en = mix(hash(gp + fract(eFrame * 0.1031) * vec2(19.3, 7.7)),
+                   hash(gp * 0.37 + 13.7), 0.5);
+    dn = (en - 0.5) * u_edgeNoise;
   }
 
+  // 5色を f / q / r の別々の場で重ねる(1つの値だけで塗り分けると
+  // 等高線っぽい縞が出るため、互いに独立な場で混ぜる)。
+  // 各 smoothstep は従来の (下端, 上端) を中心±半幅に書き換えたもの —
+  // u_edgeSoft=1 で従来と完全に同じ遷移帯、小さくすると境界がくっきり。
+  // dn(にじみ)は場の値側に足す。
+  vec3 col = mix(u_c0, u_c1, smoothstep(0.40 - 0.25 * u_edgeSoft, 0.40 + 0.25 * u_edgeSoft, f + dn));
+  col = mix(col, u_c2, smoothstep(0.60 - 0.25 * u_edgeSoft, 0.60 + 0.25 * u_edgeSoft, q.x + dn) * 0.85);
+  col = mix(col, u_c3, smoothstep(0.70 - 0.25 * u_edgeSoft, 0.70 + 0.25 * u_edgeSoft, r.y + dn) * 0.75);
+  col = mix(col, u_c4, smoothstep(0.775 - 0.225 * u_edgeSoft, 0.775 + 0.225 * u_edgeSoft, q.y * f * 1.6 + dn) * 0.6);
+
   col = (col - 0.5) * u_contrast + 0.5;
+
+  // ---- 境界線 ----
+  // 各色レイヤーの smoothstep 中心(=色面の境目)からの距離が u_lineWidth 内
+  // のところに u_lineColor を引く。場の値にはにじみ dn を足したものを使う
+  // ので、線もにじみ設定に沿って粒状に崩れる。4レイヤー分の線マスクは max
+  // で合成(重なった所が濃くならないように)。コントラスト適用後に乗せるので
+  // 線の色はピッカーの色そのまま出る。
+  //
+  // ボケ: 線の断面プロファイルを smoothstep(core, width, dist) で制御 —
+  // core=0(ボケ1)は中心から端まで全部グラデ(従来の見た目)、core≈width
+  // (ボケ0)は幅いっぱいベタ塗り + 輪郭くっきりの帯。max(,0.02)は
+  // core==width の縮退(smoothstepのゼロ割れ)回避。
+  if (u_lineWidth > 0.0) {
+    float core = u_lineWidth * (1.0 - max(u_lineBlur, 0.02));
+    float e1 = 1.0 - smoothstep(core, u_lineWidth, abs(f + dn - 0.40));
+    float e2 = 1.0 - smoothstep(core, u_lineWidth, abs(q.x + dn - 0.60));
+    float e3 = 1.0 - smoothstep(core, u_lineWidth, abs(r.y + dn - 0.70));
+    float e4 = 1.0 - smoothstep(core, u_lineWidth, abs(q.y * f * 1.6 + dn - 0.775));
+    float lineM = max(max(e1, e2), max(e3, e4));
+    // カバー率: 低周波ノイズ(色場とは独立したオフセット)でマスクし、境界の
+    // ところどころにだけ線を残す — 値を下げるほど線が途切れ途切れになる。
+    // 境目自体がワープで動くので、どの区間に線が付くかも時間とともに
+    // ゆっくり移り変わる。±0.08のsmoothstepで途切れ端も少しなじませる。
+    float covN = noise(p * 1.5 + vec2(31.7, 7.9));
+    lineM *= 1.0 - smoothstep(u_lineCoverage - 0.08, u_lineCoverage + 0.08, covN);
+    col = mix(col, u_lineColor, lineM * u_lineAlpha);
+  }
 
   // ---- 画面上部の色 ----
   // uv.y=1(上端)に向かって u_topCol へ溶かす。範囲0で完全無効。
@@ -283,12 +335,38 @@ void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
 /* ================= パレットプリセット =================
    添付リファレンス4枚 + サイト既存トーンから起こした5色組。 */
 const PALETTES = {
+  "sky（blue×purple）":        ["#87b1db", "#3782c5", "#dfa7da", "#85a7dd", "#d6e3f6"],
   "Silk（ピンク×オレンジ）":   ["#eae3d8", "#dd6da2", "#e2892f", "#b3a0cf", "#57384c"],
   "Meadow（花畑）":            ["#f0e6de", "#5c7a55", "#df8fb4", "#e0b44e", "#9b8cc4"],
   "Heat（黄×赤×深緑）":        ["#a9b39a", "#e3c33f", "#d43e1f", "#26402b", "#e5e0d2"],
   "Dusk（夜×橙×青）":          ["#232920", "#d98e2b", "#8fa3c9", "#47523c", "#ded6c6"],
   "Cream（サイト基調・淡）":   ["#f6f6f4", "#e4ddd2", "#cdbfae", "#b0b7a8", "#8f8779"],
-  "Contact（黒ベース）":       ["#0a0a0a", "#1c1c22", "#3d3345", "#6b4a3a", "#2a3428"],
+  "Contact（黒ベース）":       ["#000000", "#141b1f", "#002324", "#00143d", "#0b1028"],
+};
+
+/* パレット固有の推奨パラメータ一式 — パレット選択時に色と一緒に全スライダー
+   へ反映される(定義がないパレットは従来通り色だけ変わる)。どちらも実際に
+   サイトへ組み込み済みの現行値そのまま:
+     sky              → components/about-blend-background.tsx の SETTINGS
+     Contact（黒ベース）→ components/contact-blend-background.tsx の SETTINGS
+   どちらかを触ったらもう片方も合わせること。 */
+const PRESET_PARAMS = {
+  "sky（blue×purple）": {
+    speed: 0.15, scale: 3.5, warp: 1.2, octaves: 2, streak: 3.5, blurAngle: 90,
+    contrast: 1.15, cursorStrength: 0.1,
+    grain: 0.07, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    topColor: "#ebfdff", topRange: 0.9, topMix: 1,
+    edgeSoft: 0.1, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
+    lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
+  },
+  "Contact（黒ベース）": {
+    speed: 0.15, scale: 3.2, warp: 1.2, octaves: 4, streak: 6, blurAngle: 180,
+    contrast: 1.1, cursorStrength: 0.1,
+    grain: 0.07, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    topColor: "#ebfdff", topRange: 0, topMix: 1,
+    edgeSoft: 0.45, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
+    lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
+  },
 };
 
 /* ================= WebGL セットアップ ================= */
@@ -323,45 +401,25 @@ gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
 const U = {};
 for (const name of ["u_res","u_time","u_seed","u_speed","u_scale","u_warp","u_streak","u_angle",
-                    "u_contrast","u_grain","u_grainSize","u_grainFps",
+                    "u_contrast","u_mouse","u_cursorStrength","u_octaves",
+                    "u_grain","u_grainSize","u_grainFps",
                     "u_c0","u_c1","u_c2","u_c3","u_c4",
                     "u_topCol","u_topRange","u_topMix",
-                    "u_flowerCount","u_flowerStretch","u_flowerWobble"]) {
+                    "u_edgeSoft","u_edgeNoise","u_edgeNoiseScale","u_edgeStretch",
+                    "u_lineColor","u_lineWidth","u_lineAlpha","u_lineCoverage","u_lineBlur"]) {
   U[name] = gl.getUniformLocation(prog, name);
-}
-// 花の配列 uniform は要素ごとに location を取る
-const U_flowers = [];
-const U_flowerCols = [];
-for (let i = 0; i < MAX_FLOWERS; i++) {
-  U_flowers.push(gl.getUniformLocation(prog, `u_flowers[${i}]`));
-  U_flowerCols.push(gl.getUniformLocation(prog, `u_flowerCols[${i}]`));
 }
 
 /* ================= パラメータと UI ================= */
+// 起動時のデフォルトは About ページに組み込み済みの現行値そのまま
+// (= PRESET_PARAMS["sky（blue×purple）"] + sky パレットの5色)。
+// Contact の現行値はパレットを「Contact（黒ベース）」に切り替えると入る。
+// seed だけは実機側がマウント毎ランダムなのでラボ用の固定値。
 const params = {
-  palette: "Silk（ピンク×オレンジ）",
-  colors: PALETTES["Silk（ピンク×オレンジ）"].slice(),
-  speed: 0.06,       // さりげなさ重視のデフォルト
-  scale: 1.6,
-  warp: 2.2,
-  streak: 2.0,
-  blurAngle: 90,     // 90 = 縦(従来と同じ)
-  contrast: 1.0,
-  grain: 0.12,
-  grainSize: 2,
-  grainFps: 24,
-  renderScale: 0.5,  // 半分解像度: 軽い + 少しソフト
-  seed: Math.random() * 100,
-  // 画面上部の色
-  topColor: "#f0e6de",
-  topRange: 0,       // 0 = 無効(デフォルトはオフ)
-  topMix: 0.8,
-  // 花オブジェクト
-  flowerColor: "#df8fb4",
-  flowerSize: 0.14,
-  flowerStretch: 2.0,
-  flowerWobble: 0.4,
-  flowers: [],       // { x, y (uv, 左下原点), size, color }
+  palette: "sky（blue×purple）",
+  colors: PALETTES["sky（blue×purple）"].slice(),
+  ...PRESET_PARAMS["sky（blue×purple）"],
+  seed: 99.59266902583109,
 };
 
 function hexToRgb(hex) {
@@ -384,15 +442,23 @@ paletteSel.addEventListener("change", () => {
   params.palette = paletteSel.value;
   params.colors = PALETTES[paletteSel.value].slice();
   syncSwatches();
+  // パレット固有の推奨パラメータがあれば、色以外も一括で反映(スライダー/
+  // ピッカーのUI表示も同期)。renderScaleが変わりうるのでresize()も呼ぶ。
+  const preset = PRESET_PARAMS[paletteSel.value];
+  if (preset) {
+    Object.assign(params, preset);
+    syncControls();
+    resize();
+  }
 });
 swatches.forEach((el) => {
   el.addEventListener("input", () => { params.colors[+el.dataset.c] = el.value; });
 });
 
 // スライダー一括バインド
-const sliders = ["speed","scale","warp","streak","blurAngle","contrast",
+const sliders = ["speed","scale","warp","octaves","streak","blurAngle","contrast","cursorStrength",
                  "grain","grainSize","grainFps","renderScale",
-                 "topRange","topMix","flowerSize","flowerStretch","flowerWobble"];
+                 "topRange","topMix","edgeSoft","edgeNoise","edgeNoiseScale","edgeStretch","lineWidth","lineAlpha","lineCoverage","lineBlur"];
 for (const key of sliders) {
   const el = document.getElementById(key);
   el.value = params[key];
@@ -405,37 +471,33 @@ for (const key of sliders) {
   });
 }
 
-// 単色ピッカー(上部の色 / 花の色)
-for (const key of ["topColor", "flowerColor"]) {
+// 単色ピッカー(上部の色 / 境界線の色)
+for (const key of ["topColor", "lineColor"]) {
   const el = document.getElementById(key);
   el.value = params[key];
   el.addEventListener("input", () => { params[key] = el.value; });
 }
 
-/* ---- 花オブジェクトの追加/削除 ---- */
-const flowerCountEl = document.getElementById("flowerCount");
-function syncFlowerCount() { flowerCountEl.textContent = params.flowers.length; }
-
-function addFlower(x, y) {
-  if (params.flowers.length >= MAX_FLOWERS) return;
-  params.flowers.push({ x, y, size: params.flowerSize, color: params.flowerColor });
-  syncFlowerCount();
+// params → UI の一括同期(プリセット適用時用) — 各スライダーの値と数値表示、
+// 単色ピッカーを現在のparamsに合わせ直す。
+function syncControls() {
+  for (const key of sliders) {
+    const el = document.getElementById(key);
+    el.value = params[key];
+    el.parentElement.querySelector("output").textContent = params[key];
+  }
+  for (const key of ["topColor", "lineColor"]) {
+    document.getElementById(key).value = params[key];
+  }
 }
-document.getElementById("addFlower").addEventListener("click", () => {
-  // 端に寄りすぎない範囲でランダム配置
-  addFlower(0.1 + Math.random() * 0.8, 0.1 + Math.random() * 0.8);
-});
-document.getElementById("popFlower").addEventListener("click", () => {
-  params.flowers.pop();
-  syncFlowerCount();
-});
-document.getElementById("clearFlowers").addEventListener("click", () => {
-  params.flowers = [];
-  syncFlowerCount();
-});
-// キャンバスクリックでその位置に追加(uv は左下原点なので y を反転)
-canvas.addEventListener("click", (e) => {
-  addFlower(e.clientX / innerWidth, 1 - e.clientY / innerHeight);
+
+// カーソル追従(uv, 左下原点)。フレーム毎に指数スムージングして u_mouse へ —
+// サイト既存のContact/About背景と同じく、急に飛ばずゆったり付いてくる。
+const mouseTarget = [0.5, 0.5];
+const mouseSmoothed = [0.5, 0.5];
+window.addEventListener("pointermove", (e) => {
+  mouseTarget[0] = e.clientX / innerWidth;
+  mouseTarget[1] = 1 - e.clientY / innerHeight;
 });
 
 let paused = false;
@@ -475,7 +537,6 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 syncSwatches();
-syncFlowerCount();
 
 // FPS 計測(指数移動平均でならす)
 let fpsEma = 60;
@@ -498,6 +559,11 @@ function frame(now) {
   gl.uniform1f(U.u_streak, params.streak);
   gl.uniform1f(U.u_angle, params.blurAngle);
   gl.uniform1f(U.u_contrast, params.contrast);
+  mouseSmoothed[0] += (mouseTarget[0] - mouseSmoothed[0]) * 0.04;
+  mouseSmoothed[1] += (mouseTarget[1] - mouseSmoothed[1]) * 0.04;
+  gl.uniform2f(U.u_mouse, mouseSmoothed[0], mouseSmoothed[1]);
+  gl.uniform1f(U.u_cursorStrength, params.cursorStrength);
+  gl.uniform1i(U.u_octaves, Math.round(params.octaves));
   gl.uniform1f(U.u_grain, params.grain);
   gl.uniform1f(U.u_grainSize, Math.max(1, params.grainSize * params.renderScale));
   gl.uniform1f(U.u_grainFps, params.grainFps);
@@ -509,14 +575,17 @@ function frame(now) {
   gl.uniform3fv(U.u_topCol, hexToRgb(params.topColor));
   gl.uniform1f(U.u_topRange, params.topRange);
   gl.uniform1f(U.u_topMix, params.topMix);
-  gl.uniform1i(U.u_flowerCount, params.flowers.length);
-  gl.uniform1f(U.u_flowerStretch, params.flowerStretch);
-  gl.uniform1f(U.u_flowerWobble, params.flowerWobble);
-  for (let i = 0; i < params.flowers.length; i++) {
-    const fl = params.flowers[i];
-    gl.uniform4f(U_flowers[i], fl.x, fl.y, fl.size, 0);
-    gl.uniform3fv(U_flowerCols[i], hexToRgb(fl.color));
-  }
+  gl.uniform1f(U.u_edgeSoft, params.edgeSoft);
+  gl.uniform1f(U.u_edgeNoise, params.edgeNoise);
+  // フィルムグレイン同様、内部解像度(renderScale)に合わせて粒サイズを補正 —
+  // 解像度を落としても「にじみ」の見た目の粒度が画面上で変わらないように。
+  gl.uniform1f(U.u_edgeNoiseScale, Math.max(1, params.edgeNoiseScale * params.renderScale));
+  gl.uniform1f(U.u_edgeStretch, params.edgeStretch);
+  gl.uniform3fv(U.u_lineColor, hexToRgb(params.lineColor));
+  gl.uniform1f(U.u_lineWidth, params.lineWidth);
+  gl.uniform1f(U.u_lineAlpha, params.lineAlpha);
+  gl.uniform1f(U.u_lineCoverage, params.lineCoverage);
+  gl.uniform1f(U.u_lineBlur, params.lineBlur);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
   requestAnimationFrame(frame);

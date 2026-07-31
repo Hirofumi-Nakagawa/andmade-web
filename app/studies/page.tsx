@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { GrainOverlay } from "@/components/grain-overlay";
 import { MobileStudies } from "@/components/mobile-studies";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { SiteFooter } from "@/components/site-footer";
@@ -32,20 +33,17 @@ export const metadata: Metadata = { title: "Studies", alternates: { canonical: "
 // has, just applied on purpose instead of by accident.
 export const viewport: Viewport = { viewportFit: "cover" };
 
-/** Forces this route to render dynamically on every request, bypassing
- *  Next's fetch Data Cache entirely — per direct follow-up ("studiesで
- *  squareを選択して入力したんだけど、zoomでportraitで表示される" →
- *  confirmed the microCMS schema/options were correct, and the stale value
- *  persisted even after restarting `next dev`). Unlike app/page.tsx's own
- *  CMS-backed data (proxied through an /api/projects route using a
- *  client-side `fetch(..., { cache: "no-store" })`, which already sidesteps
- *  this), getStudies() here is awaited directly inside this Server
- *  Component with no cache-busting of its own — so the underlying fetch
- *  microcms-js-sdk makes was subject to Next's default fetch caching, which
- *  persists on disk (`.next/cache`) across dev-server restarts and only
- *  actually clears on a full rebuild. This one-line export sidesteps that
- *  entirely rather than requiring either. */
-export const dynamic = "force-dynamic";
+/** `export const dynamic = "force-dynamic"` used to sit here, forcing a
+ *  per-request CMS fetch to dodge Next's on-disk fetch Data Cache (which had
+ *  served a stale `zoom` value across dev-server restarts — "studiesで
+ *  squareを選択して入力したんだけど、zoomでportraitで表示される"). It's
+ *  incompatible with the static export (next.config.ts's own
+ *  `output: "export"`) and no longer needed: with no server at runtime,
+ *  getStudies() below runs once at build time and its result is baked into
+ *  the emitted HTML. The stale-cache hazard it guarded against only ever
+ *  applied to a long-lived dev server; if it resurfaces during development,
+ *  delete `.next/cache` (or add `{ next: { revalidate: 0 } }` at the fetch
+ *  site) rather than reinstating this export. */
 
 /** Studies page's own background color — per explicit spec ("背景色を
  *  #88988Dにして"), a muted sage green, distinct from the rest of the site's
@@ -148,6 +146,17 @@ export default async function Studies() {
           className="pointer-events-none absolute inset-0 opacity-[0.35] mix-blend-multiply"
           style={{ backgroundImage: `url("${NOISE_TEXTURE_SRC}")`, backgroundRepeat: "repeat" }}
         />
+
+        {/* 動くフィルムグレイン — per direct follow-up ("studiesページの背景に
+           下記値でノイズをのせて grain: 0.08, grainSize: 1, grainFps: 12")、
+           bg-lab/About・Contact背景と同じ質感のノイズを静的テクスチャの上に
+           重ねる。GrainOverlayのパラメータ体系への変換: grain→noiseIntensity
+           (0.08そのまま)、grainSize→noiseScale (1px)、grainFps 12→
+           noiseFlicker 0.2 (GrainOverlayはfpsでなく「rAFフレームの何割で
+           更新するか」なので、60Hz基準で 12/60 = 0.2)。DOM順でこの位置
+           (テクスチャの直後、ギャラリー/ヘッダー/フッターの前)に置くことで
+           背景側にだけ乗り、コンテンツの上には出ない。 */}
+        <GrainOverlay noiseIntensity={0.07} noiseScale={1} noiseFlicker={0.2} />
 
         {/* The gallery spans the *entire* page height (top-0 to bottom-0), not
            just the space between header and footer — its own thumbnail rail

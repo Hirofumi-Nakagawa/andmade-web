@@ -1,0 +1,82 @@
+# さくらのレンタルサーバーへの自動デプロイ
+# ============================================================================
+# main に push すると、GitHub 上でビルドして out/ を FTP でアップロードする。
+# GitHub の Actions タブから手動実行もできる（CMS を更新したので中身だけ作り
+# 直したい、というときはこちら。コードは変わっていなくても最新の microCMS の
+# 内容で再ビルドされる）。
+#
+# 必要な設定は DEPLOY.md の「GitHub Actions の設定」を参照。
+# Secrets を1つでも入れ忘れると FTP のログインで失敗する。
+
+name: Deploy to Sakura
+
+on:
+  push:
+    branches: [main]
+  # Actions タブに「Run workflow」ボタンを出す。CMS 更新後の再ビルド用。
+  workflow_dispatch:
+
+# 同時に2本走ると FTP の転送が混ざって壊れるので、後から来た方を待たせる
+# （cancel-in-progress: false = 走行中のものは中断せず完走させる。中断すると
+#  中途半端にファイルが上がった状態でサーバーが残るため）。
+concurrency:
+  group: deploy-sakura
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # package-lock.json を見て node_modules をキャッシュする。
+          cache: npm
+
+      # npm ci は package-lock.json どおりに厳密にインストールする
+      # （npm install と違ってロックファイルを書き換えない）。
+      - run: npm ci
+
+      - name: Build
+        # microCMS の内容はこの時点で取得され、HTML に焼き込まれる
+        # （next.config.ts の output: "export" — DEPLOY.md 参照）。
+        env:
+          MICROCMS_SERVICE_DOMAIN: ${{ secrets.MICROCMS_SERVICE_DOMAIN }}
+          MICROCMS_API_KEY: ${{ secrets.MICROCMS_API_KEY }}
+          NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
+        run: npm run build
+
+      # ビルドが空振りしていないかの最低限の確認。out/ が無い・index.html が
+      # 無い状態で次の FTP ステップに進むと、サーバー上のファイルを消しかねない
+      # （dangerous-clean-slate は使っていないが、事故は早く止めるに越したことはない）。
+      - name: Verify build output
+        run: |
+          test -f out/index.html || { echo "out/index.html が見つかりません"; exit 1; }
+          test -f out/.htaccess || { echo "out/.htaccess が見つかりません（public/.htaccess の配置を確認）"; exit 1; }
+          test -f out/now-playing.php || { echo "out/now-playing.php が見つかりません"; exit 1; }
+          echo "OK: $(find out -type f | wc -l) files"
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          # ローカル側。末尾のスラッシュ必須（out フォルダ自体ではなく中身を送る）。
+          local-dir: ./out/
+          # サーバー側の公開ディレクトリ。末尾のスラッシュ必須。
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          # 前回アップロードした状態をサーバー上の .ftp-deploy-sync-state.json に
+          # 記録し、次回は差分だけ送る。初回だけ全ファイル転送になる。
+          state-name: .ftp-deploy-sync-state.json
+          # サーバー側にあってもこのアクションに触らせないもの。
+          # spotify-config.php は www の外に置く想定なので本来ここには来ないが、
+          # 取り違えて中に置いてしまった場合の保険として除外しておく。
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            spotify-config.php

@@ -1,4 +1,4 @@
-import { getMicrocmsClient, microcmsImageUrl } from "@/lib/microcms";
+import { getMicrocmsClient, microcmsImageSrcSet, microcmsImageUrl } from "@/lib/microcms";
 import { slugify } from "@/lib/projects";
 
 /** Aspect-ratio category for a study's center-image media: the large center
@@ -91,6 +91,12 @@ export type Study = {
    *  `StudyMediaType`'s own doc comment), and for the large center display
    *  too whenever `mediaType` is `"image"`. */
   imageSrc: string;
+  /** Responsive `srcset` for `imageSrc` — only set for CMS-sourced images
+   *  (the bundled placeholder paths aren't served through microCMS's image
+   *  API and can't be resized on the fly). Consumers pass it straight to an
+   *  `<img srcset>` alongside a `sizes` describing the real box width; when
+   *  undefined they just render `imageSrc` on its own, exactly as before. */
+  imageSrcSet?: string;
   /** The real video file's URL — only set when `mediaType` is `"video"`
    *  (undefined for plain image studies). An externally-hosted URL
    *  (Cloudinary recommended, matching lib/projects.ts's own
@@ -353,6 +359,9 @@ export async function getStudies(): Promise<Study[]> {
         imageSrc: content.image
           ? microcmsImageUrl(content.image.url)
           : `/images/studies/study${String((index % 10) + 1).padStart(2, "0")}.jpg`,
+        // Only for real CMS images — the placeholder fallback above is a
+        // local /public path, which microCMS's image API can't resize.
+        imageSrcSet: content.image ? microcmsImageSrcSet(content.image.url) : undefined,
         // Not run through microcmsImageUrl() — that helper's WebP/resize
         // transform is image-only and microCMS-hosted-file-specific, neither
         // of which applies to an externally-hosted (e.g. Cloudinary) video

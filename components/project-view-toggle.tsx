@@ -37,7 +37,7 @@ export function ProjectViewToggle({ showImages, onShowImagesChange, onToggleClic
     // actually stick as you scroll, not just a single line's worth of space.
     <div className="absolute inset-0">
       <div
-        className={`sticky top-[24px] ml-[calc(24px*var(--grid-scale))] flex items-center gap-[calc(3px*var(--scale))] whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] font-medium mix-blend-exclusion transition-all duration-500 ease-out ${
+        className={`sticky top-[24px] ml-[calc(24px*var(--grid-scale))] flex items-center gap-[calc(3px*var(--scale))] whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] font-medium mix-blend-exclusion transition-[transform,opacity] duration-500 ease-out ${
           revealed ? "translate-y-0 opacity-100" : "translate-y-[24px] opacity-0"
         }`}
         data-name="btn"

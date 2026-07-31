@@ -34,15 +34,30 @@ function usePreloadStudyImages(studies: Study[]) {
   useEffect(() => {
     studies.forEach((study) => {
       const preload = new window.Image();
+      // srcset/sizes are set *before* `src`, and match the real <img> below
+      // exactly. Without them this warmed the cache with a different (much
+      // larger) resource than the one actually rendered: the browser picks a
+      // candidate per element, so a bare `.src` preload fetches and decodes
+      // the full-size original while the real element then goes and fetches
+      // its own, correctly-sized candidate separately — paying for both, and
+      // holding a decoded bitmap of the largest one for nothing. On a phone
+      // that is the difference between warming ten ~400px-class images and
+      // ten 2560x1920 ones (~20MB of decoded bitmap each), which is enough
+      // to push iOS Safari into evicting and re-decoding them under memory
+      // pressure — the opposite of what this preload is for.
+      if (study.imageSrcSet) {
+        preload.srcset = study.imageSrcSet;
+        preload.sizes = CENTER_IMAGE_SIZES;
+      }
       preload.src = study.imageSrc;
       // `.decode()` resolves only once the image is fully decoded and ready
       // to paint — a stronger guarantee than just setting `.src` (which only
       // promises the *fetch* has started, not that decoding has actually
-      // finished). Per direct follow-up that the white flash was still
-      // happening after the plain-preload version above ("白フラッシュはま
-      // だ起こる"). Errors (unsupported browsers, a genuinely broken image)
-      // are swallowed — this is best-effort warming, not a hard requirement,
-      // and the reveal itself still has to work even if this rejects.
+      // finished), added because the white flash was still happening with
+      // the plain-preload version. Errors (unsupported browsers, a genuinely
+      // broken image) are swallowed — this is best-effort warming, not a
+      // hard requirement, and the reveal itself still has to work even if
+      // this rejects.
       preload.decode?.().catch(() => {});
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally mount-only (studies is a stable server-fetched array for this page's lifetime, not something that should re-trigger preloading on every re-render).
@@ -224,6 +239,27 @@ const EXPAND_MASK_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
  * ever renders once actually in view (backdrop/top layer), so there's no
  * meaningful "before it loads" window worth a separate poster frame for.
  */
+/**
+ * `sizes` for the center image — the real CSS width of this box at each
+ * breakpoint, which is what lets the browser pick a sensibly-sized candidate
+ * out of `study.imageSrcSet` instead of assuming the `100vw` default and
+ * over-fetching.
+ *
+ * SP (below the `lg` breakpoint this codebase uses everywhere, 1024px): the
+ * box is at most the full viewport width — that's the widest zoom state
+ * (mobile-studies.tsx's own full-width landscape/square zoom); the unzoomed
+ * and portrait-zoom states are narrower, so `100vw` is a safe upper bound.
+ *
+ * PC: the widest this ever gets is the zoomed landscape/wide box, 16 grid
+ * columns at 58px each (studies-gallery.tsx's own ZOOM_WIDTH_COLUMNS/
+ * GRID_COLUMN_PX) = 928px at the 1440px reference, scaling with
+ * `--grid-scale` above that. `calc(928px * ...)` isn't allowed in `sizes`
+ * (it can't reference custom properties), so this states the reference width
+ * directly and lets the DPR multiplier in the browser's own candidate
+ * selection cover the rest.
+ */
+const CENTER_IMAGE_SIZES = "(min-width: 1024px) 928px, 100vw";
+
 function StudyMedia({ study }: { study: Study }) {
   if (study.mediaType === "video" && study.videoSrc) {
     return (
@@ -237,8 +273,16 @@ function StudyMedia({ study }: { study: Study }) {
       />
     );
   }
-  // eslint-disable-next-line @next/next/no-img-element -- fluidly-sized box (--scale/--grid-scale calc()), same reasoning as project-hover-preview.tsx's own plain <img>.
-  return <img src={study.imageSrc} alt="" className="h-full w-full object-cover" />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- fluidly-sized box (--scale/--grid-scale calc()), same reasoning as project-hover-preview.tsx's own plain <img>.
+    <img
+      src={study.imageSrc}
+      srcSet={study.imageSrcSet}
+      sizes={CENTER_IMAGE_SIZES}
+      alt=""
+      className="h-full w-full object-cover"
+    />
+  );
 }
 
 export function StudiesCenterImage({

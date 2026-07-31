@@ -4,7 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CaseCounter } from "@/components/case-counter";
 import { ScrambleText } from "@/components/scramble-text";
-import { slugify, PREVIEW_RATIO_ASPECT, getProjectColor, getProjectImageSrc, type Project } from "@/lib/projects";
+import {
+  slugify,
+  PREVIEW_RATIO_ASPECT,
+  getProjectColor,
+  getProjectImageSrc,
+  getProjectImageSrcSet,
+  type Project,
+} from "@/lib/projects";
 
 type ProjectThumbnailGridProps = {
   /** Fetched (or placeholder-fallback) project list — same data Tx mode's
@@ -168,6 +175,15 @@ export function ProjectThumbnailGrid({ projects }: ProjectThumbnailGridProps) {
     measure();
     window.addEventListener("resize", measure);
 
+    // Re-measure whenever the grid's own box changes size, not just on
+    // window resize — verified live that a mount-time measurement runs ~15px
+    // stale against where the last row actually settles once the reveal
+    // animations/text wrapping finish, and nothing about that shift involves
+    // the window resizing. Observing the <ul> catches every layout-affecting
+    // change inside it (title wraps, late data) whenever it happens.
+    const resizeObserver = new ResizeObserver(() => measure());
+    if (listRef.current) resizeObserver.observe(listRef.current);
+
     // Same document.fonts.ready re-measure as project-grid-section.tsx's own
     // identical effect — row heights (and so this gap) can shift slightly
     // once the real font swaps in for the browser's fallback.
@@ -179,6 +195,7 @@ export function ProjectThumbnailGrid({ projects }: ProjectThumbnailGridProps) {
     return () => {
       cancelled = true;
       window.removeEventListener("resize", measure);
+      resizeObserver.disconnect();
     };
   }, [projects.length]);
 
@@ -234,7 +251,21 @@ export function ProjectThumbnailGrid({ projects }: ProjectThumbnailGridProps) {
   }, [projects]);
 
   return (
-    <div className="relative w-full">
+    // marginBottom: exactly cancels the negative-margin pull-up just inside —
+    // that pull-up drags this container's bottom up to the last card's *title
+    // top* (CaseCounter's sticky release needs exactly that edge), but the
+    // last row's tallest card visibly extends far past it, so the footer,
+    // spaced off this container, sat much closer to the thumbnails than to
+    // the Tx list (measured ~134px vs ~287px). The grid's own bottom IS the
+    // last row's visible bottom (`content-start`, bottom row defines it), so
+    // re-adding the same trailingHeight *outside* the container (margins
+    // don't move CaseCounter's containing-block bottom) lands the next
+    // sibling's margin exactly on the content actually on screen — and, being
+    // the same state value, it cancels by construction even while a
+    // measurement is stale. Per direct follow-up "Img選択時にフッターと一覧の
+    // マージンがtxt時と同じく300pxになるようにして", paired with the
+    // Img-conditional footer margin in home-view.tsx.
+    <div className="relative w-full" style={{ marginBottom: `${trailingHeight}px` }}>
       <div style={{ marginBottom: `-${trailingHeight}px` }}>
         <ul
           ref={listRef}
@@ -401,6 +432,12 @@ function ProjectThumbnailCard({
           {/* eslint-disable-next-line @next/next/no-img-element -- variable per-project aspect ratio, no fixed dimensions to feed next/image */}
           <img
             src={getProjectImageSrc(project)}
+            srcSet={getProjectImageSrcSet(project)}
+            // 4 thumbnails per row across the content width — roughly a
+            // quarter of the viewport on PC, full width below the lg
+            // breakpoint (where this grid isn't rendered at all, but the
+            // browser still needs a fallback descriptor).
+            sizes="(min-width: 1024px) 25vw, 100vw"
             alt=""
             // hover:scale-[1.08] → 1.04 — per direct follow-up ("Thのホバー
             // 時のサムネ拡大をもう少し抑えたい"), a more subdued hover scale.

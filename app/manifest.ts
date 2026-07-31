@@ -11,6 +11,10 @@ import type { MetadataRoute } from "next";
  * realfavicondgenerator.net convention the rest of this icon set was
  * generated from.
  */
+// force-static — see app/robots.ts's own identical export for why the static
+// export needs this on every function-based metadata route.
+export const dynamic = "force-static";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "ANDMADE Inc.",

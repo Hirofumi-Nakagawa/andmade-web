@@ -135,7 +135,16 @@ export function MobileStudiesThumbnailRail({ studies, position, onSelect }: Mobi
                 style={{ opacity: isActive ? 1 : 0.4, filter: isActive ? "none" : "grayscale(1)" }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- fixed-size box, same reasoning as studies-thumbnail-rail.tsx's own plain <img>. */}
-                <img src={study.imageSrc} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={study.imageSrc}
+                  srcSet={study.imageSrcSet}
+                  // One SP grid column plus a margin (see ITEM_WIDTH) — well
+                  // under 100px on any phone, so this keeps the browser from
+                  // assuming the `100vw` default for a thumbnail this small.
+                  sizes="60px"
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
               </div>
             </button>
           );

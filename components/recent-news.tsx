@@ -11,10 +11,12 @@ import type { NewsItem } from "@/lib/news";
  * たいに縦向き配置で情報を入れて（管理画面で入力できるようにする。最大2件。
  * 入力が無い場合は非表示。2件以上ある場合は最新2件だけ表示）画面固定には
  * しない"). Content is entirely microCMS-driven (see lib/news.ts's own doc
- * comment for the expected "news" endpoint shape) — fetched here via
- * /api/news (mirrors now-playing-provider.tsx's own client-fetch pattern;
- * kept server-side behind that route rather than calling microCMS directly
- * from the browser, same reasoning as the Spotify integration). Renders
+ * comment for the expected "news" endpoint shape) — read at build time in
+ * app/page.tsx and handed down as the `items` prop. (This used to fetch
+ * /api/news client-side after mount; that Route Handler can't exist in a
+ * static export — see next.config.ts's own `output: "export"` comment — and
+ * threading the data down also removes the brief empty-then-populated flash
+ * the fetch caused.) Renders
  * nothing at all whenever that resolves to an empty array — covers both
  * "microCMS isn't configured yet" (see lib/news.ts's own PLACEHOLDER_NEWS,
  * shown until then) and "no news entries exist yet" in one codepath,
@@ -62,6 +64,9 @@ import type { NewsItem } from "@/lib/news";
  * viewport.
  */
 type RecentNewsProps = {
+  /** The announcements to show — resolved at build time (app/page.tsx's own
+   *  getRecentNews()), already capped to the latest 2 by lib/news.ts. */
+  items: NewsItem[];
   /** Fades this out (opacity only, no slide) — per direct request ("Th選択
    *  時はお知らせはフェードアウトで非表示にする"). Kept separate from
    *  `revealed` below (which still only ever goes true→that's-it, driving
@@ -71,8 +76,7 @@ type RecentNewsProps = {
   hidden?: boolean;
 };
 
-export function RecentNews({ hidden = false }: RecentNewsProps) {
-  const [items, setItems] = useState<NewsItem[]>([]);
+export function RecentNews({ items, hidden = false }: RecentNewsProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   // Pre-rotation content size, measured live — null until the first
   // measurement resolves, during which the wrapper stays invisible (see
@@ -125,25 +129,6 @@ export function RecentNews({ hidden = false }: RecentNewsProps) {
     const frame = requestAnimationFrame(() => setRevealed(true));
     return () => cancelAnimationFrame(frame);
   }, [contentSize, introReady]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const response = await fetch("/api/news", { cache: "no-store" });
-        const data: NewsItem[] = await response.json();
-        if (!cancelled) setItems(data);
-      } catch {
-        if (!cancelled) setItems([]);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // The ResizeObserver callback defers its own setContentSize to the next
   // animation frame rather than calling it synchronously — per direct
@@ -215,7 +200,7 @@ export function RecentNews({ hidden = false }: RecentNewsProps) {
           version was simply missing it.
       */}
       <div
-        className={`absolute z-40 flex items-center justify-center mix-blend-exclusion transition-all duration-500 ease-out ${
+        className={`absolute z-40 flex items-center justify-center mix-blend-exclusion transition-[transform,opacity] duration-500 ease-out ${
           revealed ? "translate-y-0" : "translate-y-[24px]"
         } ${revealed && !hidden ? "opacity-100" : "opacity-0"}`}
         style={{
@@ -230,7 +215,18 @@ export function RecentNews({ hidden = false }: RecentNewsProps) {
         }}
         data-name="news"
       >
-        <div ref={contentRef} style={{ transform: "rotate(90deg)" }} className="flex-none">
+        {/* konami-rotated — a marker for the Konami easter egg's own glitch
+            trail (globals.css). That trail is a text-shadow, whose offsets
+            are in this element's *local* coordinates and so get carried
+            around by the rotate(90deg) below: without swapping its axes here,
+            the trail would run sideways on screen while every other piece of
+            text on the page trails vertically. Purely cosmetic and inert
+            unless the egg is running. */}
+        <div
+          ref={contentRef}
+          style={{ transform: "rotate(90deg)" }}
+          className="konami-rotated flex-none"
+        >
           {/* Inter-item gap 16px → 18px (+2px, between the two news entries)
               — per direct follow-up ("2つのお知らせのマージンを2px増やす"). */}
           <div

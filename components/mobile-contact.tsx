@@ -113,10 +113,19 @@ const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
  * 1. Background — Figma's own mockup layers a photo/gradient behind this
  *    content (the frame's own `image 4`/`image 5`/masked-gradient layers);
  *    per direct instruction ("背景は一旦#000に（デザイン上で画像を載せてる
- *    けど無視して）") none of that is reproduced here — this component
- *    supplies no background of its own at all, relying entirely on the
- *    shared page root's own `backgroundColor: "#000"` (app/contact/page.tsx),
- *    the same flat black the PC tree already sits on.
+ *    けど無視して）") none of that is reproduced here — the visible
+ *    background is the page's own full-viewport shader canvas
+ *    (ContactBlendBackground, app/contact/page.tsx), whose base colour is
+ *    #000000. This root div itself must stay background-free: it's
+ *    `position: fixed` and paints *above* that canvas, so any opaque colour
+ *    here would hide the shader on SP entirely. (During a brief
+ *    no-shader/#000ベタ era this div did carry its own bg-[#000] — the page
+ *    root's #000 never actually paints on SP since this component is fixed
+ *    and the PC tree is display:none, leaving the page root ~zero height,
+ *    which is why the body's cream showed through per "spのcontactの背景色
+ *    が検証ツールでも#000になってないんだけど" — but the shader's return
+ *    per "contactの背景を元にもどして" made an opaque colour here harmful
+ *    again, so it came back off.)
  * 2. "Get in touch."'s own vertical position — see GET_IN_TOUCH_TOP_PX above.
  *
  * The sitewide "MENU" pill (components/mobile-menu.tsx) needs no per-page
@@ -153,6 +162,8 @@ export function MobileContact() {
     // Safari has nothing to bounce against regardless of any toolbar/
     // rounding jitter. `overflow-hidden` stays too, still guarding this
     // element's own internal content the same way as before.
+    // Deliberately no background here — see this component's own doc comment
+    // (departure #1): the shader canvas behind this div supplies the black.
     <div className="fixed inset-0 h-dvh w-full overflow-hidden lg:hidden">
       {/* Every element below except "Get in touch." itself slides up 24px
          while fading in shortly after mount — per direct follow-up ("contact

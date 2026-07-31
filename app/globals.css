@@ -107,6 +107,11 @@
      SP_GRID_MARGIN_PX doc comment for the full history/reasoning; the Tx/Th/
      "33 Cases" rail there keeps its own 4px exception via a local
      marginLeft, not by changing this shared variable. */
+  /* iOS status-bar mask colour (components/status-bar-mask.tsx) — the cream
+     default matches most pages; Contact/Studies/project detail override it
+     per-mount via <StatusBarMaskColor>. */
+  --status-bar-mask: var(--background);
+
   --sp-grid-margin: 8px;
   --sp-grid-columns: 12;
   --sp-grid-column-width: calc((100vw - var(--sp-grid-margin) * 2) / var(--sp-grid-columns));
@@ -159,6 +164,37 @@ body {
      one axis forces the other to compute as `auto`, turning this element
      into its own scroll container and breaking position:sticky/Lenis. */
   overflow-x: clip;
+}
+
+/*
+ * Hides the browser's own scrollbar — per direct follow-up ("ブラウザデフォル
+ * トの右のスクロールバーは非表示にして"), alongside the scroll-progress gauge
+ * (components/scroll-progress-gauge.tsx) that now serves the same purpose.
+ *
+ * Two mechanisms because no single one covers every engine: `scrollbar-width`
+ * is the standard property (Firefox, and Chrome/Edge 121+), while the
+ * `::-webkit-scrollbar` pseudo-element is what older Chromium and Safari
+ * actually listen to. `-ms-overflow-style` covers legacy Edge/IE.
+ *
+ * Scrolling itself is completely unaffected: this only suppresses the
+ * scrollbar's *rendering*, not overflow behaviour, so wheel, trackpad, touch,
+ * keyboard and Lenis all keep working exactly as before. On macOS the
+ * overlay scrollbar was already mostly invisible; this matters on Windows and
+ * Linux, where a permanent gutter was showing.
+ *
+ * Applied to html and body both: which of the two ends up being the viewport's
+ * scrolling element depends on the engine, and Lenis reassigns overflow on
+ * html as it initialises.
+ */
+html,
+body {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
 }
 
 /*
@@ -867,4 +903,194 @@ body {
 .th-thumbnail-image-reveal {
   animation: th-thumbnail-image-reveal 800ms cubic-bezier(0.65, 0, 0.35, 1) both paused;
   will-change: clip-path;
+}
+
+/*
+ * Konami-code easter egg (components/konami-glitch.tsx) — ↑↑↓↓←→←→BA, PC,
+ * top page only. That component owns the trigger, the full-screen inversion
+ * layer and two custom properties; everything here just reads them:
+ *   --konami-glitch      0..1, how hard the page is currently scrolling
+ *   --konami-glitch-dir  -1 or 1, which way (so the trail lags *behind*)
+ *
+ * `text-shadow` on the root class rather than a per-element rule: it's an
+ * inherited property, so one declaration reaches every piece of text on the
+ * page without selecting anything, and — unlike a transform — it can't
+ * collide with the transforms several components here already animate.
+ *
+ * The shadows form a motion trail rather than a single offset copy: four
+ * steps at increasing distance and decreasing alpha, all pointing opposite
+ * to the scroll direction, so text smears into a streak that stretches with
+ * speed and retracts as the page settles. The two colours alternate down the
+ * trail, which is what makes it read as a chromatic tear rather than as a
+ * plain blur.
+ *
+ * Each step also carries a blur radius that grows faster than its own
+ * offset, so the trail sharpens toward the text and dissolves at the far
+ * end — the near copy stays legible as a duplicated glyph while the distant
+ * ones smear into a wash, which is what a real motion streak does and what
+ * keeps a 170px trail from reading as discrete ghosts. The blur is
+ * multiplied by --konami-glitch rather than --konami-trail because a blur
+ * radius cannot be negative and --konami-trail carries the direction sign;
+ * scaling it by the magnitude also collapses it to 0 at rest along with
+ * everything else. Alphas are lifted from the unblurred version to
+ * compensate for the blur spreading each copy thinner.
+ *
+ * Four steps rather than six, and the nearest one left completely unblurred:
+ * a blurred text-shadow is rasterised on the CPU and costs roughly the square
+ * of its radius, *per shadow, per text node* — and this rule is inherited by
+ * every text node on the page, repainted on every scroll frame. The first
+ * blurred version (six steps, radii up to 42px) was reported as making
+ * scrolling feel heavy. Halving the peak radius and dropping two steps keeps
+ * the same 172px reach and the same near-sharp/far-diffuse read at roughly a
+ * third of the blur work.
+ *
+ * The first two shadows are a separate, purely horizontal chromatic split,
+ * held deliberately small (3px, down from 10px): it runs on a fixed axis
+ * regardless of scroll direction, so at any real size it fought the vertical
+ * trail and read as the text wobbling side to side rather than streaking.
+ * At this size it just tints the edges.
+ *
+ * Every offset, every blur radius *and every alpha* is multiplied by
+ * var(--konami-glitch), which sits at exactly 0 whenever the page isn't
+ * moving, so the whole effect costs nothing and shows nothing at rest.
+ *
+ * The alpha multiplication is not cosmetic. Scaling only the offsets leaves
+ * each shadow fully opaque at rest, stacked at zero offset directly beneath
+ * its own glyph — invisible under solid black text, but plainly visible
+ * through anything that isn't: the category/role/date lines are `text-black/50`
+ * and showed the stack straight through the letterforms (a dark magenta that
+ * inverted to pale green), and the header nav and now-playing ticker render
+ * through `mix-blend-exclusion`, which blends against that same stack and came
+ * out pink. Fading the alphas in with the intensity fixes both, and makes the
+ * effect ramp up rather than pop in.
+ */
+html.konami-glitch {
+  /* The site's cream background (#f6f6f4) inverts to rgb(9,9,11) — very dark,
+     but not black. Swapping the variable to pure white for the duration of
+     the egg makes the difference layer land it on exactly #000, since
+     |255 - 255| = 0. Everything that reads --color-background follows along
+     (body in layout.tsx, the hover plates in project-card.tsx), so the plates
+     stay the same colour as the page behind them rather than becoming a
+     visible off-black rectangle. `html.konami-glitch` rather than the bare
+     class so this outranks :root by specificity instead of by source order.
+
+     Note this is the *source* background — the two other ways to reach a
+     black result are both worse: recolouring the overlay itself from white to
+     #f6f6f4 would break the `invert(1)` cancellation that keeps photography
+     un-inverted below, and painting a separate black layer would sit above
+     the page rather than behind it. */
+  --background: #ffffff;
+
+  /* --konami-glitch-dir already *is* the Y direction the trail should point
+     (-1 up, +1 down) — konami-glitch.tsx derives it from the scroll delta and
+     flips it there, so nothing needs negating here. */
+  --konami-trail: calc(var(--konami-glitch, 0) * var(--konami-glitch-dir, -1));
+  text-shadow:
+    calc(var(--konami-glitch, 0) * -3px) 0
+      rgb(255 0 90 / calc(var(--konami-glitch, 0) * 0.9)),
+    calc(var(--konami-glitch, 0) * 3px) 0
+      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.9)),
+    0 calc(var(--konami-trail) * 18px) 0
+      rgb(255 0 90 / calc(var(--konami-glitch, 0) * 0.6)),
+    0 calc(var(--konami-trail) * 52px) calc(var(--konami-glitch, 0) * 6px)
+      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.46)),
+    0 calc(var(--konami-trail) * 104px) calc(var(--konami-glitch, 0) * 14px)
+      rgb(255 255 255 / calc(var(--konami-glitch, 0) * 0.3)),
+    0 calc(var(--konami-trail) * 172px) calc(var(--konami-glitch, 0) * 26px)
+      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.18));
+}
+
+/*
+ * Axis swap for content that is itself rotated 90° — currently just the
+ * "recent news" block (components/recent-news.tsx). `text-shadow` offsets
+ * are expressed in the element's own coordinate system and are rotated along
+ * with it, so the page-wide rule above (which trails on Y) would render as a
+ * sideways streak here while everything else trails vertically on screen.
+ *
+ * Under `rotate(90deg)` local +X maps to screen +Y and local +Y maps to
+ * screen -X, so the two axes simply trade places: the trail moves to X and
+ * the chromatic split to Y, and both come out pointing the same way on
+ * screen as they do everywhere else.
+ */
+.konami-glitch .konami-rotated {
+  text-shadow:
+    0 calc(var(--konami-glitch, 0) * 3px)
+      rgb(255 0 90 / calc(var(--konami-glitch, 0) * 0.9)),
+    0 calc(var(--konami-glitch, 0) * -3px)
+      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.9)),
+    calc(var(--konami-trail) * 18px) 0 0
+      rgb(255 0 90 / calc(var(--konami-glitch, 0) * 0.6)),
+    calc(var(--konami-trail) * 52px) 0 calc(var(--konami-glitch, 0) * 6px)
+      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.46)),
+    calc(var(--konami-trail) * 104px) 0 calc(var(--konami-glitch, 0) * 14px)
+      rgb(255 255 255 / calc(var(--konami-glitch, 0) * 0.3)),
+    calc(var(--konami-trail) * 172px) 0 calc(var(--konami-glitch, 0) * 26px)
+      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.18));
+}
+
+/*
+ * Forces every card in the project list into its revealed state for as long
+ * as the egg is running.
+ *
+ * The list reveals card by card as each one scrolls into view
+ * (project-card.tsx's IntersectionObserver), but the warp
+ * (components/konami-warp-canvas.tsx) rasterises the whole list *once* and
+ * then hides the real DOM behind it. Without this, every card that hadn't
+ * reached the viewport yet at that moment would be captured at `opacity: 0`
+ * and 24px low — and since the real list is no longer visible, it could never
+ * arrive: scrolling down would just reveal blank space. Caught exactly that
+ * way in testing.
+ *
+ * `!important` because the values it overrides are utility classes on the
+ * elements themselves, and `transform: none` because the reveal offsets the
+ * card 24px down — leaving it would bake that offset into the texture.
+ */
+/*
+ * The top page's own wrapper (#top, home-view.tsx) paints the page background
+ * itself — which sits *above* the egg's fixed background canvas
+ * (components/konami-dissolve-logo.tsx, z -10) and was covering it entirely
+ * (reported as "エッグ時に背景に何も表示されてない"). While the egg runs, the
+ * wrapper goes transparent and the <body>'s own identical background (which
+ * paints below negative-z fixed elements) takes over, so the page looks the
+ * same and the dissolve shows through. Scoped to .konami-glitch, so nothing
+ * changes at rest; #top only exists on the top page and Contact, and the egg
+ * only ever runs on the top page.
+ */
+html.konami-glitch #top {
+  background: transparent;
+}
+
+html.konami-glitch [data-konami-warp] > li {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+html.konami-glitch [data-konami-warp] > li * {
+  opacity: 1 !important;
+}
+
+/*
+ * Images and video opt *out* of the page-wide inversion: `invert(1)` cancels
+ * the overlay's own inversion exactly (the overlay is white under
+ * `mix-blend-mode: difference`, i.e. 1 - backdrop; inverting the source first
+ * makes that 1 - (1 - source) = source), so photography keeps its real
+ * colours while the text and UI around it flip.
+ *
+ * `!important` is load-bearing: several image wrappers on this site set their
+ * own `filter` inline (project-hover-preview.tsx's grayscale for the
+ * non-current preview, mobile-home.tsx's equivalent), and an inline
+ * declaration beats an ordinary author rule — those images stayed inverted
+ * until this outranked them. It costs those few elements their grayscale
+ * while the egg is running, which is a fair trade for correct colour.
+ *
+ * Nothing else is applied here: media sits the effect out entirely and only
+ * has its colours restored. It previously carried its own chromatic
+ * drop-shadows, a trail and a skew, all removed per "画像には付けなくていいよ".
+ * That also takes the most expensive part of the egg out with it — unlike a
+ * text shadow, `drop-shadow()` blurs the element's whole alpha mask, so on the
+ * full-screen hover preview each one was a viewport-sized blur pass per frame.
+ */
+.konami-glitch img,
+.konami-glitch video {
+  filter: invert(1) !important;
 }

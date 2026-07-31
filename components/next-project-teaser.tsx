@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useRef } from "react";
-import Image from "next/image";
 import Link from "next/link";
 
 /** Duplicated from app/projects/[slug]/page.tsx's own CONTENT_ML — this is a
@@ -49,6 +48,7 @@ export function NextProjectTeaser({
   role,
   date,
   image,
+  imageSrcSet,
   aspect,
 }: {
   href: string;
@@ -64,6 +64,8 @@ export function NextProjectTeaser({
    *  box until then, same as every other gallery slot's own placeholder
    *  convention. */
   image?: string;
+  /** Responsive candidates for `image` (lib/projects.ts). */
+  imageSrcSet?: string;
   aspect?: number;
 }) {
   const titleRef = useRef<HTMLAnchorElement>(null);
@@ -129,22 +131,25 @@ export function NextProjectTeaser({
       <Link
         href={href}
         onMouseEnter={playUnderlineSweep}
-        // bg-[#d9d9d9] only while no real thumbnail is set yet — see
-        // ProjectHeroParallax's own doc comment (project-hero-parallax.tsx)
-        // for the full "transparent PNG reads as opaque gray" story this
-        // fixes.
-        className={`relative mr-[24px] block shrink-0 overflow-hidden ${image ? "" : "bg-[#d9d9d9]"}`}
+        // No background fill — see ProjectHeroParallax's own comment
+        // (project-hero-parallax.tsx).
+        className="relative mr-[24px] block shrink-0 overflow-hidden"
         style={{ width: "calc(870px*var(--grid-scale))", aspectRatio: aspect ?? 870 / 543 }}
       >
         {image && (
-          <Image
-            src={image}
-            alt=""
-            fill
-            sizes="(min-width: 1024px) 45vw, 100vw"
-            unoptimized={image.startsWith("http")}
-            className="object-cover"
-          />
+          <>
+          {/* Plain <img>, not next/image — see project-hero-parallax.tsx's own
+             note: every CMS URL is `http`-prefixed, so next/image was
+             bypassed for all real content anyway. */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
+            <img
+              src={image}
+              srcSet={imageSrcSet}
+              sizes="(min-width: 1024px) 45vw, 100vw"
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          </>
         )}
       </Link>
     </div>

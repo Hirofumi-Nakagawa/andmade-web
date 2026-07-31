@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { HeaderSummon } from "@/components/header-summon";
 import { MobileProjectDetail } from "@/components/mobile-project-detail";
@@ -9,8 +8,10 @@ import { ProjectTitleScramble } from "@/components/project-title-scramble";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ProjectHeroParallax } from "@/components/project-hero-parallax";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 import {
   getProjectBySlug,
+  getProjects,
   slugify,
   type ProjectGalleryBlock,
   type ProjectGalleryImage,
@@ -18,6 +19,21 @@ import {
 } from "@/lib/projects";
 
 type ProjectsPageProps = { params: Promise<{ slug: string }> };
+
+/** Every slug this dynamic route should emit an HTML file for. Required by
+ *  the static export (next.config.ts's own `output: "export"`): with no
+ *  server at request time, Next has to know the full set of pages up front,
+ *  so it builds one out/projects/<slug>/index.html per project instead of
+ *  resolving `[slug]` on demand.
+ *
+ *  Uses the same slugify(project.title) mapping getProjectBySlug() resolves
+ *  by, so the two can't drift. Projects added in microCMS after a build
+ *  simply won't exist until the next build + upload — the deliberate
+ *  trade-off of static hosting. */
+export async function generateStaticParams() {
+  const projects = await getProjects();
+  return projects.map((project) => ({ slug: slugify(project.title) }));
+}
 
 export async function generateMetadata({ params }: ProjectsPageProps): Promise<Metadata> {
   const { slug } = await params;
@@ -68,6 +84,14 @@ const CREDIT_BLOCK_WIDTH = "calc(1276px * var(--grid-scale))";
  *  stays put. */
 const CREDIT_FIELD_LEFT_PX = { role: 290, date: 638, creditCol1: 290, creditCol2: 812 } as const;
 
+/** Width of each Credit column — 8 grid columns (58px each = 464px at the
+ *  1440px reference canvas). Without an explicit width these columns are
+ *  `absolute` with no bound at all, so a long value ran straight on past the
+ *  right-hand column's own left edge (812px) and the two overlapped. 8
+ *  columns fits inside the 522px gap between creditCol1 and creditCol2 with
+ *  room to spare, so a long line now wraps instead of colliding. */
+const CREDIT_COLUMN_WIDTH = "calc(464px * var(--grid-scale))";
+
 /** This page's own PC layout grid (components/grid-overlay.tsx, toggled
  *  with Shift+G): 24 columns, 24px margin, 0px gutter, 58px column width at
  *  the 1440px reference canvas — 24 columns = 1392px (58*24), 20 columns =
@@ -99,6 +123,37 @@ const CREAM = "#f6f6f4";
  *  Gen Interface JP body-copy treatment (Figma node 520:1634 etc.). */
 const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
 
+/**
+ * The two gaps in the hero's title / category / role / "View Website" row,
+ * both of which tighten as the window narrows.
+ *
+ * Per direct follow-up ("できるだけ改行はさせたくないので、マージンを狭める
+ * 調整をして"): the row wraps rather than overlapping the title now, but
+ * wrapping is the fallback, not the goal — squeezing the gaps first buys
+ * enough room to keep everything on one line much further down.
+ *
+ * Both shrink linearly from their full 60/110 at 1440px down to a 30px floor
+ * at 1024px, and only once that floor is reached does anything wrap — per
+ * direct follow-up ("マージンをウィンドウ幅に合わせて徐々に狭めていって、
+ * 最低30pxはマージンが空く状態にしてそれより狭めたら改行する"). Above
+ * 1440px the `calc(Npx * var(--scale))` upper bound takes over, so wide
+ * screens keep scaling exactly as they did before any of this.
+ *
+ * The numbers come from measuring the real strings at 14px (--scale is 1 at
+ * and below 1440px, so these are literal px): the site's longest category
+ * "Identity, Brand site, Graphic, Merchandise, Signs, Typeface" is 335px,
+ * "Art Direction, Design" is 120px, "View Website" 78px.
+ *
+ * A project with all three still can't hold one line all the way down: at
+ * 1024px it needs 594px against 548px of room between the title's right edge
+ * and the 24px margin. That's a geometric shortfall, not a margin that can
+ * be tightened away, so the wrapping fallback stays for the last stretch.
+ */
+const HERO_TITLE_META_GAP =
+  "clamp(30px, calc((100vw - 1024px) * 0.0721 + 30px), calc(60px * var(--scale)))";
+const HERO_META_ITEM_GAP =
+  "clamp(30px, calc((100vw - 1024px) * 0.1923 + 30px), calc(110px * var(--scale)))";
+
 /** Trims only the leading/trailing half-leading of a stacked-paragraph
  *  block's first/last line, without touching the natural line-height
  *  *between* paragraphs — same helper as app/about/page.tsx's own
@@ -120,7 +175,7 @@ function paragraphTrimClass(index: number, length: number) {
 }
 
 /**
- * One image slot — a gray box sized to the real Figma aspect ratio
+ * One image slot — an empty box sized to the real Figma aspect ratio
  * (ProjectGalleryImage's own `aspect`) until a real photo is supplied via
  * `image`. See lib/projects.ts's own ProjectGalleryImage doc comment for why
  * every slot on this first reference page (Yatsumonji Gakuen 70th) is
@@ -137,19 +192,45 @@ function paragraphTrimClass(index: number, length: number) {
  * skips that optimizer entirely for those URLs and requests the image
  * as-is, exactly like a plain `<img>` would. Local paths (from public/)
  * never start with `http`, so this never affects real, permanent assets. */
+/** `sizes` for a gallery image — these blocks are at most the full window
+ *  width ("full"), and otherwise a grid-column fraction of it, so `100vw` is
+ *  the correct upper bound in every case. */
+const GALLERY_IMAGE_SIZES = "100vw";
+
+/**
+ * Caption printed under a gallery image — per direct follow-up ("イメージ下
+ * にキャプション（PC:14px、SP:12px）を追加できるようにして"). Renders
+ * nothing at all when the CMS field is blank, so existing blocks are
+ * completely unaffected.
+ *
+ * `dark` follows the project's own headerColor, like every other piece of
+ * text on this page; the muted 50% matches the Category/Role treatment.
+ */
+function GalleryCaption({ caption, dark }: { caption?: string; dark?: boolean }) {
+  if (!caption) return null;
+  return (
+    <p
+      className={`mt-[calc(12px*var(--scale))] text-[length:calc(14px*var(--scale))] leading-[1.5] whitespace-pre-line [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+        dark ? "text-black/50" : "text-white/50"
+      }`}
+    >
+      {caption}
+    </p>
+  );
+}
+
 function GalleryImage({
   image,
+  imageSrcSet,
   aspect,
   mask,
   alt = "",
-  sizes = "100vw",
+  sizes = GALLERY_IMAGE_SIZES,
 }: ProjectGalleryImage & { alt?: string; mask?: string; sizes?: string }) {
   return (
     <div
-      // bg-[#d9d9d9] only while no real photo is set yet — see
-      // ProjectHeroParallax's own doc comment for the full "transparent PNG
-      // reads as opaque gray" story this fixes.
-      className={`relative w-full overflow-hidden ${image ? "" : "bg-[#d9d9d9]"}`}
+      // No background fill — see ProjectHeroParallax's own comment.
+      className="relative w-full overflow-hidden"
       style={{
         aspectRatio: aspect,
         ...(mask
@@ -163,27 +244,36 @@ function GalleryImage({
       }}
     >
       {image && (
-        <Image
-          src={image}
-          alt={alt}
-          fill
-          sizes={sizes}
-          unoptimized={image.startsWith("http")}
-          className="object-cover"
-        />
+        <>
+      {/* Plain <img>, not next/image: every CMS URL is `http`-prefixed, so the
+         previous `unoptimized={image.startsWith("http")}` bypassed next/image
+         for all real content anyway — no srcset was generated, just the one
+         fixed 2560px-wide URL passed through. microCMS's own responsive
+         candidates (`imageSrcSet`) give the browser a real choice of sizes at
+         no build or serving cost. `absolute inset-0 h-full w-full` reproduces
+         what next/image's `fill` was doing. */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
+          <img
+            src={image}
+            srcSet={imageSrcSet}
+            sizes={sizes}
+            alt={alt}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        </>
       )}
     </div>
   );
 }
 
 /** Same idea as GalleryImage, for the "video" gallery block (per explicit
- *  spec: "KV下の最初のグレー箇所には動画を入れる") — renders the same gray
- *  placeholder box when `src` isn't supplied yet. Muted/autoplay/loop since
+ *  spec: "KV下の最初のグレー箇所には動画を入れる") — renders the same
+ *  empty, aspect-sized box when `src` isn't supplied yet. Muted/autoplay/loop since
  *  this is a silent showcase clip, not a video with its own audio track or
  *  controls. */
 function GalleryVideo({ src, poster, aspect }: { src?: string; poster?: string; aspect: number }) {
   return (
-    <div className={`relative w-full overflow-hidden ${src ? "" : "bg-[#d9d9d9]"}`} style={{ aspectRatio: aspect }}>
+    <div className="relative w-full overflow-hidden" style={{ aspectRatio: aspect }}>
       {src && (
         <video
           src={src}
@@ -210,27 +300,85 @@ function GalleryMediaBlock({
   block,
   defaultBackground,
   suppressTopPadding = false,
+  suppressBottomPadding = false,
+  collapseGapAbove = false,
+  dark = false,
 }: {
   block: Extract<ProjectGalleryBlock, { type: "image" | "video" }>;
   defaultBackground: string;
   suppressTopPadding?: boolean;
+  /** See GalleryBlockView's own prop of the same name. */
+  suppressBottomPadding?: boolean;
+  /** See GalleryBlockView's own prop of the same name. */
+  collapseGapAbove?: boolean;
+  /** This project's own headerColor, for the caption's text colour. */
+  dark?: boolean;
 }) {
   const media =
     block.type === "video" ? (
       <GalleryVideo src={block.src} poster={block.poster} aspect={block.aspect} />
     ) : (
-      <GalleryImage image={block.image} aspect={block.aspect} sizes={block.width === "full" ? "100vw" : "80vw"} />
+      <>
+        <GalleryImage image={block.image} aspect={block.aspect} sizes={block.width === "full" ? "100vw" : "80vw"} />
+        <GalleryCaption caption={block.caption} dark={dark} />
+      </>
     );
 
-  if (block.width === "full") return <div className="w-full">{media}</div>;
+  // Cancels the gallery list's own item gap above this block, when asked —
+  // see GalleryBlockView's own `collapseGapAbove`. Applied on every width
+  // branch, not just the inset one, because a "full" block sitting against
+  // an inset needs it just as much (per "fullとinsetが上下関係になった際も
+  // 20pxマージンは無しにして").
+  const gapCancel = collapseGapAbove ? { marginTop: GALLERY_GAP_CANCEL } : {};
+
+  // A "full"-width image runs edge to edge, but its caption shouldn't — it
+  // gets the standard content margin so it lines up with the page's own text.
+  if (block.width === "full") {
+    return (
+      <div className="w-full" style={gapCancel}>
+        {block.type === "video" ? (
+          <GalleryVideo src={block.src} poster={block.poster} aspect={block.aspect} />
+        ) : (
+          <>
+            <GalleryImage image={block.image} aspect={block.aspect} sizes="100vw" />
+            {block.caption && (
+              <div style={{ marginLeft: CONTENT_ML, marginRight: "24px" }}>
+                <GalleryCaption caption={block.caption} dark={dark} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
 
   if (block.width === "content") {
     // Centered (mx-auto), 24 grid columns wide (GRID_WIDTH_24) — not
     // left-anchored at CONTENT_ML like the Overview/Credit text columns, per
     // direct follow-up ("画像は中央揃えにして").
+    //
+    // A CMS-set background paints as a full-bleed band behind that centered
+    // column — per direct follow-up ("contentにも背景色指定したら反映される
+    // ようにして") — with 24px of it above and below the image, per the
+    // follow-up after that ("contentで背景色指定してる場合は上下マージン
+    // 24pxにして"). That's the "inset" treatment at a much tighter rhythm
+    // (inset uses 100px). Without a colour set, nothing changes — the plain
+    // centered box, exactly as before.
+    if (!block.backgroundColor) {
+      return (
+        <div className="mx-auto" style={{ width: GRID_WIDTH_24, ...gapCancel }}>
+          {media}
+        </div>
+      );
+    }
     return (
-      <div className="mx-auto" style={{ width: GRID_WIDTH_24 }}>
-        {media}
+      <div
+        className="w-full py-[calc(24px*var(--scale))]"
+        style={{ backgroundColor: block.backgroundColor, ...gapCancel }}
+      >
+        <div className="mx-auto" style={{ width: GRID_WIDTH_24 }}>
+          {media}
+        </div>
       </div>
     );
   }
@@ -246,8 +394,8 @@ function GalleryMediaBlock({
   const insetWidth = block.width === "insetSmall" ? GRID_WIDTH_8 : GRID_WIDTH_20;
   return (
     <div
-      className={`w-full ${suppressTopPadding ? "pb-[calc(100px*var(--scale))]" : "py-[calc(100px*var(--scale))]"}`}
-      style={{ backgroundColor: block.backgroundColor ?? defaultBackground }}
+      className={`w-full ${insetPaddingClass(suppressTopPadding, suppressBottomPadding)}`}
+      style={{ backgroundColor: block.backgroundColor ?? defaultBackground, ...gapCancel }}
     >
       <div className="mx-auto" style={{ width: insetWidth }}>
         {media}
@@ -269,6 +417,35 @@ function GalleryMediaBlock({
 const INSET_TWO_COL_PAD_OUTER = "calc(116px * var(--grid-scale))"; // 2 columns
 const INSET_TWO_COL_PAD_INNER = "calc(58px * var(--grid-scale))"; // 1 column
 
+/** The free text block's own two columns — Japanese 14 grid columns to
+ *  English 9, per direct follow-up ("左日本語（14マス分）、右英語（9マス分）
+ *  の1列で表示するようにして"), with one column as the gap between them.
+ *  Applied as flex proportions rather than literal widths, because a later
+ *  follow-up added a column of padding to each side too — see TextBlock's own
+ *  comment for that arithmetic. 1 column = 58px at the 1440px reference
+ *  canvas, same derivation as the constants just above. */
+const TEXT_BLOCK_JA_COLUMNS = 14;
+const TEXT_BLOCK_EN_COLUMNS = 9;
+const TEXT_BLOCK_GAP = "calc(58px * var(--grid-scale))"; // 1 column
+
+/** The gallery list's own item gap, as a negative margin — used to cancel it
+ *  between consecutive colour-set inset blocks so their backgrounds meet.
+ *  Must stay in step with the list's own `gap-[calc(24px*var(--scale))]`. */
+const GALLERY_GAP_CANCEL = "calc(-24px * var(--scale))";
+
+/** An "inset" block's own 100px vertical padding, with either edge droppable —
+ *  see GalleryBlockView's own suppressTopPadding/suppressBottomPadding doc
+ *  comment for when each gets dropped. Shared by the single-image and
+ *  two-column inset boxes so the two can never drift apart. */
+function insetPaddingClass(suppressTop: boolean, suppressBottom: boolean): string {
+  return [
+    suppressTop ? "" : "pt-[calc(100px*var(--scale))]",
+    suppressBottom ? "" : "pb-[calc(100px*var(--scale))]",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** Exactly two images side by side — see ProjectGalleryBlock's own
  *  "twoColumn" doc comment (lib/projects.ts) for what `width` means here.
  *  "full"/"content" (the original, still-default layout): widths flex so the
@@ -284,27 +461,44 @@ const INSET_TWO_COL_PAD_INNER = "calc(58px * var(--grid-scale))"; // 1 column
 function TwoColumnBlock({
   images,
   width,
+  backgroundColor,
   defaultBackground,
   suppressTopPadding = false,
+  suppressBottomPadding = false,
+  collapseGapAbove = false,
+  dark = false,
 }: {
   images: [ProjectGalleryImage, ProjectGalleryImage];
   width: ProjectGalleryWidth;
+  /** This block's own CMS-chosen inset background, if any. */
+  backgroundColor?: string;
   defaultBackground: string;
   /** See GalleryBlockView's own doc comment. */
   suppressTopPadding?: boolean;
+  /** See GalleryBlockView's own prop of the same name. */
+  suppressBottomPadding?: boolean;
+  /** See GalleryBlockView's own prop of the same name. */
+  collapseGapAbove?: boolean;
+  /** This project's own headerColor, for the captions' text colour. */
+  dark?: boolean;
 }) {
   if (width === "inset") {
     return (
       <div
-        className={`w-full ${suppressTopPadding ? "pb-[calc(100px*var(--scale))]" : "py-[calc(100px*var(--scale))]"}`}
-        style={{ backgroundColor: defaultBackground }}
+        className={`w-full ${insetPaddingClass(suppressTopPadding, suppressBottomPadding)}`}
+        style={{
+          backgroundColor: backgroundColor ?? defaultBackground,
+          ...(collapseGapAbove ? { marginTop: GALLERY_GAP_CANCEL } : {}),
+        }}
       >
         <div className="mx-auto flex items-start" style={{ width: GRID_WIDTH_24 }}>
           <div className="flex-1" style={{ paddingLeft: INSET_TWO_COL_PAD_OUTER, paddingRight: INSET_TWO_COL_PAD_INNER }}>
             <GalleryImage {...images[0]} sizes="40vw" />
+            <GalleryCaption caption={images[0].caption} dark={dark} />
           </div>
           <div className="flex-1" style={{ paddingLeft: INSET_TWO_COL_PAD_INNER, paddingRight: INSET_TWO_COL_PAD_OUTER }}>
             <GalleryImage {...images[1]} sizes="40vw" />
+            <GalleryCaption caption={images[1].caption} dark={dark} />
           </div>
         </div>
       </div>
@@ -316,8 +510,110 @@ function TwoColumnBlock({
       {images.map((image, i) => (
         <div key={i} className="flex-1">
           <GalleryImage {...image} sizes="40vw" />
+          <GalleryCaption caption={image.caption} dark={dark} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * A free text block — per direct follow-up ("実績詳細ページにフリーテキスト
+ * エリアを新たに作る"), starting at the grid's own left edge per the
+ * follow-up after it ("galleryTextは左端のグリッドから表示して").
+ *
+ * Deliberately NOT BilingualSection's geometry: that layout reserves a left
+ * caption column and pushes its body to the 3rd-ish column (~372px in), which
+ * is what this block looked wrong doing. Here the block runs edge to edge at
+ * the page's own literal 24px side margin — the same margin the hero's date
+ * and "View Website" use, and the furthest left anything on this page sits
+ * (per follow-ups "左端のグリッドから表示して", then "左マージン24pxの位置
+ * から表示して"). The optional heading stacks *above* the row rather than
+ * beside it, since a side caption would reintroduce exactly the indent this
+ * removes.
+ *
+ * The two halves sit side by side on one row in a 14:9 proportion (Japanese
+ * to English) with a one-column gap — per "左日本語（14マス分）、右英語（9
+ * マス分）の1列で表示".
+ */
+function TextBlock({
+  caption,
+  body,
+  bodyEn,
+  dark = false,
+}: {
+  caption?: string;
+  body: string[];
+  bodyEn: string[];
+  dark?: boolean;
+}) {
+  return (
+    // 60px top and bottom — per direct follow-up ("フリーテキストの上下マージ
+    // ンは60pxに"), replacing the 150px top margin this inherited from
+    // BilingualSection's own rhythm. Both sides are set here (not just the
+    // top) so the block keeps its own breathing room regardless of what
+    // follows it; the parent list's own 24px item gap sits outside this.
+    //
+    // Sides: the page's literal 24px margin plus one grid column — per
+    // direct follow-up ("フリーテキストの両サイドに1マス分余白追加して").
+    //
+    // Note this makes the 14/9 column widths a *ratio* rather than literal
+    // grid columns: 1 + 14 + 1 + 9 + 1 = 26 columns doesn't fit the grid's
+    // own 24, so the two halves now flex to fill whatever the padding leaves,
+    // keeping the 14:9 proportion (and the 1-column gap) exactly. At 1440px
+    // that's ~741px / ~477px instead of 812 / 522 — the same relationship,
+    // just inset. The alternative would have been overflowing the grid.
+    <div
+      className="my-[calc(60px*var(--scale))] flex flex-col items-start gap-[calc(40px*var(--scale))]"
+      style={{
+        paddingLeft: `calc(24px + ${TEXT_BLOCK_GAP})`,
+        paddingRight: `calc(24px + ${TEXT_BLOCK_GAP})`,
+      }}
+    >
+      {caption ? (
+        <p
+          className={`font-(family-name:--font-courier) text-[length:calc(14px*var(--scale))] whitespace-nowrap tracking-[calc(-0.7px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+            dark ? "text-black/50" : "text-white/50"
+          }`}
+        >
+          {caption}
+        </p>
+      ) : null}
+      <div className="flex w-full items-start" style={{ gap: TEXT_BLOCK_GAP }}>
+        {body.length > 0 && (
+          <div
+            className={`min-w-0 font-(family-name:--font-gen-interface-jp) text-[length:calc(16px*var(--scale))] text-justify leading-[1.7] tracking-[calc(0.48px*var(--scale))] ${
+              dark ? "text-black" : "text-white"
+            }`}
+            style={{ ...SS09, flex: `${TEXT_BLOCK_JA_COLUMNS} 1 0` }}
+          >
+            {body.map((paragraph, i) => (
+              <p key={paragraph} className={`mb-[1lh] whitespace-pre-line last:mb-0 ${paragraphTrimClass(i, body.length)}`}>
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        )}
+        {/* Everything after the block's first blank line — Akzidenz Grotesk
+           Next 400 (the site's own --font-sans, whose first family this is),
+           14px on a literal 16px line box, 50% opacity, per direct follow-up.
+           Deliberately not the Gen Interface JP / 1.7-leading treatment
+           beside it: this half is Latin copy. */}
+        {bodyEn.length > 0 && (
+          <div
+            className={`min-w-0 font-(family-name:--font-sans) font-normal text-[length:calc(14px*var(--scale))] leading-[calc(16px*var(--scale))] ${
+              dark ? "text-black/50" : "text-white/50"
+            }`}
+            style={{ flex: `${TEXT_BLOCK_EN_COLUMNS} 1 0` }}
+          >
+            {bodyEn.map((paragraph, i) => (
+              <p key={paragraph} className={`mb-[1lh] whitespace-pre-line last:mb-0 ${paragraphTrimClass(i, bodyEn.length)}`}>
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -339,28 +635,54 @@ function TwoColumnBlock({
  *  drops just that one shared edge's padding (this block's own *top*, not
  *  both blocks' touching sides), bringing a run of N consecutive insets down
  *  to a single 100px gap between each pair instead of 200px, while the very
- *  first inset in a run keeps its own top padding and the very last keeps
- *  its own bottom padding untouched. */
+ *  first inset in a run keeps its own top padding.
+ *
+ *  `suppressBottomPadding` — the mirror of the above at the gallery's own
+ *  bottom edge, per direct follow-up ("insetが並びの一番下にくる場合、下
+ *  マージンを無くして"): an inset that ends the gallery would otherwise stack
+ *  its own 100px against the page's own trailing rhythm below, so the last
+ *  block drops it. Only ever set on the final gallery item. */
 function GalleryBlockView({
   block,
   defaultBackground,
   suppressTopPadding = false,
+  suppressBottomPadding = false,
+  collapseGapAbove = false,
+  dark = false,
 }: {
-  block: Exclude<ProjectGalleryBlock, { type: "idea" } | { type: "outcome" }>;
+  block: Exclude<ProjectGalleryBlock, { type: "idea" } | { type: "outcome" } | { type: "text" }>;
   defaultBackground: string;
   suppressTopPadding?: boolean;
+  suppressBottomPadding?: boolean;
+  /** Cancels the gallery list's own item gap above this block — see
+   *  hasOwnBackground. */
+  collapseGapAbove?: boolean;
+  dark?: boolean;
 }) {
   if (block.type === "twoColumn") {
     return (
       <TwoColumnBlock
         images={block.images}
         width={block.width}
+        backgroundColor={block.backgroundColor}
         defaultBackground={defaultBackground}
         suppressTopPadding={suppressTopPadding}
+        suppressBottomPadding={suppressBottomPadding}
+        collapseGapAbove={collapseGapAbove}
+        dark={dark}
       />
     );
   }
-  return <GalleryMediaBlock block={block} defaultBackground={defaultBackground} suppressTopPadding={suppressTopPadding} />;
+  return (
+    <GalleryMediaBlock
+      block={block}
+      defaultBackground={defaultBackground}
+      suppressTopPadding={suppressTopPadding}
+      suppressBottomPadding={suppressBottomPadding}
+      collapseGapAbove={collapseGapAbove}
+      dark={dark}
+    />
+  );
 }
 
 /** Whether a gallery block renders as PC's padded/background-colored
@@ -393,8 +715,90 @@ function isInsetGalleryBlock(block: ProjectGalleryBlock): boolean {
  *  types, not just two inset blocks back to back — a plain "full"/"content"
  *  block has no vertical spacing of its own to double up with, so it's
  *  deliberately excluded here (nothing to suppress either side of it). */
+/** Whether this block carries its own CMS-chosen inset background colour
+ *  (rather than falling back to the project's own). Two rules key off it —
+ *  see the gallery `.map()` below:
+ *   - it keeps its top padding even when it follows another inset, so a
+ *     deliberately-coloured band never loses its own breathing room;
+ *   - a run of such blocks collapses the list's own gap between them, so
+ *     their colours meet with no page background showing through.
+ *  Per direct follow-up ("insetで背景色を指定した場合、insetが上下に続いてて
+ *  も上マージンは付ける。また、背景色を指定した画像間の上下マージン20pxは
+ *  無しにする"). */
+function hasOwnBackground(block: ProjectGalleryBlock): boolean {
+  return (
+    (block.type === "image" || block.type === "video" || block.type === "twoColumn") &&
+    isInsetGalleryBlock(block) &&
+    Boolean(block.backgroundColor)
+  );
+}
+
+/** A media block that runs edge to edge. */
+function isFullWidthBlock(block: ProjectGalleryBlock): boolean {
+  return (
+    (block.type === "image" || block.type === "video" || block.type === "twoColumn") &&
+    block.width === "full"
+  );
+}
+
+/** Whether this block paints a full-bleed colour band — every "inset" does
+ *  (its fill falls back to the project's own colour), and any other width
+ *  does once a colour is set on it in the CMS. */
+function paintsBackgroundBand(block: ProjectGalleryBlock): boolean {
+  if (block.type !== "image" && block.type !== "video" && block.type !== "twoColumn") return false;
+  return isInsetGalleryBlock(block) || Boolean(block.backgroundColor);
+}
+
+/** The colour a block's band actually renders in — its own if set, otherwise
+ *  the project's own for "inset" (which always paints one). Undefined for
+ *  blocks that paint no band at all, so two of those never compare equal. */
+function bandColor(block: ProjectGalleryBlock, defaultBackground: string): string | undefined {
+  if (!paintsBackgroundBand(block)) return undefined;
+  if (block.type !== "image" && block.type !== "video" && block.type !== "twoColumn") return undefined;
+  return block.backgroundColor ?? (isInsetGalleryBlock(block) ? defaultBackground : undefined);
+}
+
+/** Whether two neighbours' bands are the same colour — the cue for merging
+ *  them into one continuous field rather than two stacked ones. */
+function sharesBandColor(
+  block: ProjectGalleryBlock,
+  previous: ProjectGalleryBlock,
+  defaultBackground: string
+): boolean {
+  const color = bandColor(block, defaultBackground);
+  return color !== undefined && color === bandColor(previous, defaultBackground);
+}
+
+/**
+ * Whether the list's own item gap between these two neighbours should be
+ * cancelled so they meet flush.
+ *
+ * The rule: both sides have to be things that read as continuous surfaces —
+ * a colour band, or a full-bleed image — and at least one of them has to
+ * actually be a band. That single condition covers every case asked for
+ * across several follow-ups ("背景色を指定した画像間の上下マージン20pxは
+ * 無しにする", "fullとinsetが上下関係になった際も", "fullとcontentの並びの
+ * ときとcontentとinsetの並びのときも"): band+band, full+band and band+full
+ * all collapse, while two plain images, or a plain content block against a
+ * band, keep the gap — there's no colour there for the gap to interrupt.
+ */
+function shouldCollapseGap(block: ProjectGalleryBlock, previous: ProjectGalleryBlock): boolean {
+  const blockBand = paintsBackgroundBand(block);
+  const previousBand = paintsBackgroundBand(previous);
+  if (!blockBand && !previousBand) return false;
+  return (blockBand || isFullWidthBlock(block)) && (previousBand || isFullWidthBlock(previous));
+}
+
 function hasOwnVerticalSpacing(block: ProjectGalleryBlock): boolean {
-  return isInsetGalleryBlock(block) || block.type === "idea" || block.type === "outcome";
+  // "text" counts for the same reason "idea"/"outcome" do — TextBlock carries
+  // its own mt-150, so a media block placed right after one shouldn't add its
+  // own leading spacing on top.
+  return (
+    isInsetGalleryBlock(block) ||
+    block.type === "idea" ||
+    block.type === "outcome" ||
+    block.type === "text"
+  );
 }
 
 /** Left-margined caption ("(Overview)" / "Next Project", Figma nodes
@@ -464,6 +868,23 @@ function DetailCaption({
  * whichever block comes *second* in an adjacent "spacious" pair rather than
  * the one that comes first.
  */
+/** Newline handling for the CMS textareas rendered here, so that what an
+ *  editor types is what they get:
+ *    - one newline  -> a line break, via `whitespace-pre-line` on each <p>.
+ *      splitParagraphs() (lib/projects.ts) only splits on *blank* lines, so
+ *      single newlines survive into these strings; HTML would otherwise
+ *      collapse them into ordinary spaces. `pre-line` (not `pre`/`pre-wrap`)
+ *      is the right variant — it honours newlines while still collapsing runs
+ *      of spaces and wrapping long lines normally, so stray indentation in
+ *      the CMS doesn't leak into the layout.
+ *    - a blank line -> one empty line, via `mb-[1lh]` on every paragraph but
+ *      the last. Consecutive blocks with no margin already sit exactly one
+ *      line apart, so adding a further whole line-height puts two lines
+ *      between baselines, i.e. one visibly empty line. The `lh` unit resolves
+ *      against this element's own computed line-height, so it stays exact at
+ *      every breakpoint without restating any leading value here.
+ *  Applies to Overview, (Idea) and (Outcome) alike, since all three render
+ *  through this same component. */
 function BilingualSection({
   caption,
   ja,
@@ -501,18 +922,18 @@ function BilingualSection({
           style={SS09}
         >
           {ja.map((paragraph, i) => (
-            <p key={paragraph} className={`mb-0 last:mb-0 ${paragraphTrimClass(i, ja.length)}`}>
+            <p key={paragraph} className={`mb-[1lh] whitespace-pre-line last:mb-0 ${paragraphTrimClass(i, ja.length)}`}>
               {paragraph}
             </p>
           ))}
         </div>
         <div
-          className={`w-[calc(376px*var(--grid-scale))] text-[length:calc(14px*var(--scale))] leading-[1.2] ${
+          className={`w-[calc(376px*var(--grid-scale))] text-[length:calc(14px*var(--scale))] leading-[calc(16px*var(--scale))] ${
             dark ? "text-black/50" : "text-white/50"
           }`}
         >
           {en.map((paragraph, i) => (
-            <p key={paragraph} className={`mb-0 last:mb-0 ${paragraphTrimClass(i, en.length)}`}>
+            <p key={paragraph} className={`mb-[1lh] whitespace-pre-line last:mb-0 ${paragraphTrimClass(i, en.length)}`}>
               {paragraph}
             </p>
           ))}
@@ -614,7 +1035,7 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
   // Next Project's own thumbnail (below) shows the *next* project's first
   // gallery image, not its hero/KV — per direct follow-up ("next projectの
   // グレー画像箇所に次の実績イメージを表示する（hero画像じゃなくてギャラリー
-  // 画像の1枚目を表示する）"). Falls back to the plain gray placeholder box
+  // 画像の1枚目を表示する）"). Falls back to the plain empty box
   // (NextProjectTeaser's own default) if that project has no detail yet, or
   // its first "image" block hasn't had a real photo uploaded yet either —
   // same "gray until a real photo exists" convention every other gallery
@@ -623,8 +1044,44 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
     (block): block is Extract<ProjectGalleryBlock, { type: "image" }> => block.type === "image"
   );
 
+  // CreativeWork structured data for this specific project — lets search and
+  // answer engines treat each piece of work as a real entity (what it is, who
+  // made it, who it was for, when) rather than as undifferentiated page text.
+  // Every value is read from data this page already renders, so there is
+  // nothing separate to keep in sync.
+  //
+  // `client` is pulled out of the Credit block by label rather than being its
+  // own CMS field: parseCreditColumns (lib/projects.ts) already turns that
+  // block into { label, value } rows, and "Client" is the conventional label
+  // used throughout. When a project doesn't have one, the property is simply
+  // omitted rather than emitted empty — partial-but-correct structured data
+  // is fine, wrong structured data isn't.
+  const clientName = detail?.creditColumns
+    .flat()
+    .find((row) => row.label.trim().toLowerCase() === "client")?.value;
+  const projectJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    name: project.title,
+    url: `${SITE_URL}/projects/${slug}`,
+    ...(project.description ? { description: project.description } : {}),
+    // `role` is this studio's own contribution (e.g. "Art Direction, Design")
+    // — the closest schema.org equivalent to "what we did on this" is
+    // `creator` plus a plain-text `genre`/`about`, so the category and role
+    // are surfaced as keywords rather than invented into a richer type.
+    keywords: [project.category, project.role].filter(Boolean).join(", "),
+    creator: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
+    ...(clientName ? { sourceOrganization: { "@type": "Organization", name: clientName } } : {}),
+    ...(detail?.hero.pc.image ? { image: detail.hero.pc.image } : {}),
+    ...(detail?.websiteUrl ? { sameAs: detail.websiteUrl } : {}),
+  };
+
   return (
     <div className="relative w-full">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(projectJsonLd) }}
+      />
       {/* ProjectDetailReveal — per direct follow-up ("実績詳細ページが表示
          される際、Aboutページと同じように背景色がフェードインしてページ要
          素が下からスライドイン+フェードインで表示して"): fades this
@@ -678,19 +1135,46 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
           >
             {project.date}
           </p>
-          {/* ScrambleText reveal — per direct follow-up ("実績タイトルをス
-             クランブルテキストで表示する"), same character-cascade reveal
-             mobile-project-list.tsx's own titles already use, wrapped in its
-             own tiny client component (project-title-scramble.tsx) since
-             this page itself is an async Server Component. */}
-          <p
-            className={`text-[length:calc(32px*var(--scale))] leading-[1.5] font-medium whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
-              headerDark ? "text-black" : "text-white"
-            }`}
-            style={{ marginLeft: CONTENT_ML }}
+          {/* Title and the category/role/link row share one flex row rather
+             than each being absolutely positioned against opposite edges —
+             per direct follow-up with a screenshot ("カテゴリーが長い場合、
+             ウィンドウ幅が狭いとタイトルと被ることがある。ロールも長い場合が
+             あるので、それぞれが1024pxまでは被らないように改行するなどで対応
+             する仕様にして").
+
+             The meta row used to be `absolute right-[24px] bottom-0`, so its
+             left edge simply extended further left as its text got longer,
+             with nothing stopping it from running under the title —
+             SATOYAMA TERRACE's category does exactly that on a narrow
+             window. In normal flow with `justify-between` the two can't
+             overlap at any width by construction, rather than only down to
+             some tested breakpoint: the title keeps its intrinsic width
+             (`shrink-0`) and the meta row takes what's left, wrapping inside
+             itself.
+
+             `items-end` reproduces what the shared `bottom-0` anchoring did
+             — both boxes still sit on one common bottom edge, which is what
+             the earlier "hero画像上のテキストは下面揃えに" follow-up asked
+             for. The date stays absolutely positioned at the page's literal
+             left edge, outside this row: it sits left of CONTENT_ML, so it
+             was never part of the overlap and shouldn't start affecting the
+             title's position now. */}
+          <div
+            className="flex items-end justify-between"
+            style={{ marginLeft: CONTENT_ML, marginRight: "24px", gap: HERO_TITLE_META_GAP }}
           >
-            <ProjectTitleScramble text={project.title} />
-          </p>
+            {/* ScrambleText reveal — per direct follow-up ("実績タイトルをス
+               クランブルテキストで表示する"), same character-cascade reveal
+               mobile-project-list.tsx's own titles already use, wrapped in its
+               own tiny client component (project-title-scramble.tsx) since
+               this page itself is an async Server Component. */}
+            <p
+              className={`shrink-0 text-[length:calc(32px*var(--scale))] leading-[1.5] font-medium whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+                headerDark ? "text-black" : "text-white"
+              }`}
+            >
+              <ProjectTitleScramble text={project.title} />
+            </p>
           {/* category/role/"View Website" now share one row (per direct
              follow-up: "この文字列の右端に「View Website」を入れる") instead
              of "View Website" sitting as its own separately-positioned
@@ -716,13 +1200,34 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
              further follow-ups ("1px行き過ぎかも、1px上に戻して", "もう1px
              上にして", then "4pxに修正して"). */}
           <div
-            className={`absolute right-[24px] bottom-0 flex items-baseline gap-[calc(110px*var(--scale))] text-[length:calc(14px*var(--scale))] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+            className={`flex min-w-0 flex-wrap items-baseline justify-end text-[length:calc(14px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
               headerDark ? "text-black" : "text-white"
             }`}
-            style={{ transform: "translateY(calc(4px * var(--scale)))" }}
+            // columnGap, not the `gap` shorthand: `gap` also sets row-gap, so
+            // once this row wrapped, its two lines were pushed apart by the
+            // full inter-item gap (40px at the time) — the category/role line
+            // ended up floating far above the title instead of sitting one
+            // line above "View Website". Reported with a screenshot ("狭い時
+            // 添付みたいになってるけど"). rowGap 0 leaves the wrapped lines on
+            // their natural leading.
+            style={{
+              transform: "translateY(calc(4px * var(--scale)))",
+              columnGap: HERO_META_ITEM_GAP,
+              rowGap: 0,
+            }}
           >
-            <p>{project.category}</p>
-            <p>{project.role}</p>
+            {/* Each value stays on one line (`whitespace-nowrap`); the row
+               itself wraps between them (`flex-wrap`) when they no longer fit
+               side by side, so "View Website" drops to a second line before
+               anything breaks mid-phrase. An earlier version let the values
+               themselves wrap instead, which split the category in the middle
+               of "…Merchandise, Signs, / Typeface" — the same number of lines,
+               read as broken text. Gaps tighten before either happens (see
+               HERO_META_ITEM_GAP); the widest single value (the 335px
+               category) still fits the 548px available at 1024px on its own,
+               so no value ever overflows. */}
+            <p className="whitespace-nowrap">{project.category}</p>
+            <p className="whitespace-nowrap">{project.role}</p>
             {detail?.websiteUrl && (
               // --underline-offset: calc(-0.1em + 5px) — 3px (per direct
               // follow-up "View websiteの下線の位置を3px上にする") plus a
@@ -735,12 +1240,13 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                 href={detail.websiteUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline-sweep"
+                className="underline-sweep shrink-0 whitespace-nowrap"
                 style={{ "--underline-offset": "calc(-0.1em + 5px)" } as React.CSSProperties}
               >
                 View Website
               </a>
             )}
+            </div>
           </div>
         </div>
 
@@ -752,7 +1258,12 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                direct follow-up "kvをパララックスさせて") — see
                components/works-hero-parallax.tsx's own doc comment. */}
             <div className="mt-[calc(24px*var(--scale))] w-full px-[24px]">
-              <ProjectHeroParallax image={detail.hero.pc.image} aspect={detail.hero.pc.aspect} mask={detail.hero.pc.mask} />
+              <ProjectHeroParallax
+                image={detail.hero.pc.image}
+                imageSrcSet={detail.hero.pc.imageSrcSet}
+                aspect={detail.hero.pc.aspect}
+                mask={detail.hero.pc.mask}
+              />
             </div>
 
             {/* ml-174px = 3 grid columns — 2 columns (116px, per direct
@@ -795,22 +1306,58 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
             <div className="mt-[calc(150px*var(--scale))] flex w-full flex-col items-stretch gap-[calc(24px*var(--scale))]">
               {detail.gallery.map((block, i) => {
                 const suppressLeadingSpacing = i === 0 || hasOwnVerticalSpacing(detail.gallery[i - 1]);
-                return block.type === "idea" || block.type === "outcome" ? (
-                  <BilingualSection
-                    key={i}
-                    caption={block.caption}
-                    ja={block.ja}
-                    en={block.en}
-                    tightSpacing
-                    suppressTopMargin={suppressLeadingSpacing}
-                    dark={headerDark}
-                  />
-                ) : (
+                if (block.type === "idea" || block.type === "outcome") {
+                  return (
+                    <BilingualSection
+                      key={i}
+                      caption={block.caption}
+                      ja={block.ja}
+                      en={block.en}
+                      tightSpacing
+                      suppressTopMargin={suppressLeadingSpacing}
+                      dark={headerDark}
+                    />
+                  );
+                }
+                if (block.type === "text") {
+                  return (
+                    <TextBlock key={i} caption={block.caption} body={block.body} bodyEn={block.bodyEn} dark={headerDark} />
+                  );
+                }
+                return (
                   <GalleryBlockView
                     key={i}
                     block={block}
                     defaultBackground={backgroundColor}
-                    suppressTopPadding={isInsetGalleryBlock(block) && suppressLeadingSpacing}
+                    // Top padding is dropped in two cases: the long-standing
+                    // "previous block already brought its own spacing" rule
+                    // (which a colour-set block opts out of, so a deliberate
+                    // band keeps its breathing room), and — per direct
+                    // follow-up "insetで同じ色の背景色を指定した画像が縦に
+                    // 続くときは下段の上マージンを無しにして" — whenever the
+                    // block above is *also an inset* painting the same colour,
+                    // where the two should read as one field rather than two.
+                    // The "also an inset" half matters: a content block can
+                    // share the colour without sharing the inset's generous
+                    // padding, and there this block keeps its own — per direct
+                    // follow-up ("contentとinsetの同背景色の場合はinsetのほうの
+                    // 上マージンはありで").
+                    suppressTopPadding={
+                      isInsetGalleryBlock(block) &&
+                      ((i > 0 &&
+                        isInsetGalleryBlock(detail.gallery[i - 1]) &&
+                        sharesBandColor(block, detail.gallery[i - 1], backgroundColor)) ||
+                        (suppressLeadingSpacing && !hasOwnBackground(block)))
+                    }
+                    // The gallery's own last block drops its trailing padding —
+                    // per direct follow-up ("insetが並びの一番下にくる場合、
+                    // 下マージンを無くして"). Only "inset" widths have any to
+                    // drop, so this is a no-op for every other width.
+                    suppressBottomPadding={i === detail.gallery.length - 1}
+                    // ...and some neighbour pairings meet flush, with the
+                    // list's own gap cancelled — see shouldCollapseGap.
+                    collapseGapAbove={i > 0 && shouldCollapseGap(block, detail.gallery[i - 1])}
+                    dark={headerDark}
                   />
                 );
               })}
@@ -902,10 +1449,27 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                    below was measured from there instead of from the true,
                    much taller bottom of columns like Producer/Developer/.../
                    Photographer. */}
-                <div aria-hidden className="invisible flex flex-col items-start gap-[calc(8px*var(--scale))]">
-                  {detail.creditColumns
-                    .reduce((tallest, column) => (column.length > tallest.length ? column : tallest))
-                    .map((row, i) => (
+                {/* Both groups sit in the *same* single grid cell, so this
+                   box's own height resolves to the taller of the two rather
+                   than either one alone — needed now that the right-hand
+                   group is a vertical stack of every column past the first
+                   (see the real columns below), whose combined height can
+                   easily exceed the left column's. Overlapping them in one
+                   cell (rather than laying them out side by side) keeps this
+                   sizer from adding any width of its own. */}
+                <div aria-hidden className="invisible grid">
+                  <div
+                    className="col-start-1 row-start-1 flex flex-col items-start gap-[calc(8px*var(--scale))]"
+                    style={{ width: CREDIT_COLUMN_WIDTH }}
+                  >
+                    {/* `?? []` — dtlCredit is optional in the CMS, and an
+                       unset value yields an empty creditColumns array (see
+                       lib/projects.ts). Nothing gates this whole Credit
+                       block on that, so index 0 genuinely can be undefined;
+                       the previous `.reduce()` here had the same latent
+                       crash (reduce with no initial value on an empty
+                       array). */}
+                    {(detail.creditColumns[0] ?? []).map((row, i) => (
                       // Same trim classes as the real, visible columns below
                       // — per direct follow-up ("Credit下マージンが220pxく
                       // らいあるので140pxに"): without them, this sizer's
@@ -922,45 +1486,95 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                         {row.label}: {row.value}
                       </p>
                     ))}
-                </div>
-                {/* gap-[8px] — this 14px text's own trim-both boxes have no
-                   natural leading left to widen (text-box-trim removes it),
-                   so this flex `gap` is the actual line spacing between
-                   credit rows; 4px → 6px per direct follow-up ("creditの
-                   14pxの文字行間を2px広げる"), then 6px → 8px per a further
-                   direct follow-up ("<p>の行間を6→8pxにして"). */}
-                {detail.creditColumns.map((column, ci) => (
+                  </div>
+                  {/* Right-hand group — mirrors the real stack below exactly
+                     (same 30px between blocks, 8px between rows) so its
+                     measured height matches what actually renders. */}
                   <div
-                    key={ci}
-                    className="absolute top-0 flex flex-col items-start gap-[calc(8px*var(--scale))]"
-                    style={{
-                      left: `calc(${
-                        ci === 0 ? CREDIT_FIELD_LEFT_PX.creditCol1 : CREDIT_FIELD_LEFT_PX.creditCol2
-                      }px * var(--grid-scale))`,
-                    }}
+                    className="col-start-1 row-start-1 flex flex-col items-start gap-[calc(30px*var(--scale))]"
+                    style={{ width: CREDIT_COLUMN_WIDTH }}
                   >
-                    {column.map((row, ri) => (
-                      // Keyed by index, not `row.label` — see the invisible
-                      // sizer's own comment above for why (duplicate labels,
-                      // e.g. two "Front-end Developer" credits, aren't
-                      // unique). leading-[19px] — per direct follow-up
-                      // ("詳細のクレジットの<p>内の行間を21px→19pxにして"):
-                      // the gap comment above only covers the *between*-<p>
-                      // spacing; the *within*-<p> wrapped-line spacing (for
-                      // any value long enough to wrap to 2 lines inside one
-                      // <p>) had never been set at all, defaulting to the
-                      // browser/font's own "normal" leading (~21px at 14px)
-                      // — text-box-trim only trims a block's outer edges, not
-                      // spacing between its own wrapped lines, so it didn't
-                      // touch this. Now explicit, and 2px tighter than that
-                      // default per the same follow-up.
-                      <p key={ri} className="leading-[calc(19px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-                        <span className={headerDark ? "text-black/50" : "text-white/50"}>{row.label}: </span>
-                        {row.value}
-                      </p>
+                    {detail.creditColumns.slice(1).map((column, ci) => (
+                      <div key={ci} className="flex flex-col items-start gap-[calc(8px*var(--scale))]">
+                        {column.map((row, ri) => (
+                          <p
+                            key={ri}
+                            className="leading-[calc(19px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                          >
+                            {row.label}: {row.value}
+                          </p>
+                        ))}
+                      </div>
                     ))}
                   </div>
-                ))}
+                </div>
+                {/* Two absolutely-positioned groups, not one per column: the
+                   first credit column sits alone on the left
+                   (CREDIT_FIELD_LEFT_PX.creditCol1), and *every* column past
+                   it is stacked vertically inside one shared box on the right
+                   (creditCol2). Previously each column got its own
+                   `absolute top-0` box, so with only 2 columns it looked
+                   right by coincidence — but a third column landed at the
+                   exact same left/top as the second and simply drew on top of
+                   it. Stacking columns 2..n in one flow-laid-out wrapper is
+                   what makes 3+ columns (e.g. Satoyama Terrace) read as
+                   separate blocks running down the right-hand side.
+
+                   gap-[30px] between blocks vs. gap-[8px] between rows within
+                   a block (SP's own equivalent in
+                   components/mobile-project-detail.tsx uses 20px/8px; only
+                   the row gap is deliberately shared). The 8px row gap *is*
+                   the real line spacing here: this 14px text's own trim-both
+                   boxes have no natural leading left to widen. */}
+                <div
+                  className="absolute top-0 flex flex-col items-start gap-[calc(8px*var(--scale))]"
+                  style={{
+                    left: `calc(${CREDIT_FIELD_LEFT_PX.creditCol1}px * var(--grid-scale))`,
+                    width: CREDIT_COLUMN_WIDTH,
+                  }}
+                >
+                  {/* `?? []` — see the sizer's own note above. */}
+                  {(detail.creditColumns[0] ?? []).map((row, ri) => (
+                    // Keyed by index, not `row.label` — see the invisible
+                    // sizer's own comment above for why (duplicate labels,
+                    // e.g. two "Front-end Developer" credits, aren't unique).
+                    // leading-[19px]: the gap above only covers the
+                    // *between*-<p> spacing; the *within*-<p> wrapped-line
+                    // spacing (for any value long enough to wrap to 2 lines
+                    // inside one <p>) would otherwise default to the
+                    // browser/font's own "normal" leading (~21px at 14px) —
+                    // text-box-trim only trims a block's outer edges, not
+                    // spacing between its own wrapped lines, so it doesn't
+                    // touch this.
+                    <p key={ri} className="leading-[calc(19px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+                      <span className={headerDark ? "text-black/50" : "text-white/50"}>{row.label}: </span>
+                      {row.value}
+                    </p>
+                  ))}
+                </div>
+                {detail.creditColumns.length > 1 && (
+                  <div
+                    className="absolute top-0 flex flex-col items-start gap-[calc(30px*var(--scale))]"
+                    style={{
+                      left: `calc(${CREDIT_FIELD_LEFT_PX.creditCol2}px * var(--grid-scale))`,
+                      width: CREDIT_COLUMN_WIDTH,
+                    }}
+                  >
+                    {detail.creditColumns.slice(1).map((column, ci) => (
+                      <div key={ci} className="flex flex-col items-start gap-[calc(8px*var(--scale))]">
+                        {column.map((row, ri) => (
+                          <p
+                            key={ri}
+                            className="leading-[calc(19px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                          >
+                            <span className={headerDark ? "text-black/50" : "text-white/50"}>{row.label}: </span>
+                            {row.value}
+                          </p>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </>
@@ -1011,6 +1625,7 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
             role={next.role}
             date={next.date}
             image={nextThumb?.image}
+            imageSrcSet={nextThumb?.imageSrcSet}
             aspect={nextThumb?.aspect}
           />
 

@@ -48,11 +48,14 @@ const GLIDE_FINISH_EPSILON = 0.01;
  *  slots away) can't keep animating indefinitely. */
 const GLIDE_SAFETY_MAX_MS = 1500;
 /** How long with no user interaction (wheel/click) before the gallery
- *  auto-advances to the next image on its own — per explicit request
- *  ("切り替え秒数4秒にして", changed from an initial 2000ms). Runs
- *  indefinitely once the intro finishes, and resets every time the user
- *  actually scrolls or clicks, so it never fights manual control. */
-const AUTO_ADVANCE_MS = 4000;
+ *  auto-advances to the next image on its own — 2000ms initially, then
+ *  4000ms, now 5000ms. Runs indefinitely once the intro finishes, and resets
+ *  every time the user actually scrolls or clicks, so it never fights manual
+ *  control. Also drives the "01 - 10" counter's own gauge fill, which is
+ *  timed to finish exactly when the advance fires (see its own usage below),
+ *  so the two stay in sync automatically off this one value.
+ *  mobile-studies.tsx keeps its own copy of this number — change both. */
+const AUTO_ADVANCE_MS = 5000;
 
 /** Fixed page copy (left column). A single 5-line paragraph group — per
  *  explicit follow-up correction, the line break within "Where ideas are

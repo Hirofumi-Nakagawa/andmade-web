@@ -1,8 +1,31 @@
-import { getMicrocmsClient, microcmsImageUrl } from "@/lib/microcms";
+import { getMicrocmsClient, microcmsImageSrcSet, microcmsImageUrl } from "@/lib/microcms";
 
-/** The 4 aspect ratios allowed for the hover-preview background image (see app/page.tsx). */
-export type PreviewRatio = "portrait-3-2" | "landscape-3-2" | "portrait-3-4" | "landscape-8-5";
+/** The aspect ratios allowed for the hover-preview background image (see app/page.tsx). */
+export type PreviewRatio =
+  | "portrait-3-2"
+  | "landscape-3-2"
+  | "portrait-3-4"
+  | "landscape-8-5"
+  | "square-1-1";
 
+/** Every ratio a CMS entry may legitimately select — the validation allowlist
+ *  for `previewRatio` (see resolveSelect's use below). Deliberately separate
+ *  from PREVIEW_RATIO_CYCLE: the two used to be one array doing both jobs, so
+ *  adding a new ratio to the allowlist also silently shifted which default
+ *  every ratio-less project got (the cycle is indexed by list position), and
+ *  a ratio kept out of the cycle couldn't be selected at all. */
+export const PREVIEW_RATIOS: PreviewRatio[] = [
+  "portrait-3-2",
+  "landscape-3-2",
+  "portrait-3-4",
+  "landscape-8-5",
+  "square-1-1",
+];
+
+/** Default ratio assignment for projects with no `previewRatio` set, cycled
+ *  by list position. Intentionally still just the original 4 — "square-1-1"
+ *  is selectable but never auto-assigned, so adding it didn't reshuffle the
+ *  existing projects' own automatic ratios. */
 const PREVIEW_RATIO_CYCLE: PreviewRatio[] = [
   "portrait-3-2",
   "landscape-3-2",
@@ -20,6 +43,7 @@ export const PREVIEW_RATIO_ASPECT: Record<PreviewRatio, number> = {
   "landscape-3-2": 3 / 2,
   "portrait-3-4": 3 / 4,
   "landscape-8-5": 8 / 5,
+  "square-1-1": 1,
 };
 
 /**
@@ -32,6 +56,7 @@ export const PREVIEW_RATIO_IMAGE_SRC: Record<PreviewRatio, string> = {
   "landscape-3-2": "/images/previews/landscape-3-2.png",
   "portrait-3-4": "/images/previews/portrait-3-4.png",
   "landscape-8-5": "/images/previews/landscape-8-5.png",
+  "square-1-1": "/images/previews/square-1-1.png",
 };
 
 /**
@@ -44,7 +69,20 @@ export const PREVIEW_RATIO_IMAGE_SRC: Record<PreviewRatio, string> = {
  * size before any photo exists — swapping in `image` later doesn't change
  * the layout at all, just what's visibly inside it.
  */
-export type ProjectGalleryImage = { image?: string; aspect: number };
+/** `imageSrcSet` is the responsive companion to `image` — the same photo at
+ *  several widths, generated on demand by microCMS's image API (see
+ *  microcmsImageSrcSet). Only ever set for CMS-sourced images; consumers pass
+ *  it to an `<img srcset>` together with a `sizes` describing that block's
+ *  real rendered width, and fall back to plain `image` when it's undefined. */
+export type ProjectGalleryImage = {
+  image?: string;
+  imageSrcSet?: string;
+  aspect: number;
+  /** Optional line printed under the image — per direct follow-up ("イメージ
+   *  下にキャプション（PC:14px、SP:12px）を追加できるようにして"). Blank in
+   *  the CMS means no caption and no reserved space at all. */
+  caption?: string;
+};
 
 /**
  * A single-image gallery block's own width, per the general (not just
@@ -114,6 +152,9 @@ export type ProjectGalleryBlock =
        *  own doc comment), so this option only ever affects PC. */
       type: "twoColumn";
       width: ProjectGalleryWidth;
+      /** Only used by the "inset" layout, like the single-image block's own
+       *  — see that variant's `backgroundColor`. */
+      backgroundColor?: string;
       images: [ProjectGalleryImage, ProjectGalleryImage];
     }
   // "idea"/"outcome" are two separate union members (not one member typed
@@ -142,6 +183,26 @@ export type ProjectGalleryBlock =
       caption: string;
       ja: string[];
       en: string[];
+    }
+  | {
+      /** A free text block — per direct follow-up ("実績詳細ページにフリー
+       *  テキストエリアを新たに作る"). Unlike "idea"/"outcome" this has no
+       *  fixed caption and no JA/EN pairing rule: the heading is whatever the
+       *  editor types (or nothing), and the body is a single set of
+       *  paragraphs. Blank lines separate paragraphs and single newlines are
+       *  preserved, same as every other textarea on this page. */
+      type: "text";
+      /** Rendered in the left caption column, like "(Overview)". Optional. */
+      caption?: string;
+      /** The Japanese half — everything before the first *blank* line. */
+      body: string[];
+      /** Everything after it, rendered beside the Japanese in the smaller
+       *  Latin style — per two direct follow-ups ("改行のあとに入れる英文の
+       *  フォントは「akzidenz-grotesk-next 400」にして、14px, 行間17px、透過
+       *  0.5にして", then "2回目の改行で2つに分けるようにして、左日本語（14
+       *  マス分）、右英語（9マス分）の1列で表示するようにして"). Empty when
+       *  the editor wrote no second part. */
+      bodyEn: string[];
     };
 
 /**
@@ -241,6 +302,9 @@ export type Project = {
    *  getProjectImageSrc() below falls back to the shared PREVIEW_RATIO_IMAGE_SRC
    *  sample for this project's previewRatio. */
   imageSrc?: string;
+  /** Responsive companion to `imageSrc` — see ProjectGalleryImage's own
+   *  `imageSrcSet` doc comment. Undefined for placeholder projects. */
+  imageSrcSet?: string;
   /** This project's own color, used for the Th-mode thumbnail color-wipe
    *  reveal (getProjectColor() below) — read directly from that same
    *  project's `dtlBgColor` microCMS field (its detail page's own background
@@ -280,6 +344,15 @@ export type Project = {
  *  picks up real images as they get uploaded in microCMS. */
 export function getProjectImageSrc(project: Project): string {
   return project.imageSrc ?? PREVIEW_RATIO_IMAGE_SRC[project.previewRatio];
+}
+
+/** Responsive companion to getProjectImageSrc() — `undefined` whenever this
+ *  project falls back to a bundled placeholder sample, since those are local
+ *  /public paths that microCMS's image API can't resize. Consumers pass it
+ *  straight to `<img srcset>`; an undefined value just means the browser
+ *  uses `src` alone, exactly as before. */
+export function getProjectImageSrcSet(project: Project): string | undefined {
+  return project.imageSrcSet;
 }
 
 /** Cycled by index for projects with no real `detail.backgroundColor` of
@@ -433,7 +506,26 @@ type GalleryRepeatItem = {
    *  see buildGalleryFromCms()'s own handling of those two fieldIds. */
   ja?: string;
   en?: string;
+  /** `galleryText` custom field: a free heading + body. `caption` is also
+   *  read on `galleryImage`/`galleryTwoCol` as each image's own caption. */
+  caption?: string;
+  caption2?: string;
+  body?: string;
+  /** Per-block background colour for "inset"/"insetSmall" widths — per
+   *  direct follow-up ("insetを選択した際、背景色を選べるようにしたい").
+   *  Blank falls back to the project's own dtlBgColor, which is what every
+   *  inset block did unconditionally before. */
+  bgColor?: string;
 };
+
+/** Normalises a CMS colour text field — trimmed, `#` prefixed when the
+ *  editor typed a bare hex. Returns undefined for anything blank so callers
+ *  can `??` straight through to their own default. */
+function resolveColor(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  return /^[0-9a-f]{3,8}$/i.test(trimmed) ? `#${trimmed}` : trimmed;
+}
 
 /** Builds ProjectDetail.gallery from `dtlGallery`, a real microCMS repeat
  *  field, replacing the earlier "12 numbered
@@ -479,6 +571,28 @@ function buildGalleryFromCms(items: GalleryRepeatItem[] | undefined): ProjectGal
       continue;
     }
 
+    if (item.fieldId === "galleryText") {
+      // Only the body is required — a heading-less block is a legitimate
+      // "just some prose here" case, but an empty body would render as a
+      // stray heading floating in the layout.
+      // Split on the first BLANK line — i.e. the editor presses Enter twice
+      // (per "2回目の改行で2つに分けるようにして"), which is also exactly
+      // what splitParagraphs already treats as a paragraph break: the first
+      // paragraph is the Japanese column, everything after it is the English
+      // one. Single newlines inside either half stay as line breaks.
+      const paragraphs = splitParagraphs(item.body);
+      const body = paragraphs.slice(0, 1);
+      const bodyEn = paragraphs.slice(1);
+      if (body.length === 0 && bodyEn.length === 0) continue;
+      blocks.push({
+        type: "text",
+        caption: item.caption?.trim() || undefined,
+        body,
+        bodyEn,
+      });
+      continue;
+    }
+
     const width = resolveSelect(item.width, GALLERY_WIDTHS, "content");
 
     if (item.fieldId === "galleryTwoCol") {
@@ -488,9 +602,22 @@ function buildGalleryFromCms(items: GalleryRepeatItem[] | undefined): ProjectGal
       blocks.push({
         type: "twoColumn",
         width,
+        backgroundColor: resolveColor(item.bgColor),
         images: [
-          { image: microcmsImageUrl(image1.url), aspect: image1.width / image1.height },
-          { image: microcmsImageUrl(image2.url), aspect: image2.width / image2.height },
+          {
+            image: microcmsImageUrl(image1.url),
+            imageSrcSet: microcmsImageSrcSet(image1.url),
+            aspect: image1.width / image1.height,
+            caption: item.caption?.trim() || undefined,
+          },
+          {
+            image: microcmsImageUrl(image2.url),
+            imageSrcSet: microcmsImageSrcSet(image2.url),
+            aspect: image2.width / image2.height,
+            // Second image gets its own caption field, so a pair can be
+            // labelled independently.
+            caption: item.caption2?.trim() || undefined,
+          },
         ],
       });
       continue;
@@ -512,6 +639,7 @@ function buildGalleryFromCms(items: GalleryRepeatItem[] | undefined): ProjectGal
       blocks.push({
         type: "video",
         width,
+        backgroundColor: resolveColor(item.bgColor),
         src: videoUrl,
         poster: poster ? microcmsImageUrl(poster.url) : undefined,
         // 16:9 fallback — a plain URL text field carries no width/height
@@ -528,8 +656,11 @@ function buildGalleryFromCms(items: GalleryRepeatItem[] | undefined): ProjectGal
       blocks.push({
         type: "image",
         width,
+        backgroundColor: resolveColor(item.bgColor),
         image: microcmsImageUrl(image.url),
+        imageSrcSet: microcmsImageSrcSet(image.url),
         aspect: image.width / image.height,
+        caption: item.caption?.trim() || undefined,
       });
     }
   }
@@ -708,11 +839,13 @@ function buildProjectDetail(content: ProjectCmsContent): ProjectDetail | undefin
     hero: {
       pc: {
         image: microcmsImageUrl(heroPc.url),
+        imageSrcSet: microcmsImageSrcSet(heroPc.url),
         aspect: heroPc.width / heroPc.height,
         mask: heroPcMask ? microcmsImageUrl(heroPcMask.url) : undefined,
       },
       sp: {
         image: microcmsImageUrl(heroSp.url),
+        imageSrcSet: microcmsImageSrcSet(heroSp.url),
         aspect: heroSp.width / heroSp.height,
         mask: heroSpMask ? microcmsImageUrl(heroSpMask.url) : undefined,
       },
@@ -751,12 +884,12 @@ function buildProjectDetail(content: ProjectCmsContent): ProjectDetail | undefin
  *   - `date` (text field, required) — typed exactly as it should display,
  *     e.g. "May.2026" (see ProjectCmsContent's own `date` doc comment for why
  *     this is a plain typed field, not microCMS's own publishedAt).
- *   - `previewRatio` (select field, single-select, optional) — exactly 4
+ *   - `previewRatio` (select field, single-select, optional) — exactly 5
  *     options: "portrait-3-2", "landscape-3-2", "portrait-3-4",
- *     "landscape-8-5" (matching is case-insensitive — see resolveSelect's
- *     own doc comment — but spelling/hyphens still need to match). Controls
- *     the thumbnail's aspect ratio. Leave unset to keep the automatic
- *     index-cycled default.
+ *     "landscape-8-5", "square-1-1" (matching is case-insensitive — see
+ *     resolveSelect's own doc comment — but spelling/hyphens still need to
+ *     match). Controls the thumbnail's aspect ratio. Leave unset to keep the
+ *     automatic index-cycled default, which never picks "square-1-1".
  *   - `image` (image field, optional) — the real thumbnail shown in Th/Img
  *     view and the hover preview; should match its own previewRatio's
  *     aspect (e.g. a "portrait-3-2" image should be cropped/uploaded at a
@@ -794,11 +927,14 @@ export async function getProjects(): Promise<Project[]> {
       role: content.role,
       date: content.date,
       previewRatio: resolveSelect(
+        // Allowlist is every ratio (PREVIEW_RATIOS); the *fallback* is drawn
+        // from the narrower cycle — see those two constants' own comments.
         content.previewRatio,
-        PREVIEW_RATIO_CYCLE,
+        PREVIEW_RATIOS,
         PREVIEW_RATIO_CYCLE[index % PREVIEW_RATIO_CYCLE.length]
       ),
       imageSrc: content.image ? microcmsImageUrl(content.image.url) : undefined,
+      imageSrcSet: content.image ? microcmsImageSrcSet(content.image.url) : undefined,
       color: content.dtlBgColor?.trim() || undefined,
       detail: buildProjectDetail(content),
     }));

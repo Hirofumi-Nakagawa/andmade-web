@@ -1,5 +1,7 @@
 "use client";
 
+import { PC_PREVIEW_SIZES, previewSrcSet } from "@/lib/preview-image";
+
 import { useEffect, useState } from "react";
 
 /**
@@ -28,6 +30,9 @@ export type HoverPreviewEntry = {
   key: string;
   rect: HoverPreviewRect;
   imageSrc: string;
+  /** Responsive candidates for `imageSrc` (lib/projects.ts's own
+   *  getProjectImageSrcSet) — undefined for placeholder projects. */
+  imageSrcSet?: string;
 };
 
 type ProjectHoverPreviewProps = {
@@ -144,6 +149,16 @@ function HoverPreviewImage({ entry, isCurrent, released }: HoverPreviewImageProp
       {/* eslint-disable-next-line @next/next/no-img-element -- dynamically sized/positioned, see app/page.tsx */}
       <img
         src={entry.imageSrc}
+        srcSet={previewSrcSet(entry.imageSrcSet)}
+        // Was sizes="100vw" with the reasoning "never exceeds the window, so
+        // the viewport width is the correct upper bound" — true, but a loose
+        // upper bound is exactly what `sizes` shouldn't be: the browser
+        // multiplies it by the screen's DPR to choose a candidate, so
+        // over-claiming by 20% over-fetches on every hover. The real ceiling
+        // is 20 of the 24 grid columns, i.e. PC_PREVIEW_SIZES — see that
+        // constant for the derivation, and previewSrcSet for the separate
+        // resolution cap.
+        sizes={PC_PREVIEW_SIZES}
         alt=""
         onLoad={() => setImageLoaded(true)}
         className={`h-full w-full object-cover transition-opacity duration-300 ease-out ${imageLoaded ? "opacity-100" : "opacity-0"}`}

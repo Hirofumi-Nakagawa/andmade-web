@@ -1,0 +1,83 @@
+# ANDMADE — さくらのレンタルサーバー用 Apache 設定
+# ============================================================================
+# next.config.ts の `output: "export"` で書き出した out/ をそのまま公開領域
+# (/home/<アカウント>/www) に置いた前提。public/ 配下にあるので `next build`
+# の出力に自動でコピーされる。
+#
+# ※ さくらの標準環境は Apache + mod_rewrite が有効。もし 500 エラーになる
+#   場合は、その環境で無効なディレクティブ(Header / AddOutputFilterByType 等)
+#   をコメントアウトして切り分けること。
+
+# ---------------------------------------------------------------------------
+# 1. 拡張子なしURL → .html
+# ---------------------------------------------------------------------------
+# 静的書き出しでは /about は out/about.html というファイルになる。一方この
+# サイトの正規URLは全てスラッシュ無し・拡張子無し(/about, /projects/xxx)なので、
+# 実ファイルが無いリクエストに .html を補って解決する。
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 既に存在するファイル/ディレクトリはそのまま(画像・JS・CSS・PHP など)
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # /about → /about.html （対応する .html がある場合のみ）
+  RewriteCond %{REQUEST_FILENAME}.html -f
+  RewriteRule ^(.*)$ $1.html [L]
+
+  # どれにも当たらなければ 404 ページ（Next が out/404.html を書き出す）
+  RewriteRule ^ /404.html [L]
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# 2. エラーページ
+# ---------------------------------------------------------------------------
+# app/not-found.tsx から書き出される 404.html を使う。
+ErrorDocument 404 /404.html
+
+# ---------------------------------------------------------------------------
+# 3. キャッシュ
+# ---------------------------------------------------------------------------
+# Next のビルド成果物(/_next/static/...)はファイル名にハッシュが入るので、
+# 内容が変われば必ずURLも変わる = 長期キャッシュしても古いものが残らない。
+# HTML はビルドのたびに同じURLで中身が変わるので、キャッシュさせない。
+<IfModule mod_expires.c>
+  ExpiresActive On
+
+  # ハッシュ付きアセット: 1年
+  <FilesMatch "\.(js|css|woff2|woff|ttf|otf)$">
+    ExpiresDefault "access plus 1 year"
+  </FilesMatch>
+
+  # 画像・動画: 30日（public/ 配下の実ファイルはハッシュが付かないため控えめ）
+  <FilesMatch "\.(jpg|jpeg|png|gif|webp|avif|svg|ico|mp4|webm)$">
+    ExpiresDefault "access plus 30 days"
+  </FilesMatch>
+
+  # HTML: 都度確認
+  <FilesMatch "\.html$">
+    ExpiresDefault "access plus 0 seconds"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.html$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# 4. 圧縮
+# ---------------------------------------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml
+  AddOutputFilterByType DEFLATE application/javascript application/json
+  AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# 5. 文字コード
+# ---------------------------------------------------------------------------
+AddDefaultCharset UTF-8
+AddType text/plain .txt

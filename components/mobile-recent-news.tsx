@@ -4,6 +4,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { NewsItem } from "@/lib/news";
 
 type MobileRecentNewsProps = {
+  /** The announcements to show — resolved at build time (app/page.tsx's own
+   *  getRecentNews()) and threaded down, mirroring PC's own recent-news.tsx.
+   *  Used to be a client-side /api/news fetch; that Route Handler can't
+   *  exist in a static export (see next.config.ts's own `output: "export"`). */
+  items: NewsItem[];
   /** Mirrors mobile-home.tsx's own railRevealed — this reveals together with
    *  the Tx/Th rail it sits alongside, gated additionally by this
    *  component's own async data/measurement readiness (see the
@@ -49,8 +54,7 @@ type MobileRecentNewsProps = {
  * VerticalLabel switched to; see that component's own doc comment for the
  * full geometric reasoning.
  */
-export function MobileRecentNews({ revealed, topPx, hidden = false }: MobileRecentNewsProps) {
-  const [items, setItems] = useState<NewsItem[]>([]);
+export function MobileRecentNews({ items, revealed, topPx, hidden = false }: MobileRecentNewsProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentSize, setContentSize] = useState<{ width: number; height: number } | null>(null);
 
@@ -58,8 +62,8 @@ export function MobileRecentNews({ revealed, topPx, hidden = false }: MobileRece
   // trigger the slide+fade — per direct follow-up ("PC,SPともにお知らせも
   // 下からスライド+フェードインで表示が反映されてない"): `revealed`
   // (mobile-home.tsx's own railRevealed) flips true almost immediately on
-  // mount, typically *before* this component's own async /api/news fetch +
-  // ResizeObserver measurement resolve `contentSize` and flip `visibility`
+  // mount, typically *before* this component's own async ResizeObserver
+  // measurement resolves `contentSize` and flips `visibility`
   // from "hidden" to "visible" below. So by the moment this actually first
   // becomes visible, the translate-y/opacity classes were already sitting
   // at their "revealed" end state with nothing left to transition from —
@@ -74,25 +78,6 @@ export function MobileRecentNews({ revealed, topPx, hidden = false }: MobileRece
     const frame = requestAnimationFrame(() => setContentRevealed(true));
     return () => cancelAnimationFrame(frame);
   }, [revealed, contentSize]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const response = await fetch("/api/news", { cache: "no-store" });
-        const data: NewsItem[] = await response.json();
-        if (!cancelled) setItems(data);
-      } catch {
-        if (!cancelled) setItems([]);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // The ResizeObserver callback defers its own setContentSize to the next
   // animation frame rather than calling it synchronously — per direct

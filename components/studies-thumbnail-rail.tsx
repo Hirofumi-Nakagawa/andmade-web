@@ -89,6 +89,13 @@ type StudiesThumbnailRailProps = {
  * than hardcoded, since it scales with `--scale` and that scale factor isn't
  * something plain JS can read out of a CSS calc() expression directly.
  */
+/** `sizes` for this rail's thumbnails — the box is 82px wide at the 1440px
+ *  reference, growing with `--grid-scale` (so ~146px on a very wide monitor).
+ *  Stating that directly keeps the browser from assuming the `100vw` default
+ *  and pulling a multi-thousand-pixel candidate for an 82px box, which is
+ *  what it did before `srcSet` existed here at all. */
+const THUMB_SIZES = "146px";
+
 export function StudiesThumbnailRail({ studies, position, onSelect }: StudiesThumbnailRailProps) {
   const firstItemRef = useRef<HTMLButtonElement>(null);
   const [itemHeight, setItemHeight] = useState(0);
@@ -181,7 +188,13 @@ export function StudiesThumbnailRail({ studies, position, onSelect }: StudiesThu
                 style={{ opacity: isActive ? 1 : 0.4, filter: isActive ? "none" : "grayscale(1)" }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- fixed-position box, fluidly sized via --scale/--grid-scale calc(), same reasoning as project-hover-preview.tsx's own plain <img>. */}
-                <img src={study.imageSrc} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={study.imageSrc}
+                  srcSet={study.imageSrcSet}
+                  sizes={THUMB_SIZES}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
               </div>
 
               {/* Hover reveal — per explicit spec ("サムネホバーで、サムネ
@@ -200,7 +213,13 @@ export function StudiesThumbnailRail({ studies, position, onSelect }: StudiesThu
                 className="pointer-events-none absolute inset-0 [clip-path:inset(50%)] transition-[clip-path] duration-300 ease-out group-hover:[clip-path:inset(0%)]"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- see the base image's own comment above. */}
-                <img src={study.imageSrc} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={study.imageSrc}
+                  srcSet={study.imageSrcSet}
+                  sizes={THUMB_SIZES}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
               </div>
             </button>
           );

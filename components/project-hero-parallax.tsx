@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
 
@@ -65,12 +64,16 @@ const STOP_AT_VIEWPORT_FRACTION = 0;
  */
 export function ProjectHeroParallax({
   image,
+  imageSrcSet,
   aspect,
   mask,
   alt = "",
   fluid = true,
 }: {
   image?: string;
+  /** Responsive candidates for `image` (lib/projects.ts's own
+   *  ProjectGalleryImage.imageSrcSet). */
+  imageSrcSet?: string;
   aspect: number;
   mask?: string;
   alt?: string;
@@ -115,13 +118,26 @@ export function ProjectHeroParallax({
   // had already finished sliding/fading in against its own transparent/gray
   // background, then the photo would simply pop in the instant it decoded —
   // exactly the "パッと表示" this asks to avoid. `imageLoaded` tracks the
-  // `<Image>`'s own real `onLoad` instead, independent of `revealed`, so the
+  // <img>'s own real `onLoad` instead, independent of `revealed`, so the
   // photo gets its own opacity fade in whenever it actually finishes loading,
   // whether that's immediate (already cached) or delayed.
+  //
+  // The effect below reads `.complete` rather than relying on `onLoad` alone,
+  // which is load-bearing on a plain <img>: the browser starts fetching from
+  // the server-rendered markup immediately, so on a reload (image already in
+  // cache) the load finishes *before* React hydrates and attaches its own
+  // onLoad handler — that event is then simply never seen, `imageLoaded`
+  // stays false forever, and the photo sits at opacity-0 permanently. This
+  // didn't happen while this was a next/image, which handles the
+  // already-complete case internally. Same `.complete` check
+  // mobile-home.tsx's own PreviewImage already uses for the same reason.
+  const imgRef = useRef<HTMLImageElement>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- resets the fade whenever `image` itself changes to a different source (this component instance persisting across a different photo) rather than staying permanently true from a previous photo's own load.
-    setImageLoaded(false);
+    const el = imgRef.current;
+    // Also resets the fade whenever `image` itself changes to a different
+    // source, rather than staying true from the previous photo's own load.
+    setImageLoaded(el?.complete === true && el.naturalWidth > 0);
   }, [image]);
 
   useEffect(() => {
@@ -157,18 +173,15 @@ export function ProjectHeroParallax({
   return (
     <div
       ref={containerRef}
-      // bg-[#d9d9d9] only while no real photo is set yet (the placeholder
-      // state) — per direct follow-up ("詳細ページで透過の画像を登録したら、
-      // 透過部分がグレーになってるので、画像の背景色は設定しない限り、色は
-      // なしにして"): once a real (possibly transparent-PNG) photo exists,
-      // this box no longer forces a gray fill behind it, so transparent
-      // areas actually show through to whatever's behind instead of reading
-      // as opaque gray.
+      // No background fill at all — not behind a real photo (where it would
+      // show through a transparent PNG's own transparent areas and read as
+      // opaque gray) and not as a stand-in while no photo is set yet, where
+      // the box now simply renders empty instead of as a gray rectangle.
       // transition-all/translate-y/opacity — this box's own slide-in +
       // fade-in entrance, see `revealed`'s own doc comment above.
       className={`relative w-full overflow-hidden transition-all duration-500 ease-out ${
         revealed ? "translate-y-0 opacity-100" : "translate-y-[24px] opacity-0"
-      } ${image ? "" : "bg-[#d9d9d9]"}`}
+      }`}
       style={{
         aspectRatio: aspect * HERO_HEIGHT_SHRINK,
         ...(mask
@@ -190,14 +203,24 @@ export function ProjectHeroParallax({
             transform: `translateY(${parallaxY}px)`,
           }}
         >
-          <Image
+          {/* A plain <img>, not next/image. Every CMS URL is `http`-prefixed,
+             so the previous `unoptimized={image.startsWith("http")}` meant
+             next/image was bypassed for *all* real content anyway — it
+             generated no srcset and simply passed the one fixed 2560px-wide
+             URL straight through. Going to a plain <img> with microCMS's own
+             responsive candidates gives the browser a real choice of sizes
+             instead, at no build/serving cost (microCMS generates each width
+             on demand). `absolute inset-0 h-full w-full` reproduces exactly
+             what next/image's own `fill` was doing. */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
+          <img
+            ref={imgRef}
             src={image}
-            alt={alt}
-            fill
+            srcSet={imageSrcSet}
             sizes="100vw"
-            unoptimized={image.startsWith("http")}
+            alt={alt}
             onLoad={() => setImageLoaded(true)}
-            className={`object-cover transition-opacity duration-500 ease-out ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ease-out ${imageLoaded ? "opacity-100" : "opacity-0"}`}
           />
         </div>
       )}

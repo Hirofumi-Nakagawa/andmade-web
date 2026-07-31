@@ -144,12 +144,28 @@ export type MediaItem = { text: string; linked?: boolean; href?: string };
 
 export const MEDIA_COL_1: MediaItem[] = [
   { text: "The Art Director's Guide to Design", linked: true },
-  { text: "iDID Works Interview", linked: true },
-  { text: "MdN Designers File 2026", linked: true },
-  { text: "Rough Sketch of Art Director & Desginer 250", linked: true },
+  {
+    text: "iDID Works Interview",
+    linked: true,
+    href: "https://idid.team/articles/interview/creator-interview-works003/",
+  },
+  {
+    text: "MdN Designers File 2026",
+    linked: true,
+    href: "https://books.mdn.co.jp/books/3225303036/",
+  },
+  {
+    text: "Rough Sketch of Art Director & Desginer 250",
+    linked: true,
+    href: "https://books.mdn.co.jp/books/3225303024/",
+  },
 ];
 export const MEDIA_COL_2: MediaItem[] = [
-  { text: "MdN Designers File 2025", linked: true },
+  {
+    text: "MdN Designers File 2025",
+    linked: true,
+    href: "https://books.mdn.co.jp/books/3224303039/",
+  },
   { text: "Web Designing" },
   { text: "Brain" },
 ];

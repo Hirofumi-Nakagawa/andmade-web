@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useLenis } from "lenis/react";
 import { ScrambleText } from "@/components/scramble-text";
 import { ProjectHeroParallax } from "@/components/project-hero-parallax";
 import { ProjectDetailReveal } from "@/components/project-detail-reveal";
+import { StatusBarMaskColor } from "@/components/status-bar-mask";
 import { setFooterReady as broadcastFooterReady } from "@/lib/footer-mode-store";
 import { setLightMenuPill } from "@/lib/menu-theme-store";
 import { useNowPlaying } from "@/components/now-playing-provider";
@@ -86,6 +86,7 @@ function paragraphTrimClass(index: number, length: number) {
  *  comment (temporary, non-allow-listed Figma CDN preview URLs). */
 function MobileGalleryImage({
   image,
+  imageSrcSet,
   aspect,
   mask,
   alt = "",
@@ -93,12 +94,10 @@ function MobileGalleryImage({
 }: ProjectGalleryImage & { alt?: string; mask?: string; sizes?: string }) {
   return (
     <div
-      // bg-[#d9d9d9] only while no real photo is set yet — per direct
-      // follow-up ("詳細ページで透過の画像を登録したら、透過部分がグレーに
-      // なってるので、画像の背景色は設定しない限り、色はなしにして"): once a
-      // real (possibly transparent-PNG) photo exists, this box no longer
-      // forces a gray fill behind it.
-      className={`relative w-full overflow-hidden ${image ? "" : "bg-[#d9d9d9]"}`}
+      // No background fill — neither behind a real photo (which would show
+      // through a transparent PNG's own transparent areas) nor as a
+      // stand-in while none is set yet.
+      className="relative w-full overflow-hidden"
       style={{
         aspectRatio: aspect,
         ...(mask
@@ -107,24 +106,32 @@ function MobileGalleryImage({
       }}
     >
       {image && (
-        <Image
-          src={image}
-          alt={alt}
-          fill
-          sizes={sizes}
-          unoptimized={image.startsWith("http")}
-          className="object-cover"
-        />
+        <>
+      {/* Plain <img>, not next/image: every CMS URL is `http`-prefixed, so the
+         previous `unoptimized={image.startsWith("http")}` bypassed next/image
+         for all real content anyway — no srcset was generated, just the one
+         fixed 2560px-wide URL passed through. microCMS's own responsive
+         candidates (`imageSrcSet`) give the browser a real choice of sizes at
+         no build or serving cost. `absolute inset-0 h-full w-full` reproduces
+         what next/image's `fill` was doing. */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
+          <img
+            src={image}
+            srcSet={imageSrcSet}
+            sizes={sizes}
+            alt={alt}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        </>
       )}
     </div>
   );
 }
 
-/** SP counterpart of GalleryVideo — same gray-placeholder-until-a-real-`src`
- *  behavior. */
+/** SP counterpart of GalleryVideo — same no-fill behavior. */
 function MobileGalleryVideo({ src, poster, aspect }: { src?: string; poster?: string; aspect: number }) {
   return (
-    <div className={`relative w-full overflow-hidden ${src ? "" : "bg-[#d9d9d9]"}`} style={{ aspectRatio: aspect }}>
+    <div className="relative w-full overflow-hidden" style={{ aspectRatio: aspect }}>
       {src && (
         <video
           src={src}
@@ -169,12 +176,37 @@ function MobileGalleryVideo({ src, poster, aspect }: { src?: string; poster?: st
  *    intentionally ignored here; SP always renders this same stacked layout
  *    regardless of it.
  */
-function MobileGalleryBlockView({ block }: { block: Exclude<ProjectGalleryBlock, { type: "idea" } | { type: "outcome" }> }) {
+/** Caption under a gallery image — 12px on SP against PC's 14px, per direct
+ *  follow-up ("イメージ下にキャプション（PC:14px、SP:12px）"). Renders
+ *  nothing when the CMS field is blank. */
+function MobileGalleryCaption({ caption, dark }: { caption?: string; dark?: boolean }) {
+  if (!caption) return null;
+  return (
+    <p
+      className={`mt-[10px] text-[12px] leading-[1.5] whitespace-pre-line [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+        dark ? "text-black/50" : "text-white/50"
+      }`}
+    >
+      {caption}
+    </p>
+  );
+}
+
+function MobileGalleryBlockView({
+  block,
+  dark = false,
+}: {
+  block: Exclude<ProjectGalleryBlock, { type: "idea" } | { type: "outcome" } | { type: "text" }>;
+  dark?: boolean;
+}) {
   if (block.type === "twoColumn") {
     return (
       <div className="flex w-full flex-col items-stretch gap-[10px]" style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>
         {block.images.map((image, i) => (
-          <MobileGalleryImage key={i} {...image} />
+          <div key={i}>
+            <MobileGalleryImage {...image} />
+            <MobileGalleryCaption caption={image.caption} dark={dark} />
+          </div>
         ))}
       </div>
     );
@@ -187,7 +219,20 @@ function MobileGalleryBlockView({ block }: { block: Exclude<ProjectGalleryBlock,
       <MobileGalleryImage image={block.image} aspect={block.aspect} />
     );
 
-  if (block.width === "full") return media;
+  // A full-bleed image still gets its caption inset to the page's own side
+  // margin, so it lines up with the surrounding text rather than touching
+  // the screen edge.
+  if (block.width === "full") {
+    if (block.type !== "image" || !block.caption) return media;
+    return (
+      <div>
+        {media}
+        <div style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>
+          <MobileGalleryCaption caption={block.caption} dark={dark} />
+        </div>
+      </div>
+    );
+  }
 
   // "content" and "inset" now share the exact same SP treatment — plain
   // side padding at SIDE_ML, no background box — per direct follow-up
@@ -195,7 +240,85 @@ function MobileGalleryBlockView({ block }: { block: Exclude<ProjectGalleryBlock,
   // して"). PC's own separate padded/background-colored "inset" box only
   // applies there; see GalleryMediaBlock's own doc comment (app/projects/
   // [slug]/page.tsx).
-  return <div style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>{media}</div>;
+  return (
+    <div style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>
+      {media}
+      {block.type === "image" && <MobileGalleryCaption caption={block.caption} dark={dark} />}
+    </div>
+  );
+}
+
+/**
+ * SP counterpart of PC's own TextBlock (app/projects/[slug]/page.tsx) — the
+ * free text block from "実績詳細ページにフリーテキストエリアを新たに作る".
+ * Stacks its optional heading above the body, same "SP stacks what PC puts
+ * side by side" convention as MobileBilingualSection below.
+ */
+function MobileTextBlock({
+  caption,
+  body,
+  bodyEn,
+  dark = false,
+}: {
+  caption?: string;
+  body: string[];
+  bodyEn: string[];
+  dark?: boolean;
+}) {
+  return (
+    // py-[60px] — matches PC's own 60px, per direct follow-up ("フリーテキスト
+    // の上下マージンは60pxに"); was 70px, inherited from
+    // MobileBilingualSection's own rhythm.
+    <div className="flex w-full flex-col items-start gap-[40px] py-[60px]" style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>
+      {caption ? (
+        <p
+          className={`font-(family-name:--font-courier) text-[12px] leading-[1.5] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+            dark ? "text-black/50" : "text-white/50"
+          }`}
+          style={{ letterSpacing: -0.6 }}
+        >
+          {caption}
+        </p>
+      ) : null}
+      {/* JA と EN を gap-[30px] の入れ子にまとめる — per direct follow-up
+         ("SPの実績詳細のフリーテキストの日本語と英語のマージンをoverviewと
+         同じにして"): MobileBilingualSection (Overview/Idea/Outcome) は
+         caption→本文が 40px、JA→EN が 30px という2段構成で、ここは全要素が
+         同じ 40px の一列だった。入れ子にすることで caption→JA は外側の
+         40px のまま、JA→EN だけ 30px になり Overview と一致する。 */}
+      <div className="flex w-full flex-col items-start gap-[30px]">
+        {body.length > 0 && (
+          <div
+            className={`w-full text-justify font-(family-name:--font-gen-interface-jp) text-[15px] leading-[1.6] tracking-[0.45px] ${
+              dark ? "text-black" : "text-white"
+            }`}
+            style={SS09}
+          >
+            {body.map((paragraph, i) => (
+              <p key={paragraph} className={`mb-[1lh] whitespace-pre-line last:mb-0 ${paragraphTrimClass(i, body.length)}`}>
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        )}
+        {/* Same Latin treatment as PC's own TextBlock — 14px / 16px / 50%,
+           Akzidenz Grotesk Next 400 — at SP's literal pixel sizes. */}
+        {bodyEn.length > 0 && (
+          <div
+            className={`w-full font-(family-name:--font-sans) font-normal text-[14px] leading-[16px] ${
+              dark ? "text-black/50" : "text-white/50"
+            }`}
+          >
+            {bodyEn.map((paragraph, i) => (
+              <p key={paragraph} className={`mb-[1lh] whitespace-pre-line last:mb-0 ${paragraphTrimClass(i, bodyEn.length)}`}>
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -214,6 +337,23 @@ function MobileGalleryBlockView({ block }: { block: Exclude<ProjectGalleryBlock,
  * this component can tell) — reproduced here as literal per-instance
  * overrides rather than silently normalizing them to one shared value.
  */
+/** Newline handling for the CMS textareas rendered here, so that what an
+ *  editor types is what they get:
+ *    - one newline  -> a line break, via `whitespace-pre-line` on each <p>.
+ *      splitParagraphs() (lib/projects.ts) only splits on *blank* lines, so
+ *      single newlines survive into these strings; HTML would otherwise
+ *      collapse them into ordinary spaces. `pre-line` (not `pre`/`pre-wrap`)
+ *      is the right variant — it honours newlines while still collapsing runs
+ *      of spaces and wrapping long lines normally, so stray indentation in
+ *      the CMS doesn't leak into the layout.
+ *    - a blank line -> one empty line, via `mb-[1lh]` on every paragraph but
+ *      the last. Consecutive blocks with no margin already sit exactly one
+ *      line apart, so adding a further whole line-height puts two lines
+ *      between baselines, i.e. one visibly empty line. The `lh` unit resolves
+ *      against this element's own computed line-height, so it stays exact at
+ *      every breakpoint without restating any leading value here.
+ *  Applies to Overview, (Idea) and (Outcome) alike, since all three render
+ *  through this same component. */
 function MobileBilingualSection({
   caption,
   ja,
@@ -251,14 +391,14 @@ function MobileBilingualSection({
           style={SS09}
         >
           {ja.map((paragraph, i) => (
-            <p key={paragraph} className={`mb-0 last:mb-0 ${paragraphTrimClass(i, ja.length)}`}>
+            <p key={paragraph} className={`mb-[1lh] whitespace-pre-line last:mb-0 ${paragraphTrimClass(i, ja.length)}`}>
               {paragraph}
             </p>
           ))}
         </div>
-        <div className={`w-full text-[14px] leading-[1.2] ${dark ? "text-black/50" : "text-white/50"}`}>
+        <div className={`w-full text-[14px] leading-[16px] ${dark ? "text-black/50" : "text-white/50"}`}>
           {en.map((paragraph, i) => (
-            <p key={paragraph} className={`mb-0 last:mb-0 ${paragraphTrimClass(i, en.length)}`}>
+            <p key={paragraph} className={`mb-[1lh] whitespace-pre-line last:mb-0 ${paragraphTrimClass(i, en.length)}`}>
               {paragraph}
             </p>
           ))}
@@ -328,7 +468,7 @@ export function MobileProjectDetail({
   // gallery image, not its hero/KV — per direct follow-up ("next projectの
   // グレー画像箇所に次の実績イメージを表示する（hero画像じゃなくてギャラ
   // リー画像の1枚目を表示する")), same PC/SP-shared change as page.tsx's own
-  // nextThumb. Falls back to the plain gray placeholder box if that project
+  // nextThumb. Falls back to the plain empty box if that project
   // has no detail yet, or its first "image" block hasn't had a real photo
   // uploaded yet either.
   const nextThumb = next.detail?.gallery.find(
@@ -379,6 +519,11 @@ export function MobileProjectDetail({
   return (
     <ProjectDetailReveal
       backgroundColor={backgroundColor}
+      // Keeps the iOS status-bar mask on this project's own CMS colour while
+      // this page is mounted — see components/status-bar-mask.tsx. Rendered
+      // via the header slot below rather than as a sibling, since this
+      // component's own return has to stay a single element; any slot works,
+      // it renders nothing.
       className="relative w-full lg:hidden"
       header={
         // "ANDMADE Inc." only (no full nav; that lives in the shared
@@ -388,13 +533,16 @@ export function MobileProjectDetail({
         // はスライドイン+フェードイン付けない") — this element still sits
         // inside ProjectDetailReveal's own backgroundColor-fading wrapper,
         // it just doesn't slide/fade along with the rest of the content.
-        <Link
-          href="/"
-          className={`block text-[16px] leading-[1.5] font-medium whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
-          style={{ paddingLeft: HEADER_ML, paddingTop: "calc(50px + env(safe-area-inset-top))" }}
-        >
-          ANDMADE Inc.
-        </Link>
+        <>
+          <StatusBarMaskColor color={backgroundColor} />
+          <Link
+            href="/"
+            className={`block text-[16px] leading-[1.5] font-medium whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+            style={{ paddingLeft: HEADER_ML, paddingTop: "calc(50px + env(safe-area-inset-top))" }}
+          >
+            ANDMADE Inc.
+          </Link>
+        </>
       }
     >
       {/* Title band — title (ScrambleText, matching every other project
@@ -404,19 +552,48 @@ export function MobileProjectDetail({
          websiteもANDMADE Inc.の左面に揃える"), matching the header logo's
          own left edge instead of the page's plain side margin. mt-[140px] —
          per direct follow-up ("ヘッダーとのマージンは140pxに"). */}
+      {/* w-full on the inner column — a `flex flex-col items-start` child
+         sizes to its content, which for the wrapping meta block below means
+         it needs a real width to wrap against rather than one derived from
+         its own text. The outer div's own padding then bounds it to the
+         screen. */}
       <div className="mt-[140px] flex flex-col items-start" style={{ paddingLeft: HEADER_ML, paddingRight: SIDE_ML }}>
-        <div className="flex flex-col items-start gap-[15px]">
+        <div className="flex w-full flex-col items-start gap-[15px]">
           <p className={`text-[18px] font-medium leading-[1.5] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
             <ScrambleText text={project.title} active={titleActive} />
           </p>
-          <div className={`flex flex-col items-start gap-[10px] text-[14px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
-            <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-              {project.category}
-              <br />
-              {project.role}
-            </p>
-            <p className="font-(family-name:--font-courier) tracking-[-0.7px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-              {project.date}
+          {/* All three lines in one <p> on a single `leading-[1.25]`, with no
+             gap between them — per direct follow-up ("SP時の詳細ページのタイ
+             トル下カテゴリー、ロール、日付の行間をトップのカテゴリー・ロー
+             ル・日付に合わせて"), matching the top page's own list rows
+             (mobile-project-list.tsx) exactly.
+
+             Previously the date sat in a *second* <p> with a 10px flex `gap`
+             above it while category/role shared an unset (inherited) leading,
+             so the date's spacing and the category→role spacing were two
+             different values, neither matching the list. Consecutive block
+             spans inside one <p> stack line box to line box with nothing in
+             between, so one leading now governs all three — the same
+             restructure mobile-project-list.tsx already went through for its
+             own plates. The date keeps its font/tracking overrides on its own
+             span.
+
+             No `whitespace-nowrap` on this block — per direct follow-up
+             ("Satoyama terraceのカテゴリーみたいに、長いとき画面からはみ出て
+             るので、画面内に収まるように自動改行する仕様にして"): the longest
+             category on the site ("Identity, Brand site, Graphic,
+             Merchandise, Signs, Typeface") ran straight off the right edge of
+             the screen. Category and role wrap to the container width now;
+             only the date keeps nowrap, since "Aug.2025" should never break
+             across lines. Wrapped lines fall on the same leading as the rest,
+             so the block still matches the top page's own rhythm. */}
+          <div className={`flex w-full flex-col items-start text-[14px] ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
+            <p className="leading-[1.25] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+              <span className="block">{project.category}</span>
+              <span className="block">{project.role}</span>
+              <span className="block font-(family-name:--font-courier) tracking-[-0.7px] whitespace-nowrap">
+                {project.date}
+              </span>
             </p>
           </div>
         </div>
@@ -447,7 +624,13 @@ export function MobileProjectDetail({
              platform-agnostic; only the top/bottom overscan offset needed a
              flat-px mode (`fluid={false}`) since SP has no var(--scale). */}
           <div className="mt-[40px] w-full">
-            <ProjectHeroParallax image={detail.hero.sp.image} aspect={detail.hero.sp.aspect} mask={detail.hero.sp.mask} fluid={false} />
+            <ProjectHeroParallax
+              image={detail.hero.sp.image}
+              imageSrcSet={detail.hero.sp.imageSrcSet}
+              aspect={detail.hero.sp.aspect}
+              mask={detail.hero.sp.mask}
+              fluid={false}
+            />
           </div>
 
           <MobileBilingualSection caption="(Overview)" ja={detail.overviewJa} en={detail.overviewEn} dark={headerDark} />
@@ -465,13 +648,19 @@ export function MobileProjectDetail({
              longer possible now that Idea/Outcome can appear anywhere, so
              they now get the same 10px gap as every other block. */}
           <div className="flex w-full flex-col items-stretch gap-[10px]">
-            {detail.gallery.map((block, i) =>
-              block.type === "idea" || block.type === "outcome" ? (
-                <MobileBilingualSection key={i} caption={block.caption} ja={block.ja} en={block.en} captionSize={14} captionTracking={-0.7} dark={headerDark} />
-              ) : (
-                <MobileGalleryBlockView key={i} block={block} />
-              )
-            )}
+            {detail.gallery.map((block, i) => {
+              if (block.type === "idea" || block.type === "outcome") {
+                return (
+                  <MobileBilingualSection key={i} caption={block.caption} ja={block.ja} en={block.en} captionSize={14} captionTracking={-0.7} dark={headerDark} />
+                );
+              }
+              if (block.type === "text") {
+                return (
+                  <MobileTextBlock key={i} caption={block.caption} body={block.body} bodyEn={block.bodyEn} dark={headerDark} />
+                );
+              }
+              return <MobileGalleryBlockView key={i} block={block} dark={headerDark} />;
+            })}
           </div>
 
           {/* Category/Role/Date/Link recap (Figma node 1353:887) — Category/
@@ -695,10 +884,8 @@ export function MobileProjectDetail({
              replacing the earlier 40px. */}
           <Link href={`/projects/${slugify(next.title)}`} className="mt-[30px] block w-full">
             <div
-              // bg-[#d9d9d9] only while no real thumbnail is set yet — see
-              // MobileGalleryImage's own doc comment for the full
-              // "transparent PNG reads as opaque gray" story this fixes.
-              className={`relative overflow-hidden ${nextThumb?.image ? "" : "bg-[#d9d9d9]"}`}
+              // No background fill — see MobileGalleryImage's own comment.
+              className="relative overflow-hidden"
               style={{
                 aspectRatio: nextThumb?.aspect ?? 384 / 240,
                 marginLeft: SIDE_ML,
@@ -707,7 +894,17 @@ export function MobileProjectDetail({
               }}
             >
               {nextThumb?.image && (
-                <Image src={nextThumb.image} alt="" fill sizes="100vw" unoptimized={nextThumb.image.startsWith("http")} className="object-cover" />
+                <>
+                  {/* Plain <img> — see MobileGalleryImage's own note above. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
+                  <img
+                    src={nextThumb.image}
+                    srcSet={nextThumb.imageSrcSet}
+                    sizes="100vw"
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                </>
               )}
             </div>
           </Link>

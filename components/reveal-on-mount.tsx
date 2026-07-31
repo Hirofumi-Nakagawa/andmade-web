@@ -34,7 +34,10 @@ export function RevealOnMount({ className = "", style, children, ...rest }: Reve
 
   return (
     <div
-      className={`transition-all duration-500 ease-out ${
+      // Only the two properties this actually animates — `transition-all`
+      // would also delay/ease inherited values such as the Konami easter
+      // egg's page-wide text-shadow (see project-card.tsx for the full note).
+      className={`transition-[transform,opacity] duration-500 ease-out ${
         revealed ? "translate-y-0 opacity-100" : "translate-y-[24px] opacity-0"
       } ${className}`}
       style={style}

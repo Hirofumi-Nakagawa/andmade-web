@@ -4,10 +4,20 @@ export type NowPlaying =
 
 /**
  * Fetches what's currently playing on the site owner's Spotify account (not
- * the visitor's — see app/api/spotify/login/route.ts for how the one-time
- * authorization works). Returns `{ isPlaying: false }` whenever Spotify
- * isn't configured, nothing is playing, or a request fails — callers should
- * treat that as "show nothing / fall back", never throw.
+ * the visitor's). Returns `{ isPlaying: false }` whenever Spotify isn't
+ * configured, nothing is playing, or a request fails — callers should treat
+ * that as "show nothing / fall back", never throw.
+ *
+ * NOTE: nothing calls this at runtime any more. The site is statically
+ * exported (next.config.ts's own `output: "export"`), so the Route Handlers
+ * that used to wrap this — app/api/now-playing plus the one-time
+ * app/api/spotify/login|callback authorization pair — are gone, and
+ * public/now-playing.php is the live implementation (a direct PHP port of
+ * this file's two functions, kept in step with it deliberately). This stays
+ * as the reference/type source: `NowPlaying` above is still the shape the
+ * PHP returns and the shape components/now-playing-provider.tsx consumes.
+ * To re-obtain a refresh_token, use Spotify's standard Authorization Code
+ * flow (or restore the deleted login/callback routes from git history).
  */
 export async function getNowPlaying(): Promise<NowPlaying> {
   const clientId = process.env.SPOTIFY_CLIENT_ID;

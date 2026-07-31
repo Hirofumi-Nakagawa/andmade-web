@@ -4,11 +4,14 @@ import localFont from "next/font/local";
 import Script from "next/script";
 import { DisablePinchZoom } from "@/components/disable-pinch-zoom";
 import { GridOverlay } from "@/components/grid-overlay";
+import { KonamiGlitch } from "@/components/konami-glitch";
 import { IdleOverlay } from "@/components/idle-overlay";
 import { LenisRouteResize } from "@/components/lenis-route-resize";
 import { MobileMenu } from "@/components/mobile-menu";
 import { NowPlayingProvider } from "@/components/now-playing-provider";
+import { ScrollProgressGauge } from "@/components/scroll-progress-gauge";
 import { SiteIntro } from "@/components/site-intro";
+import { StatusBarMask } from "@/components/status-bar-mask";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { TabFaviconSwap } from "@/components/tab-favicon-swap";
 import {
@@ -144,6 +147,26 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // viewport-fit=cover — without it, iOS reports every env(safe-area-inset-*)
+  // as 0, which silently zeroed all the places this codebase already uses
+  // them: mobile-project-detail.tsx's header padding, app/studies/page.tsx's
+  // top/bottom insets, and now components/status-bar-mask.tsx, whose
+  // status-bar cover was reported as not masking anything ("まだステータス
+  // バー裏が表示されてる") for exactly this reason — its height computed to
+  // 0. With cover, the page formally extends edge-to-edge (which iOS was
+  // already rendering anyway, hence content showing through the status bar)
+  // and the insets become real values.
+  viewportFit: "cover",
+  // theme-color — the actual fix for content ghosting through the iOS status
+  // bar, after viewport-fit=cover alone still didn't mask it: in Safari's
+  // bottom-tab-bar layout the page's viewport can start *below* the status
+  // bar, env(safe-area-inset-top) stays 0, and what shows through up there is
+  // Safari itself sampling the page behind its translucent chrome — a region
+  // no page-drawn mask can reach. theme-color is the one lever the web has
+  // over it: Safari tints that chrome backdrop with this colour instead.
+  // Cream to match the site background; pages with their own background
+  // retint it dynamically via <StatusBarMaskColor> (status-bar-mask.tsx).
+  themeColor: "#f6f6f4",
 };
 
 export default function RootLayout({
@@ -162,7 +185,15 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
         />
       </head>
-      <body className="min-h-full bg-(--color-background)">
+      {/* suppressHydrationWarning — browser extensions (ColorZilla et al.)
+          inject their own attributes into <body> before React loads
+          (observed live: cz-shortcut-listen="true"), which trips React's
+          server/client hydration comparison and shows a dev-overlay error on
+          every load despite nothing being wrong with the page itself. The
+          suppression is scoped to this one element's attributes only — React
+          explicitly documents it as one level deep — so real mismatches
+          anywhere inside the tree still get reported. */}
+      <body suppressHydrationWarning className="min-h-full bg-(--color-background)">
         <DisablePinchZoom />
         <TabFaviconSwap />
         <SiteIntro />
@@ -179,6 +210,22 @@ export default function RootLayout({
                 own top-level doc comment for why this moved here from being
                 rendered per-page inside mobile-home.tsx/mobile-about.tsx. */}
             <MobileMenu />
+            {/* Konami-code easter egg — inside SmoothScroll because it reads
+                scroll velocity via useLenis (which needs the <ReactLenis
+                root> above), and a persistent singleton for the same reason
+                MobileMenu is: it should survive client-side navigation
+                rather than switching itself off on every route change. */}
+            <KonamiGlitch />
+            {/* Scroll-progress gauge along the top edge of the window, PC and
+                SP alike. Inside SmoothScroll for the same reason as
+                KonamiGlitch above — it reads scroll progress via useLenis —
+                and a persistent singleton so it isn't torn down and rebuilt
+                on every client-side navigation. */}
+            <ScrollProgressGauge />
+            {/* Covers the iOS status-bar region on SP so scrolled content
+                can't show through the translucent system UI — see its own
+                doc comment. */}
+            <StatusBarMask />
           </SmoothScroll>
           {/* Needs to stay inside NowPlayingProvider — IdleNowPlaying reads
               useNowPlaying(), which otherwise falls back to the context's

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { AboutBackground } from "@/components/about-background";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { AboutBlendBackground } from "@/components/about-blend-background";
 import { AboutSection } from "@/components/about-section";
 import { AboutSideNav } from "@/components/about-side-nav";
 import { GrainOverlay } from "@/components/grain-overlay";
@@ -134,20 +135,45 @@ function BilingualBody({ ja, en }: { ja: string[]; en: string[] }) {
   );
 }
 
+/**
+ * AboutPage structured data — describes what this page *is* (the studio's own
+ * about page) and, via `mainEntity`, restates the studio itself with the
+ * detail this page carries that the sitewide Organization block in
+ * app/layout.tsx doesn't: the vision copy as a description, and the real
+ * service list as `knowsAbout`. Both are read straight from
+ * lib/about-content.ts, the same source the visible page renders from, so
+ * they can't drift apart.
+ *
+ * English copy throughout: the JA and EN versions are the studio's own
+ * authored pair, and structured data has no good way to express "these two
+ * strings are the same statement in two languages" for a plain `description`
+ * — picking the EN one keeps this unambiguous for the engines reading it.
+ */
+const aboutJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "AboutPage",
+  url: `${SITE_URL}/about`,
+  name: `About - ${SITE_NAME}`,
+  mainEntity: {
+    "@type": "Organization",
+    name: SITE_NAME,
+    url: SITE_URL,
+    description: [...VISION_EN, ...APPROACH_EN].join(" "),
+    knowsAbout: [...SERVICES_COL_1, ...SERVICES_COL_2],
+  },
+};
+
 export default function About() {
   return (
-    // bg-[#E897B4] — AboutBackground (below) has no scroll-driven wash of its
-    // own (that mechanism only ever existed on the since-parked shader
-    // version, see the `viewport` export's own doc comment above) — it just
-    // fades its own photo's bottom edge into whatever flat color sits behind
-    // it, so this root div needs to actually be that solid color the whole
-    // way down, not white, per direct follow-up reverting back to this
-    // original static-photo design ("背景画像を元の静止画の状態に戻して").
-    // #E897B4 → #DEA4B0 → #E897B4 — the middle value was reverted per direct
-    // follow-up ("Aboutの背景画像と色を元に戻して", alongside the photo file
-    // itself being manually restored back too) — matches
-    // PageBodyBackground's own color just below (this page's current chosen
-    // pink, see that component's own history of hex changes).
+    // No flat background colour on this root div any more — the page's
+    // entire background is now AboutBlendBackground below, a `position:
+    // fixed` full-viewport animated shader canvas (the bg-lab.html port, per
+    // direct follow-up "これでabout背景にくみこんで"), which a bg class here
+    // would simply paint over. The former static-photo + flat-pink design
+    // (bg-[#E897B4] + AboutBackground) is parked, not deleted — its
+    // components are untouched on disk; swap this import/render pair back
+    // (and restore bg-[#E897B4] here and on PageBodyBackground below) to
+    // return to it.
     // pb-[30px] lg:pb-[28px] — PC-only 30px → 24px → 28px, both per direct
     // follow-up ("studiesとcontactに合わせて24pxにして", then "やっぱりちょっ
     // と下げすぎかな...28pxに変更して"): matches app/studies/page.tsx's own
@@ -155,15 +181,22 @@ export default function About() {
     // bottom-[28px] footer elements exactly. `lg:` override only (base
     // pb-[30px] left as-is) — this div is shared by both the PC-only tree
     // and MobileAbout below, and only the PC value was asked to change.
-    <div id="top" className="relative w-full flow-root bg-[#E897B4] pb-[30px] lg:pb-[28px]" style={{ minHeight: "100svh" }}>
-      <PageBodyBackground color="#E897B4" />
+    <div id="top" className="relative w-full flow-root pb-[30px] lg:pb-[28px]" style={{ minHeight: "100svh" }}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd) }}
+      />
+      {/* #3782c5 — the colour the shader background settles to at full
+          scroll (AboutBlendBackground's own SETTINGS.colors[1]; keep the two
+          in step when retuning), so overscroll rubber-banding at the page's
+          ends blends with it rather than flashing the old pink. */}
+      <PageBodyBackground color="#3782c5" />
 
       {/* Shared between both trees below, so it renders once,
           unconditionally, rather than being split/duplicated the way the
-          rest of this page is — see this component's own doc history for
-          why it's `position: absolute` (not `fixed`) and has no wash
-          gradient of its own. */}
-      <AboutBackground />
+          rest of this page is — `position: fixed`, painted behind everything
+          that follows in DOM order. */}
+      <AboutBlendBackground />
 
       {/* Same full-viewport, always-on grain Contact's own shader background
           renders inline — see grain-overlay.tsx's own top-level doc comment

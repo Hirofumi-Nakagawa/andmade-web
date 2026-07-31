@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
 import { MobileProjectList } from "@/components/mobile-project-list";
@@ -12,7 +12,15 @@ import { introDefinitelyWontShow, willIntroShow } from "@/components/site-intro"
 import { SlotDigits } from "@/components/slot-digits";
 import { VerticalLabel } from "@/components/vertical-label";
 import { setFooterReady as broadcastFooterReady } from "@/lib/footer-mode-store";
-import { PREVIEW_RATIO_ASPECT, getProjectImageSrc, type Project } from "@/lib/projects";
+import type { NewsItem } from "@/lib/news";
+import { previewSrcSet, SP_PREVIEW_SIZES } from "@/lib/preview-image";
+import {
+  PREVIEW_RATIO_ASPECT,
+  getProjectImageSrc,
+  getProjectImageSrcSet,
+  slugify,
+  type Project,
+} from "@/lib/projects";
 
 /** Extra left indent on top of the page's own 20px side margin — matches
  *  Figma's own `pl-[60px]` on both the header ("hd", 975:515) and the
@@ -151,17 +159,19 @@ function getSpGridColumnWidthPx() {
  *  held two options, so a future follow-up reintroducing a second choice
  *  needs no structural changes, just another array entry).
  *
- *  Each placement is randomly one of three horizontal positions (see
- *  `placement` below): flush against the screen's right edge, flush against
- *  its left edge, or grid-snapped somewhere in the interior. The two flush
- *  cases extend the width by exactly SP_GRID_MARGIN_PX beyond the plain
+ *  Each placement is drawn uniformly from every distinct horizontal position
+ *  the box can occupy — flush against either screen edge, or grid-snapped at
+ *  one of the interior columns between them. See placementOptions() below,
+ *  which enumerates them (and for why an earlier three-way left/right/
+ *  interior draw made the edges far more likely than the middle). The two
+ *  flush cases extend the width by exactly SP_GRID_MARGIN_PX beyond the plain
  *  column-based width ("右端に表示するときは余白を足した幅にする", and,
  *  for the left edge, per a further direct follow-up, "イメージ表示エリア
  *  は左端の余白も入れて"): the grid's own 12-column area sits one margin
  *  short of each true screen edge, so adding exactly one margin's worth of
  *  width on the relevant side reaches flush against the real edge while
  *  keeping the *other* edge landing exactly on a column boundary — e.g. for
- *  the right case, `left = areaRight - width` simplifies to
+ *  the right case, `left = innerWidth - width` simplifies to
  *  `SP_GRID_MARGIN_PX + (12 - columns) * columnWidthPx`, still grid-aligned;
  *  the left case is the mirror image (left pinned to 0, right edge lands on
  *  a column boundary the same way). An earlier version used a separate flat
@@ -170,9 +180,7 @@ function getSpGridColumnWidthPx() {
  *  margin itself was still 20px, but silently drifted out of sync once the
  *  margin later changed to 14px, breaking that same right-edge grid
  *  alignment (reported as "右端付きの画像がグリッドに沿ってない"). The
- *  interior case uses the plain column-based width and places the box at a
- *  random grid-snapped horizontal offset within the remaining area instead
- *  (see the `else` branch below).
+ *  interior positions use the plain column-based width instead.
  *
  *  Vertical — the box's own vertical *center* lands at a random offset
  *  within this range of the viewport's own vertical center: up to
@@ -183,6 +191,11 @@ function getSpGridColumnWidthPx() {
 const PREVIEW_AREA_START_COLUMN = 0;
 const PREVIEW_PORTRAIT_COLUMN_OPTIONS = [9];
 const PREVIEW_LANDSCAPE_COLUMN_OPTIONS = [11];
+/** Square ("square-1-1") gets the portrait width rather than the landscape
+ *  one: at 11 columns a 1:1 box is as tall as it is wide, which on SP's
+ *  narrow viewport reads as overwhelming next to the 9-column portraits it
+ *  alternates with. */
+const PREVIEW_SQUARE_COLUMN_OPTIONS = [9];
 const PREVIEW_VERTICAL_RANGE_UP_PX = 50;
 const PREVIEW_VERTICAL_RANGE_DOWN_PX = 20;
 
@@ -192,6 +205,56 @@ function pickRandom<T>(options: T[]): T {
 
 type PreviewRect = { top: number; left: number; width: number; height: number };
 
+/**
+ * Every distinct horizontal position a preview of this width can occupy, one
+ * entry each, so picking one at random is genuinely uniform across positions.
+ *
+ * This replaces a three-way `pickRandom(["left", "right", "interior"])`,
+ * which gave a third of the probability to each of the two single flush-edge
+ * positions and split the remaining third across *all* the interior columns —
+ * per direct follow-up "両端に表示されることが多い印象。均等にランダムに
+ * なってる？", which was exactly right. For a 9-column portrait (4 interior
+ * starts) that worked out to 33% flush-left, 33% flush-right and 8.3% for
+ * each interior slot; counting the interior slots that sit within one 8px
+ * margin of an edge, ~83% of previews landed on an edge.
+ *
+ * The two flush cases extend the width by exactly one margin so the *other*
+ * edge still lands on a column boundary (see generateRandomPreviewRect's own
+ * doc comment). That makes each end of the grid offer two neighbouring
+ * variants — bleeding into the margin strip, or starting on it — and both
+ * are kept, per direct follow-up "8pxの選択も残して": at the left they are
+ * `left: 0` and `left: 8`, and at the right they are the mirror image
+ * (ending flush against the screen, or one margin short of it, which is why
+ * the two right-hand entries can share a `left` while differing in width).
+ * They read as genuinely different placements, so they each get their own
+ * equal share rather than one being folded into the other.
+ *
+ * A wide enough box has fewer positions to offer — an 11-column landscape in
+ * a 12-column grid only has the two ends, so it yields four entries (two per
+ * end) and no true middle.
+ */
+function placementOptions(
+  baseWidth: number,
+  columns: number,
+  columnWidthPx: number
+): { width: number; left: number }[] {
+  const flushWidth = baseWidth + SP_GRID_MARGIN_PX;
+  const options = [
+    { width: flushWidth, left: 0 },
+    { width: flushWidth, left: window.innerWidth - flushWidth },
+  ];
+
+  const maxStartColumn = Math.max(PREVIEW_AREA_START_COLUMN, SP_GRID_COLUMNS - columns);
+  // Grid-snapped, per direct follow-up ("背景に表示するイメージの位置は常に
+  // グリッドに沿うようにして") — whole columns, converted back to pixels.
+  // Inclusive of both ends: those are the margin-aligned counterparts to the
+  // two flush entries above.
+  for (let column = PREVIEW_AREA_START_COLUMN; column <= maxStartColumn; column += 1) {
+    options.push({ width: baseWidth, left: SP_GRID_MARGIN_PX + column * columnWidthPx });
+  }
+  return options;
+}
+
 /** One entry in MobileHome's own previewEntries history — mirrors PC's own
  *  HoverPreviewEntry (project-hover-preview.tsx): a per-activation rect plus
  *  the image to show there, keyed uniquely per activation (not per project)
@@ -200,58 +263,31 @@ type PreviewRect = { top: number; left: number; width: number; height: number };
  *  field (not parsed back out of `key`) specifically so handleActiveChange
  *  below can de-duplicate by *project*, not just by activation — see that
  *  function's own doc comment for why. */
-type PreviewEntry = { key: string; title: string; rect: PreviewRect; imageSrc: string };
+type PreviewEntry = {
+  key: string;
+  title: string;
+  rect: PreviewRect;
+  imageSrc: string;
+  /** Responsive candidates for `imageSrc` — undefined for placeholder
+   *  projects (see lib/projects.ts's own getProjectImageSrcSet). */
+  imageSrcSet?: string;
+};
 
 function generateRandomPreviewRect(project: Project): PreviewRect {
   const columnWidthPx = getSpGridColumnWidthPx();
-  const isPortrait = project.previewRatio.startsWith("portrait");
-  const columns = pickRandom(isPortrait ? PREVIEW_PORTRAIT_COLUMN_OPTIONS : PREVIEW_LANDSCAPE_COLUMN_OPTIONS);
+  // Three-way, not the old boolean `startsWith("portrait")` — "square-1-1"
+  // matches neither prefix and would otherwise silently fall into the
+  // landscape branch.
+  const ratio = project.previewRatio;
+  const columnOptions = ratio.startsWith("portrait")
+    ? PREVIEW_PORTRAIT_COLUMN_OPTIONS
+    : ratio.startsWith("square")
+      ? PREVIEW_SQUARE_COLUMN_OPTIONS
+      : PREVIEW_LANDSCAPE_COLUMN_OPTIONS;
+  const columns = pickRandom(columnOptions);
   const baseWidth = columns * columnWidthPx;
 
-  const areaRight = window.innerWidth;
-
-  // Three-way placement — "left"/"right" flush against the true screen edge
-  // (extending width by exactly one margin's worth so the *other* edge still
-  // lands on a column boundary, symmetric to each other), "interior"
-  // grid-snapped somewhere between the two margins. "left" added per direct
-  // follow-up ("イメージ表示エリアは左端の余白も入れて"): the display area
-  // previously only ever reached the true *right* edge (via the old
-  // `flushRight` case below) — its own left bound always stopped at the
-  // grid's own inner edge (margin + PREVIEW_AREA_START_COLUMN columns),
-  // never actually covering the left margin strip itself. Mirroring the
-  // right-edge case's own "+SP_GRID_MARGIN_PX" trick onto the left side
-  // fixes that the same way.
-  const placement = pickRandom(["left", "right", "interior"] as const);
-  let width: number;
-  let left: number;
-  if (placement === "right") {
-    // + SP_GRID_MARGIN_PX (not a separate literal) — see this function's own
-    // doc comment above for why that's what actually keeps the left edge
-    // grid-aligned.
-    width = baseWidth + SP_GRID_MARGIN_PX;
-    left = areaRight - width;
-  } else if (placement === "left") {
-    // Mirror image of the "right" case — width extended by one margin's
-    // worth so the *right* edge still lands on a column boundary, left edge
-    // pinned to the true screen edge (x=0).
-    width = baseWidth + SP_GRID_MARGIN_PX;
-    left = 0;
-  } else {
-    width = baseWidth;
-    // Snapped to whole grid columns rather than a continuous pixel value —
-    // per direct follow-up ("背景に表示するイメージの位置は常にグリッドに沿
-    // うようにして"): pick a random *column* start between the area's own
-    // start column and the last column that still keeps the full width
-    // on-screen, then convert that back to a pixel offset.
-    const maxStartColumn = Math.max(
-      PREVIEW_AREA_START_COLUMN,
-      SP_GRID_COLUMNS - columns,
-    );
-    const startColumn =
-      PREVIEW_AREA_START_COLUMN +
-      Math.floor(Math.random() * (maxStartColumn - PREVIEW_AREA_START_COLUMN + 1));
-    left = SP_GRID_MARGIN_PX + startColumn * columnWidthPx;
-  }
+  const { width, left } = pickRandom(placementOptions(baseWidth, columns, columnWidthPx));
 
   const height = width / PREVIEW_RATIO_ASPECT[project.previewRatio];
   const centerY = window.innerHeight / 2;
@@ -329,9 +365,12 @@ type MobileHomeProps = {
    *  doc comment). Replaces this file's own previous direct `import {
    *  projects } from "@/lib/projects"` now that the real list is async. */
   projects: Project[];
+  /** Recent announcements — threaded down from app/page.tsx via HomeView,
+   *  same as `projects` above. See mobile-recent-news.tsx's own `items`. */
+  news: NewsItem[];
 };
 
-export function MobileHome({ projects }: MobileHomeProps) {
+export function MobileHome({ projects, news }: MobileHomeProps) {
   const pathname = usePathname();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -829,6 +868,7 @@ export function MobileHome({ projects }: MobileHomeProps) {
               title: project.title,
               rect: generateRandomPreviewRect(project),
               imageSrc: getProjectImageSrc(project),
+              imageSrcSet: getProjectImageSrcSet(project),
             },
             ...prev.filter((entry) => entry.title !== project.title),
           ].slice(0, 2),
@@ -1175,14 +1215,25 @@ export function MobileHome({ projects }: MobileHomeProps) {
                 を上に27px上げて"), no longer sharing the rail's exact value —
                 intentionally a separate, independently-tuned number now. */}
             {/* topPx=0 (was 3) — moved up a further 3px per direct follow-up
-                ("一覧とお知らせを3px上に移動"). No `hidden` prop (unlike an
-                earlier version of this call) — per direct follow-up
-                ("お知らせのフェードアウト非表示も無しにして"), matching
-                PC's own app/page.tsx RecentNews call site, which dropped
-                this same `hidden={showImages}` earlier ("PCのお知らせは
-                Th時も消さない"): SP's news now also stays visible through
-                Img mode instead of fading out. */}
-            <MobileRecentNews key={`news-${introReplayGeneration}`} revealed={railRevealed} topPx={0} />
+                ("一覧とお知らせを3px上に移動").
+
+                hidden={showImages} — restored per direct follow-up ("SPのImg
+                時、右端のお知らせをフェードアウトで消して、その分、一覧の幅
+                を11マス分に広げて"), having been dropped for a while in the
+                middle ("お知らせのフェードアウト非表示も無しにして"). This
+                time it's paired with the thumbnail grid claiming the freed
+                right-hand columns (see mobile-project-thumbnail-grid.tsx's
+                own `width`), so the two changes belong together. PC still
+                keeps its own news visible in Img mode — that was a
+                separate, PC-scoped instruction ("PCのお知らせはTh時も消さな
+                い") and is deliberately not mirrored here. */}
+            <MobileRecentNews
+              key={`news-${introReplayGeneration}`}
+              items={news}
+              revealed={railRevealed}
+              topPx={0}
+              hidden={showImages}
+            />
           </div>
 
           {/* Th mode — a genuine independent grid (MobileProjectThumbnailGrid,
@@ -1229,7 +1280,12 @@ export function MobileHome({ projects }: MobileHomeProps) {
           {!showImages && (
             <div
               ref={listContainerRef}
-              className="mix-blend-exclusion"
+              // No mix-blend-exclusion anymore — matching PC (see
+              // home-view.tsx): the list is plain black text on a plate in
+              // the page's own background color that wipes in behind the
+              // selected row (mobile-project-list.tsx's own SelectedPlate),
+              // rather than white text blended against the preview image.
+              className=""
               style={{
                 paddingLeft: CONTENT_INDENT,
                 width: `calc(var(--sp-grid-column-width) * 8)`,
@@ -1387,7 +1443,17 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
       // it needs to blend against. Both this and the list are left at
       // z-index:auto now, so plain DOM order decides paint order instead,
       // with no extra stacking context for either side.
-      className="pointer-events-none fixed overflow-hidden bg-[#d9d9d9] transition-[opacity,filter] ease-out"
+      // No background fill. This box used to carry `bg-[#d9d9d9]` as a
+      // while-loading placeholder, but it never actually served that purpose
+      // here: `entered` (and so this box's own opacity) only flips true once
+      // the image has genuinely loaded — see this component's own doc comment
+      // above — so the box is fully transparent for the entire loading
+      // window and the fill only ever became visible *after* load, showing
+      // through the transparent areas of any PNG with real alpha. PC's own
+      // equivalent (project-hover-preview.tsx) hit the same problem and
+      // dropped its fill for a border-only outline; SP doesn't even need
+      // that, since nothing here is visible pre-load to need a placeholder.
+      className="pointer-events-none fixed overflow-hidden transition-[opacity,filter] ease-out"
       style={{
         top: entry.rect.top,
         left: entry.rect.left,
@@ -1402,6 +1468,12 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
       <img
         ref={imgRef}
         src={entry.imageSrc}
+        srcSet={previewSrcSet(entry.imageSrcSet)}
+        // Was sizes="100vw" ("never wider than the screen") — see
+        // project-hover-preview.tsx's own note on why a loose upper bound
+        // costs real bytes. The widest this can be is 11 of 12 columns plus a
+        // margin, i.e. SP_PREVIEW_SIZES.
+        sizes={SP_PREVIEW_SIZES}
         alt=""
         aria-hidden
         className="h-full w-full object-cover"
@@ -1439,6 +1511,8 @@ type SelectedProjectTextProps = {
  * HoveredProjectTitle) for the same reason.
  */
 function SelectedProjectText({ project, shown }: SelectedProjectTextProps) {
+  const router = useRouter();
+  const href = `/projects/${slugify(project.title)}`;
   const [entered, setEntered] = useState(false);
   useEffect(() => {
     const frame = requestAnimationFrame(() => setEntered(true));
@@ -1448,25 +1522,98 @@ function SelectedProjectText({ project, shown }: SelectedProjectTextProps) {
   const opacity = entered && shown ? 1 : 0;
   const fadeDurationMs = shown ? PREVIEW_FADE_IN_MS : PREVIEW_FADE_OUT_MS;
 
+  // Whether the tap target below is live. Deliberately NOT just `opacity === 1`:
+  // this block auto-hides PREVIEW_IDLE_MS (2s) after scrolling stops, and
+  // `shown` flips false at the *start* of that hide, while the element stays
+  // visibly on screen for a further PREVIEW_FADE_OUT_MS as it fades. Gating
+  // on the fully-opaque state meant the title stopped responding to taps
+  // while it was still plainly visible — reported as the tap simply not
+  // working. Stays live for the whole fade-out instead, and only goes dead
+  // once the block is genuinely invisible (at which point it must go dead,
+  // since it's `fixed` and stays mounted over the list underneath).
+  //
+  // Turning *on* is handled by comparing `shown` against its previous value
+  // during render (the same pattern studies-center-image.tsx uses for its
+  // own activeIndex), not in an effect — it has to be synchronous with the
+  // prop change, and a plain setState in an effect body is both an extra
+  // render and something this codebase's lint config rejects outright.
+  // Turning *off* is the only genuinely time-delayed half, so that's the
+  // only part an effect handles.
+  const [interactive, setInteractive] = useState(shown);
+  const [prevShown, setPrevShown] = useState(shown);
+  if (prevShown !== shown) {
+    setPrevShown(shown);
+    if (shown) setInteractive(true);
+  }
+  useEffect(() => {
+    if (shown) return;
+    const timeout = setTimeout(() => setInteractive(false), PREVIEW_FADE_OUT_MS);
+    return () => clearTimeout(timeout);
+  }, [shown]);
+
   return (
     // bottom: SELECTED_TEXT_BOTTOM_PX (a shared JS constant, not a plain
     // Tailwind class) — MobileHome's own footerReady check reads that exact
     // same value to detect when the page's own true bottom would actually
     // touch this block's own bottom edge (the category line below, its
-    // lowest content), per direct follow-up ("選択中に表示されるタイトル下のカテ
-    // ゴリが、フッターの上面に触れたらイメージとタイトルとかがフェードア
-    // ウトする仕様にして") — keeping both reads of "100px" as one single
-    // constant is what guarantees they can never drift out of sync.
+    // lowest content) so that the image/title fade out right as they'd
+    // otherwise collide with the footer — keeping both reads of "100px" as
+    // one single constant is what guarantees they can never drift out of
+    // sync.
+    //
+    // This outer wrapper stays `pointer-events-none` so the *whole* fixed,
+    // full-width band never swallows taps meant for the list underneath —
+    // only the inner `role="link"` box below opts back in, and only while
+    // actually visible (see its own comment).
+    //
+    // z-30 — required for that inner link to be tappable at all. This block
+    // renders *before* the list section in DOM order (see the call site's own
+    // comment on why the preview images deliberately sit behind the list's
+    // mix-blend-exclusion text), and among positioned elements that all share
+    // `z-index: auto` the later one in tree order paints on top — so the
+    // list section (`relative`, further down the tree) was painting over this
+    // fixed block and, since hit-testing follows paint order in reverse,
+    // swallowing every tap aimed at this title. An explicit z-index lifts
+    // only *this* block above the list; it's safe to give this one its own
+    // stacking context (unlike the list, where an earlier attempt at exactly
+    // that cut its text off from the real page backdrop and silently broke
+    // its blend) because nothing here uses mix-blend-mode at all. Stays
+    // below the sticky Tx/Th rail (z-40) and the Menu pill (z-50) so neither
+    // of those is covered.
     <div
-      className="pointer-events-none fixed left-1/2 -translate-x-1/2 text-center transition-opacity ease-out"
+      className="pointer-events-none fixed left-1/2 z-30 -translate-x-1/2 text-center transition-opacity ease-out"
       style={{ bottom: SELECTED_TEXT_BOTTOM_PX, opacity, transitionDuration: `${fadeDurationMs}ms` }}
     >
-      <p className="whitespace-nowrap text-[30px] leading-[1.2] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-        {project.title}
-      </p>
-      <p className="mt-[8px] whitespace-nowrap text-[12px] leading-[1.25] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-        {project.category}
-      </p>
+      {/* Tappable — navigates to the same detail page the matching list row
+          does (mobile-project-list.tsx's own MobileProjectItem, identical
+          `router.push(slugify(title))` handling including the Enter/Space
+          keyboard equivalent).
+          `pointer-events` is tied to `opacity` rather than left permanently
+          `auto`: this block is `fixed` and stays mounted (only faded) while
+          nothing is selected, or once scrolled into the footer zone, so an
+          always-tappable box would keep intercepting taps over whatever is
+          really underneath it even when it's completely invisible. */}
+      <div
+        role="link"
+        tabIndex={interactive ? 0 : -1}
+        aria-label={`${project.title} — ${project.category}`}
+        onClick={() => router.push(href)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            router.push(href);
+          }
+        }}
+        className="inline-block cursor-pointer"
+        style={{ pointerEvents: interactive && entered ? "auto" : "none" }}
+      >
+        <p className="whitespace-nowrap text-[30px] leading-[1.2] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+          {project.title}
+        </p>
+        <p className="mt-[8px] whitespace-nowrap text-[12px] leading-[1.25] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+          {project.category}
+        </p>
+      </div>
     </div>
   );
 }

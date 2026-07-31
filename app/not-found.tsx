@@ -9,6 +9,8 @@ import { ScenicMapBackground } from "@/components/scenic-map-background";
 import { ScrambleText } from "@/components/scramble-text";
 import { SiteHeader } from "@/components/site-header";
 import { setLightMenuPill } from "@/lib/menu-theme-store";
+import { setScrollGaugeSuppressed } from "@/lib/scroll-gauge-store";
+import { StatusBarMaskColor } from "@/components/status-bar-mask";
 
 /** How long with zero cursor movement / click before the header + center
  *  row fade out, leaving only ScenicMapBackground's own bottom-of-screen
@@ -62,6 +64,17 @@ const BRAND_TAGLINE_LINES = [
  *  own GROUP_GAP_PX (15px, tuned there via "マージンをさらに5px詰めて"). */
 const BRAND_LOGO_TAGLINE_GAP_PX = 15;
 
+/** Konami easter-egg hint, shown with the idle logo/tagline swap — per
+ *  direct follow-up ("404ページで数秒後に切り替わる際、下記テキストを画面
+ *  中央に配置して（左面はNot Foundの位置に合わせる）"): screen-centred
+ *  vertically on the same ROW_TOP line the (now faded-out) "Not Found" sat
+ *  on, left edge on that text's own 198px grid margin. "Home only" because
+ *  the egg itself is scoped to "/" (see components/konami-glitch.tsx). */
+const KONAMI_HINT_TEXT = "Dark mode (Home only): ↑↑↓↓←→←→BA";
+/** How long the hint stays up before fading back out — per the same
+ *  follow-up ("このテキストは5秒表示したらフェードアウトで消して"). */
+const KONAMI_HINT_VISIBLE_MS = 5_000;
+
 /**
  * 404 page (Figma node 923:2) — single-viewport, full-bleed satellite photo
  * background (ScenicMapBackground — see that component for the cycling/
@@ -96,6 +109,22 @@ const BRAND_LOGO_TAGLINE_GAP_PX = 15;
 export default function NotFound() {
   const [idle, setIdle] = useState(false);
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Whether the Konami hint is currently up — true for the first
+   *  KONAMI_HINT_VISIBLE_MS of each idle period, false otherwise (see the
+   *  effect below). Its own state rather than derived from `idle` because it
+   *  changes *within* a single idle period. */
+  const [konamiHintVisible, setKonamiHintVisible] = useState(false);
+
+  // Shows the hint for its 5 seconds each time the idle swap happens, and
+  // resets when activity ends the idle period — so it replays on the next
+  // one rather than being once-per-visit.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- not derivable during render: "visible for the first 5s of an idle period" is a time-driven progression only an effect owning a timer can express (same shape as revealedIndices in project-thumbnail-grid.tsx).
+    setKonamiHintVisible(idle);
+    if (!idle) return;
+    const timer = setTimeout(() => setKonamiHintVisible(false), KONAMI_HINT_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [idle]);
 
   // See lib/menu-theme-store.ts's own doc comment — this is the one page
   // whose closed SP "Menu" pill should read white bg/black text instead of
@@ -105,6 +134,17 @@ export default function NotFound() {
   useEffect(() => {
     setLightMenuPill(true);
     return () => setLightMenuPill(false);
+  }, []);
+
+  // No scroll-progress gauge here — per direct follow-up ("404も無しで").
+  // Signalled through a store rather than being recognised by pathname,
+  // because a 404 doesn't have one: Next.js renders this component for
+  // whatever URL was requested, so a mistyped project slug arrives as
+  // `/projects/…` and would otherwise match the gauge's own allowlist. See
+  // lib/scroll-gauge-store.ts.
+  useEffect(() => {
+    setScrollGaugeSuppressed(true);
+    return () => setScrollGaugeSuppressed(false);
   }, []);
 
   useEffect(() => {
@@ -164,6 +204,9 @@ export default function NotFound() {
     // viewport instead, so this box's height always exactly matches what's
     // really on screen, with nothing left to scroll.
     <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
+      {/* iOS status-bar mask follows this page's own black/photo backdrop —
+         see components/status-bar-mask.tsx. */}
+      <StatusBarMaskColor color="#000" />
       <ScenicMapBackground />
       <div className="absolute inset-0 bg-black/45" aria-hidden />
 
@@ -306,6 +349,27 @@ export default function NotFound() {
             style={{ marginTop: BRAND_LOGO_TAGLINE_GAP_PX }}
           />
         </div>
+
+        {/* Konami hint — see KONAMI_HINT_TEXT's own doc comment. Same
+           text treatment and ROW_TOP/198px position as the "Not Found" it
+           stands in for. Its own opacity fade layers *inside* the group's
+           idle crossfade: the group fades the hint in with everything else,
+           then this fades it back out alone after 5 seconds while the
+           logo/tagline stay. pointer-events-none so an invisible (or
+           fading) hint never swallows clicks aimed at the map behind it. */}
+        <p
+          className={`${ROW_TEXT_CLASS} pointer-events-none`}
+          style={{
+            left: "calc(198px * var(--grid-scale))",
+            top: ROW_TOP,
+            opacity: konamiHintVisible ? 1 : 0,
+            transitionProperty: "opacity",
+            transitionDuration: `${FADE_MS}ms`,
+            transitionTimingFunction: "ease-out",
+          }}
+        >
+          {KONAMI_HINT_TEXT}
+        </p>
       </div>
       </div>
 

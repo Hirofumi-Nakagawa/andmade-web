@@ -3,7 +3,25 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { NowPlaying } from "@/lib/spotify";
 
-/** How often to re-poll /api/now-playing while the tab is open. */
+/**
+ * The one server-side endpoint this otherwise fully-static site still needs.
+ *
+ * Was `/api/now-playing` (a Next.js Route Handler). The site is now built
+ * with `output: "export"` (see next.config.ts) for PHP-only hosting, so no
+ * Node runtime exists at request time — but Spotify's API requires a
+ * client_secret + refresh_token that must never reach the browser, so this
+ * genuinely can't move client-side. public/now-playing.php reimplements the
+ * old route in PHP and returns the exact same JSON shape; see that file's
+ * own header comment for the deployment/credentials setup.
+ *
+ * Root-relative (not just "now-playing.php") so it resolves the same from
+ * every route, including nested ones like /projects/<slug>/.
+ */
+const NOW_PLAYING_ENDPOINT = "/now-playing.php";
+
+/** How often to re-poll the endpoint above while the tab is open. Matches
+ *  that PHP's own CACHE_SECONDS, so each poll lands on roughly one fresh
+ *  Spotify call regardless of how many visitors are on the site. */
 const NOW_PLAYING_POLL_MS = 20_000;
 
 const NowPlayingContext = createContext<NowPlaying>({ isPlaying: false });
@@ -26,7 +44,7 @@ export function NowPlayingProvider({ children }: { children: React.ReactNode }) 
 
     async function poll() {
       try {
-        const response = await fetch("/api/now-playing", { cache: "no-store" });
+        const response = await fetch(NOW_PLAYING_ENDPOINT, { cache: "no-store" });
         const data: NowPlaying = await response.json();
         if (!cancelled) setNowPlaying(data);
       } catch {

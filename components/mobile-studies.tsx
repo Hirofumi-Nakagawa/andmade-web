@@ -155,7 +155,7 @@ const INTRO_SLIDE_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
  *  off STUDIES.length, is now computed inline off the `studies` prop's own
  *  length instead — see introEnd's own computation below.) */
 const INTRO_DURATION_MS = 2200;
-const AUTO_ADVANCE_MS = 4000;
+const AUTO_ADVANCE_MS = 5000;
 
 /** Critically-damped glide constants — same formula/values as
  *  studies-gallery.tsx's own startGlideToTarget (see that file's own doc
@@ -741,16 +741,8 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
             width: `${zoomedSizePx.widthPx}px`,
             height: `${zoomedSizePx.heightPx}px`,
             zIndex: 30,
-            // contain/willChange — see this ternary's own trailing doc
-            // comment (right after its closing brace) for why: a
-            // transform-based FLIP-style trick to avoid animating width/
-            // height directly was tried and reverted (visible mid-transition
-            // distortion), so these two are a distortion-free attempt at
-            // easing the *real* device cost of that direct width/height
-            // transition instead, per direct follow-up ("端末でzoomにすると
-            // きのアニメーションがイマイチまだスムーズじゃない...何か良い
-            // 解決方法ないかな").
-            contain: "layout paint",
+            // willChange — see this ternary's own trailing doc comment
+            // (right after its closing brace) for why.
             willChange: "width, height",
             transform: `translateY(${(window.innerHeight - zoomedSizePx.heightPx) / 2}px)`,
             transitionProperty: "transform, width, height",
@@ -768,7 +760,6 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
               width: `${zoomedSizePx.widthPx}px`,
               height: `${zoomedSizePx.heightPx}px`,
               zIndex: 30,
-              contain: "layout paint",
               willChange: "width, height",
               transform: `translateY(${CENTER_TOP_PX}px)`,
               transitionProperty: "transform, width, height",
@@ -788,7 +779,6 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
               width: `${zoomedSizePx.widthPx}px`,
               height: `${zoomedSizePx.heightPx}px`,
               zIndex: 30,
-              contain: "layout paint",
               willChange: "width, height",
               transform: `translate(${(window.innerWidth - zoomedSizePx.widthPx) / 2}px, ${(window.innerHeight - zoomedSizePx.heightPx) / 2}px)`,
               transitionProperty: "transform, width, height",
@@ -841,7 +831,6 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
           top: 0,
           width: CENTER_WIDTH,
           height: CENTER_HEIGHT,
-          contain: "layout paint",
           willChange: "width, height",
           transform: introDone
             ? `translate(${CENTER_LEFT}, ${CENTER_TOP_PX}px)`
@@ -879,28 +868,24 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
   // detour tried to eliminate, but the shape is always correct, at rest and
   // mid-motion alike.
   //
-  // Per a further direct follow-up on real-device smoothness specifically
-  // ("端末でzoomにするときのアニメーションがイマイチまだスムーズじゃない
-  // ...何か良い解決方法ないかな。PCのdev tool上だと普通にスムーズに見れる
-  // んだけど"): a transform-based FLIP rewrite was considered again, but
-  // that's the *exact* scale-based technique already reverted above for
-  // visible distortion — reproducing it would just trade the jank back for
-  // that same rejected "アニメーション途中がめっちゃ変" defect. Chose
-  // instead to keep animating the real `width`/`height` (unchanged, correct
-  // shape preserved) and only add cheap, distortion-free rendering hints on
-  // top of it: `contain: layout paint` (every branch above) scopes this
-  // box's own per-frame layout/paint recalculation to just its own subtree
-  // — the same technique studies-center-image.tsx's own outer mask div
-  // already uses for its own real-device clip-path jank — and `will-change:
-  // width, height` signals the browser to prepare for that change ahead of
-  // time rather than reactively at the first frame, mirroring this
+  // On real-device smoothness: a transform-based FLIP rewrite was considered
+  // again, but that's the *exact* scale-based technique already reverted
+  // above for visible distortion — reproducing it would just trade the jank
+  // back for that same rejected defect. So the real `width`/`height` keep
+  // animating (shape stays correct) and only `will-change: width, height` is
+  // added on top, signalling the browser to prepare for that change ahead of
+  // time rather than reactively at the first frame — mirroring this
   // codebase's own established `will-change: clip-path`/`transform`
   // precedent (studies-center-image.tsx, its own white-flash fix doc
-  // comment). Neither actually moves `width`/`height` onto the compositor —
-  // no CSS mechanism does, they're inherently layout properties — so some
-  // real-device cost necessarily remains; this narrows it without
-  // reintroducing the shape distortion the team already explicitly rejected.
-  // Unverified on a real device in this environment — please confirm.
+  // comment). It doesn't move `width`/`height` onto the compositor — no CSS
+  // mechanism does, they're inherently layout properties — so some
+  // real-device cost necessarily remains.
+  //
+  // `contain: layout paint` was also tried here, alongside will-change, and
+  // has been removed: `paint` clips descendants to this box, and the "Tap to
+  // return" label deliberately sits *outside* it (`top: calc(100% + 20px)`,
+  // 20px below the image), so containment silently made that label
+  // disappear entirely once zoomed.
 
   return (
     <div

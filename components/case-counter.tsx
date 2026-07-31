@@ -125,7 +125,7 @@ export function CaseCounter({ count, lastTitleRef }: CaseCounterProps) {
         // `revealed` (still waiting on the intro, see this component's own
         // top-level `revealed` doc comment) or already `released` (scrolled
         // past, this element's own pre-existing scroll fade-out).
-        className={`absolute top-0 whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-white transition-opacity duration-300 ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+        className={`absolute top-0 whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity duration-300 ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
           revealed && !released ? "opacity-100" : "opacity-0"
         }`}
         style={{ right: "var(--edge-right-inset)" }}

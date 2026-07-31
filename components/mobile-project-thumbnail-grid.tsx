@@ -3,7 +3,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ScrambleText } from "@/components/scramble-text";
-import { slugify, PREVIEW_RATIO_ASPECT, getProjectColor, getProjectImageSrc, type Project } from "@/lib/projects";
+import {
+  slugify,
+  PREVIEW_RATIO_ASPECT,
+  getProjectColor,
+  getProjectImageSrc,
+  getProjectImageSrcSet,
+  type Project,
+} from "@/lib/projects";
 
 type MobileProjectThumbnailGridProps = {
   /** Fetched (or placeholder-fallback) project list — same data Tx mode's
@@ -136,16 +143,22 @@ export function MobileProjectThumbnailGrid({ projects }: MobileProjectThumbnailG
       className="grid"
       style={{
         paddingLeft: CONTENT_INDENT,
-        // width: 11 grid columns total — 1 for CONTENT_INDENT's own
+        // width: 12 grid columns total — 1 for CONTENT_INDENT's own
         // paddingLeft (box-sizing: border-box, Tailwind's preflight, folds
-        // that padding into this same width) + 10 of actual grid track
-        // space, per direct follow-up ("コンテンツ幅を一覧幅を10マス分に
-        // して").
-        width: "calc(var(--sp-grid-column-width) * 11)",
+        // that padding into this same width) + 11 of actual grid track
+        // space, per direct follow-up ("その分、一覧の幅を11マス分に広げて").
+        // Was 10 tracks, which stopped short of the right margin to leave
+        // room for the rotated "recent news" block; that now fades out in Img
+        // mode (see mobile-home.tsx's own `hidden={showImages}`), so the grid
+        // takes the freed columns and its right edge lands on the page's own
+        // right margin.
+        width: "calc(var(--sp-grid-column-width) * 12)",
         gridTemplateColumns: `repeat(${COLUMNS}, 1fr)`,
         // 4px → 2px — per direct follow-up ("マージンを4→2pxに変更して").
         columnGap: "2px",
-        rowGap: "35px",
+        // 35px → 40px — per direct follow-up ("一覧の列の上下マージンをさら
+        // に5px広げて").
+        rowGap: "40px",
       }}
     >
       {projects.map((project, index) => (
@@ -236,13 +249,13 @@ function MobileProjectThumbnailCard({
       // relative — containing block for the hidden title-height measurer
       // below (titleMeasureRef); see that ref's own doc comment.
       className="relative flex min-w-0 flex-col items-start"
-      // 10px → 3px → 8px → 10px — per direct follow-up ("タイトルとサムネの
-      // マージンを7px詰めて"), then reopened 5px per further follow-up
+      // 10px → 3px → 8px → 10px → 9px — per direct follow-up ("タイトルとサ
+      // ムネのマージンを7px詰めて"), then reopened 5px per further follow-up
       // ("Img時のタイトルとサムネのマージンが詰まりすぎ。さらに5px離して")
-      // once the grid moved to narrower 3-column cards, then nudged to the
-      // current 10px per a further direct follow-up ("サムネとタイトルの
-      // マージンを10pxに変更して").
-      style={{ gap: "10px" }}
+      // once the grid moved to narrower 3-column cards, then nudged to 10px
+      // ("サムネとタイトルのマージンを10pxに変更して"), then in by 1px per
+      // the latest ("Img時のタイトルとサムネのマージンを1px詰めて").
+      style={{ gap: "9px" }}
     >
       {/* Mouse/tap-only shortcut over the same destination as the title link
          below (tabIndex=-1/aria-hidden, not a second competing accessible
@@ -281,7 +294,14 @@ function MobileProjectThumbnailCard({
           style={{ animationPlayState: revealed ? "running" : "paused" }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- variable per-project aspect ratio, no fixed dimensions to feed next/image */}
-          <img src={getProjectImageSrc(project)} alt="" className="h-full w-full object-cover" />
+          <img
+            src={getProjectImageSrc(project)}
+            srcSet={getProjectImageSrcSet(project)}
+            // Two thumbnails per row on SP.
+            sizes="50vw"
+            alt=""
+            className="h-full w-full object-cover"
+          />
         </div>
         {/* Color-wipe reveal — see .th-thumbnail-color-wipe's own doc comment
            in globals.css for the full two-phase mechanism/spec, including

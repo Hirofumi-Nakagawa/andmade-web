@@ -1,19 +1,16 @@
 import type { Metadata } from "next";
+import { INSTAGRAM_URL, SITE_NAME, SITE_URL, X_URL } from "@/lib/site";
 import Image from "next/image";
 import Link from "next/link";
 import { ContactHero } from "@/components/contact-hero";
 import { CopyrightYear } from "@/components/copyright-year";
+import { ContactBlendBackground } from "@/components/contact-blend-background";
 import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
-import { FlowerShaderBackground } from "@/components/flower-shader-background";
+import { StatusBarMaskColor } from "@/components/status-bar-mask";
 import { HeaderSummon } from "@/components/header-summon";
 import { MobileContact } from "@/components/mobile-contact";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { SiteHeader } from "@/components/site-header";
-
-/** Trial embed of the animated shader background (see that component's own
- *  doc comment) — per direct follow-up ("この値で、背景画像は添付を使って
- *  contactページ背景に組み込んでみて"), Contact only for now. */
-const SHADER_BG_IMAGE_SRC = "/images/contact/melt-bg.jpg";
 
 /** The page's own 3-line English tagline — per direct follow-up ("この英字3
  *  行は下からスライドイン+フェードインは無しで、変わりにカーテンリビールを
@@ -66,10 +63,50 @@ const PAGE_HEIGHT = `max(100vh, ${COMPACT_MIN_HEIGHT_PX}px)`;
  * logo, no Inquiries/Social, no Back to top), since this page's own content
  * already surfaces the Inquiries/Social block directly above it.
  */
+/**
+ * ContactPage structured data, with the studio's real inquiry address as a
+ * ContactPoint. The email is the same `mailto:` this page already renders
+ * visibly further down — it's public either way, so this exposes nothing new,
+ * it just states the relationship ("this address is how you reach this
+ * organization for inquiries") in a form answer engines can use directly.
+ */
+const contactJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "ContactPage",
+  url: `${SITE_URL}/contact`,
+  name: `Contact - ${SITE_NAME}`,
+  mainEntity: {
+    "@type": "Organization",
+    name: SITE_NAME,
+    url: SITE_URL,
+    email: "info@andmade.jp",
+    contactPoint: {
+      "@type": "ContactPoint",
+      contactType: "sales",
+      email: "info@andmade.jp",
+      availableLanguage: ["Japanese", "English"],
+    },
+    sameAs: [INSTAGRAM_URL, X_URL],
+  },
+};
+
 export default function Contact() {
   return (
     <div id="top" className="relative w-full flow-root" style={{ backgroundColor: "#000" }}>
-      <FlowerShaderBackground imageSrc={SHADER_BG_IMAGE_SRC} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(contactJsonLd) }}
+      />
+      {/* iOS status-bar mask follows this page's own black — see
+         components/status-bar-mask.tsx. */}
+      <StatusBarMaskColor color="#000" />
+      {/* bg-lab.htmlの黒ベース設定を移植したシェーダー背景(bg-lab移植版) —
+         背景の変遷: 画像ベース(FlowerShaderBackground + melt-bg.jpg) → この
+         bg-lab移植版 → #000ベタ → 画像ベースに一瞬戻し → 最終的にこれ(per
+         direct follow-up "やっぱり一つ前のシェーダーのやつに戻して")。
+         画像ベース版もディスク上に残っている。色0が#000000なのでページ自身の
+         背景色ともシームレス。 */}
+      <ContactBlendBackground />
 
       {/* PC-only tree, split from SP's own (mobile-contact.tsx) at Tailwind's
          default `lg` breakpoint (1024px) — same plain-CSS split as
