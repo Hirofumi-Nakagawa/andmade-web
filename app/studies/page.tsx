@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { GrainOverlay } from "@/components/grain-overlay";
+import { withBasePath } from "@/lib/base-path";
 import { MobileStudies } from "@/components/mobile-studies";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { SiteFooter } from "@/components/site-footer";
@@ -63,7 +64,9 @@ const STUDIES_BACKGROUND_COLOR = "#88988D";
  *  tone, rather than overlay's brightness-dependent contrast shift. No
  *  animation this time (no equivalent request for movement, unlike the old
  *  noise) — a plain static tile. */
-const NOISE_TEXTURE_SRC = "/images/noise.png";
+// withBasePath — CSS の background-image: url() に文字列で渡すため、Next の
+// basePath 自動付与が効かない（lib/base-path.ts 参照）。
+const NOISE_TEXTURE_SRC = withBasePath("/images/noise.png");
 
 /**
  * Studies page (Figma node 934:312) — a single, non-scrolling viewport (per

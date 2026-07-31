@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { withBasePath } from "@/lib/base-path";
 import type { NowPlaying } from "@/lib/spotify";
 
 /**
@@ -15,9 +16,11 @@ import type { NowPlaying } from "@/lib/spotify";
  * own header comment for the deployment/credentials setup.
  *
  * Root-relative (not just "now-playing.php") so it resolves the same from
- * every route, including nested ones like /projects/<slug>/.
+ * every route, including nested ones like /projects/<slug>/. withBasePath()
+ * because a plain fetch URL is a string Next doesn't rewrite — see
+ * lib/base-path.ts.
  */
-const NOW_PLAYING_ENDPOINT = "/now-playing.php";
+const NOW_PLAYING_ENDPOINT = withBasePath("/now-playing.php");
 
 /** How often to re-poll the endpoint above while the tab is open. Matches
  *  that PHP's own CACHE_SECONDS, so each poll lands on roughly one fresh

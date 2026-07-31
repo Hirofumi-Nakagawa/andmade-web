@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
+import { withBasePath } from "@/lib/base-path";
 
 /** Served from public/ (not app/favicon.ico's own Next.js-managed static
  *  route) since this needs a plain URL this component can swap a <link>'s
  *  href to at runtime — Next's file-convention favicon is baked into the
  *  build as the *default* icon link, not something JS can pick "the other
- *  one" from. */
-const INACTIVE_FAVICON_HREF = "/favicon-inactive-3.ico";
+ *  one" from. withBasePath() for exactly that reason too: a raw href string
+ *  is not something Next rewrites (see lib/base-path.ts). */
+const INACTIVE_FAVICON_HREF = withBasePath("/favicon-inactive-3.ico");
 
 /**
  * Swaps every <link rel="icon"> to a distinct alternate icon while this tab

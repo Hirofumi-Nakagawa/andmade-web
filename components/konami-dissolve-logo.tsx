@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { withBasePath } from "@/lib/base-path";
 
 /**
  * Live-tunable parameters, exposed on `window.andmadeDissolve` while the egg
@@ -159,7 +160,9 @@ export function KonamiDissolveLogo() {
     let mouseTargetY = 0;
 
     const logo = new Image();
-    logo.src = "/andmade-logo.svg";
+    // withBasePath — new Image() の src は Next が書き換えない文字列
+    // （lib/base-path.ts 参照）。
+    logo.src = withBasePath("/andmade-logo.svg");
 
     function hash(x: number, y: number, seed: number) {
       let h = (x * 374761393 + y * 668265263 + seed * 1442695041) | 0;

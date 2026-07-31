@@ -52,7 +52,93 @@ NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=...
 
 ---
 
-## 3. GitHub Actions の設定（初回のみ）
+## 3. 確認用ディレクトリの設定（本番公開前の運用）
+
+本番公開まで、デプロイ先は `www/preview/` ディレクトリにして
+`https://andmade.jp/preview/` で確認する。
+`andmade.jp` 直下は手作業で上げた coming-soon ページのまま触らない。
+
+Basic認証を掛けるので、URLを知られても中身は見られない。
+
+### 3-1. Basic認証のパスワードファイルを作る
+
+**手元のMacで**以下を実行（`preview` はユーザー名、任意に変更可）:
+
+```bash
+htpasswd -nb preview '好きなパスワード'
+```
+
+`preview:$apr1$...` のような1行が出力される。これをコピーして、
+サーバーの `/home/<アカウント>/.htpasswd` というファイルに貼り付けて保存する
+（**`www` の外**。中に置くとURL直打ちでハッシュを取られる可能性がある）。
+
+FTPクライアントで新規ファイルを作るか、ローカルで `.htpasswd` を作って
+その階層にアップロードする。
+
+### 3-2. .htaccess のパスを書き換える
+
+`public/.htaccess` の先頭にある
+
+```
+AuthUserFile /home/<アカウント>/.htpasswd
+```
+
+の `<アカウント>` を実際のさくらのアカウント名に書き換えて commit する。
+
+この `.htaccess` は `www/preview/` に置かれるので、認証は preview 配下だけに
+効く。coming-soon ページには影響しない。
+
+### 3-3. デプロイ先を preview に向ける
+
+GitHub の Secret `FTP_SERVER_DIR` を以下にする:
+
+```
+/home/<アカウント>/www/preview/
+```
+
+### 3-4. basePath を設定する
+
+サブディレクトリ公開では、`/_next/...` などのルート絶対パスがそのままだと
+`andmade.jp/_next/...`（＝ coming-soon 側）を見に行って全部404になる。
+Next の `basePath` で接頭辞を付けて解決する。
+
+GitHub の **Settings → Secrets and variables → Actions → Variables タブ**
+（Secrets ではない）で **New repository variable**:
+
+| Name | Value |
+|---|---|
+| `BASE_PATH` | `/preview` |
+
+> 先頭スラッシュあり・末尾スラッシュなし。
+> 本番公開時はこの Variable を**削除するか空にする**だけでルート公開に戻る。
+
+`next/link` / `next/image` は Next が自動で接頭辞を付ける。
+CSS の `url()`、`new Image().src`、`fetch()` のURLなど「文字列として渡すパス」
+だけは自動対応されないので、`lib/base-path.ts` の `withBasePath()` を
+通してある（新しくそういうコードを書くときは同じように通すこと）。
+
+---
+
+### 本番公開に切り替えるとき
+
+上から順に実行する。順番を変えると事故る。
+
+1. `public/.htaccess` の先頭「0. Basic認証」ブロックを**まるごと削除**して commit・push
+2. Variable `BASE_PATH` を**削除**（または空文字に）
+3. Secret `FTP_SERVER_DIR` を `/home/<アカウント>/www/` に変更
+4. Actions から **Run workflow**
+
+> 1 を忘れると本番サイトがID/パスワードを要求する状態で公開される。
+> 2 を忘れるとアセットのパスが `/preview/_next/...` のままで表示が崩れる。
+> 3 を先にやると coming-soon ページが認証付きのまま上書きされる。
+
+サーバー上の `www/preview/` は消しても残しても構わない。
+残す場合、Basic認証が外れた状態のコピーがそこに残るので、
+検索エンジンに拾われたくなければ削除しておくのが無難。
+
+---
+
+## 4. GitHub Actions の設定（初回のみ）
 
 `.github/workflows/deploy.yml` がデプロイを自動化する。
 GitHub リポジトリの **Settings → Secrets and variables → Actions → New repository secret**
@@ -87,7 +173,7 @@ push した時点で1回目のデプロイが走る。Actions タブで進行を
 
 ---
 
-## 4. 毎回のデプロイ
+## 5. 毎回のデプロイ
 
 ### コードを変更したとき
 
@@ -121,7 +207,7 @@ npm run build
 
 ---
 
-## 5. 確認
+## 6. 確認
 
 - `https://<ドメイン>/` — トップが表示される
 - `https://<ドメイン>/about` — 拡張子なしURLが解決している（`.htaccess` が効いている証拠）
@@ -135,7 +221,7 @@ npm run build
 
 ---
 
-## 6. 仕組みの補足
+## 7. 仕組みの補足
 
 ### now-playing.php
 
@@ -158,7 +244,7 @@ canonical → 実URL の301リダイレクトが挟まるため採用してい�
 
 ---
 
-## 7. 制約（変わった点）
+## 8. 制約（変わった点）
 
 | 項目 | 変更前 | 変更後 |
 |---|---|---|

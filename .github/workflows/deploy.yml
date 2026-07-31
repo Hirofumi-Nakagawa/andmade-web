@@ -47,6 +47,12 @@ jobs:
           MICROCMS_SERVICE_DOMAIN: ${{ secrets.MICROCMS_SERVICE_DOMAIN }}
           MICROCMS_API_KEY: ${{ secrets.MICROCMS_API_KEY }}
           NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
+          # サブディレクトリ公開のときだけ設定する（例: /preview）。
+          # Secrets ではなく Variables（Settings → Secrets and variables →
+          # Actions → Variables タブ）で管理する。秘密ではないうえ、本番公開時に
+          # 空にするだけで切り替えられるため。
+          # 未設定なら空文字 → next.config.ts 側で undefined 扱い＝ルート公開。
+          NEXT_PUBLIC_BASE_PATH: ${{ vars.BASE_PATH }}
         run: npm run build
 
       # ビルドが空振りしていないかの最低限の確認。out/ が無い・index.html が
@@ -65,6 +71,13 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
+          # さくらは平文FTPを受け付けず、FTPS(明示的TLS / ポート21で接続後に
+          # AUTH TLS で暗号化に切り替える方式)のみ。protocol を指定しないと
+          # このアクションは平文FTPで繋ぎにいき、さくら側が即座に接続を切るため
+          # "Server sent FIN packet unexpectedly" で失敗する。
+          # ※ それでも繋がらない場合は ftps-legacy（暗黙的TLS / ポート990）を試す。
+          protocol: ftps
+          port: 21
           # ローカル側。末尾のスラッシュ必須（out フォルダ自体ではなく中身を送る）。
           local-dir: ./out/
           # サーバー側の公開ディレクトリ。末尾のスラッシュ必須。

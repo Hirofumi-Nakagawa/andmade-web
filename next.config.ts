@@ -17,6 +17,14 @@ const nextConfig: NextConfig = {
   // リサイズ)かpublic/配下の実ファイルなので、Next側の最適化には依存していない。
   images: { unoptimized: true },
 
+  // 公開先がサブディレクトリのときだけ設定する（例: NEXT_PUBLIC_BASE_PATH=/preview
+  // → andmade.jp/preview/ で動く）。未設定なら undefined = ルート公開＝本番。
+  // これを入れると next/link・next/image・_next/ のアセットURLに自動で接頭辞が
+  // 付く。文字列として直接ブラウザに渡すパス（CSSのurl()、new Image().src、
+  // fetch のURL 等）には付かないので、そちらは lib/base-path.ts の
+  // withBasePath() を通している。
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || undefined,
+
   // trailingSlash は敢えて既定(false)のまま = /about は out/about.html として
   // 書き出される。true にすると out/about/index.html になりURLが /about/ に
   // 変わるが、このコードベースの正規URLはすべてスラッシュ無し

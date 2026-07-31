@@ -1,3 +1,4 @@
+import { withBasePath } from "@/lib/base-path";
 import { getMicrocmsClient, microcmsImageSrcSet, microcmsImageUrl } from "@/lib/microcms";
 
 /** The aspect ratios allowed for the hover-preview background image (see app/page.tsx). */
@@ -50,13 +51,17 @@ export const PREVIEW_RATIO_ASPECT: Record<PreviewRatio, number> = {
  * Sample image for each ratio (public/images/previews/) — one placeholder
  * image per ratio, shared by every project using that ratio, until
  * microCMS supplies a real per-project image.
+ *
+ * withBasePath() because these end up as raw `<img src>`/`new Image().src`
+ * strings (preload-project-previews.tsx, the hover preview), which Next
+ * doesn't rewrite the way it does next/image — see lib/base-path.ts.
  */
 export const PREVIEW_RATIO_IMAGE_SRC: Record<PreviewRatio, string> = {
-  "portrait-3-2": "/images/previews/portrait-3-2.png",
-  "landscape-3-2": "/images/previews/landscape-3-2.png",
-  "portrait-3-4": "/images/previews/portrait-3-4.png",
-  "landscape-8-5": "/images/previews/landscape-8-5.png",
-  "square-1-1": "/images/previews/square-1-1.png",
+  "portrait-3-2": withBasePath("/images/previews/portrait-3-2.png"),
+  "landscape-3-2": withBasePath("/images/previews/landscape-3-2.png"),
+  "portrait-3-4": withBasePath("/images/previews/portrait-3-4.png"),
+  "landscape-8-5": withBasePath("/images/previews/landscape-8-5.png"),
+  "square-1-1": withBasePath("/images/previews/square-1-1.png"),
 };
 
 /**
