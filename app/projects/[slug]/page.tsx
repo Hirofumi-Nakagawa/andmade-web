@@ -32,6 +32,27 @@ type ProjectsPageProps = { params: Promise<{ slug: string }> };
  *  trade-off of static hosting. */
 export async function generateStaticParams() {
   const projects = await getProjects();
+
+  // 空配列を返すと、Next は「generateStaticParams が無い」と誤解して
+  // `Page "/projects/[slug]" is missing "generateStaticParams()"` という
+  // 実態と食い違うエラーで落ちる（vercel/next.js#71862 — この関数が現に
+  // 存在していても再現する既知の挙動）。原因はほぼ必ず「microCMS に届いて
+  // いない」ことなので、その場で分かる形にして落とす。
+  //
+  // getProjects() は設定漏れ・通信失敗のいずれも [] に握り潰す仕様
+  // (lib/microcms.ts の getMicrocmsClient が null を返す / lib/projects.ts の
+  // catch)。ビルド時にそれが起きるとページが1枚も生成されず、静的サイトと
+  // しては成立しないため、ここは握り潰さず明示的に失敗させる。
+  if (projects.length === 0) {
+    throw new Error(
+      "microCMS から実績を1件も取得できなかったため、静的書き出しを中止しました。\n" +
+        "MICROCMS_SERVICE_DOMAIN / MICROCMS_API_KEY を確認してください" +
+        "（GitHub Actions の場合はリポジトリの Secrets、ローカルの場合は .env.local）。\n" +
+        `現在の状態: MICROCMS_SERVICE_DOMAIN=${process.env.MICROCMS_SERVICE_DOMAIN ? "設定あり" : "未設定"}, ` +
+        `MICROCMS_API_KEY=${process.env.MICROCMS_API_KEY ? "設定あり" : "未設定"}`
+    );
+  }
+
   return projects.map((project) => ({ slug: slugify(project.title) }));
 }
 
