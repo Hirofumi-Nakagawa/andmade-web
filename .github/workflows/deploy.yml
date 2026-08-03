@@ -55,14 +55,17 @@ jobs:
           NEXT_PUBLIC_BASE_PATH: ${{ vars.BASE_PATH }}
         run: npm run build
 
-      # ビルドが空振りしていないかの最低限の確認。out/ が空のまま次の rsync
-      # （--delete 付き）に進むと、サーバー上のファイルを全部消してしまう。
+      # scripts/verify-build.mjs は「検証」だけでなく、out/.htaccess の
+      # __BASE_PATH__ を実際の公開先に「置換」もする（ErrorDocument は絶対パス
+      # しか受け付けないため）。以前ここは test -f を並べた自前のチェックで、
+      # このスクリプトを呼んでいなかった。そのため __BASE_PATH__ が文字列の
+      # まま転送され、存在しないURLを開くと "__BASE_PATH__/404.html" という
+      # 文字がそのまま表示されていた（Apache はスラッシュで始まらない
+      # ErrorDocument の値を「表示する文字列」と解釈する）。
+      # 引数は Build と同じ vars.BASE_PATH を渡すこと — 片方だけ変えると
+      # アセットのパスと ErrorDocument が食い違う。
       - name: Verify build output
-        run: |
-          test -f out/index.html || { echo "out/index.html が見つかりません"; exit 1; }
-          test -f out/.htaccess || { echo "out/.htaccess が見つかりません（public/.htaccess の配置を確認）"; exit 1; }
-          test -f out/now-playing.php || { echo "out/now-playing.php が見つかりません"; exit 1; }
-          echo "OK: $(find out -type f | wc -l) files"
+        run: node scripts/verify-build.mjs "${{ vars.BASE_PATH }}"
 
       # 転送は FTPS ではなく SSH(rsync)。
       # FTPS を諦めた経緯（同じ所で詰まったとき用のメモ）:
