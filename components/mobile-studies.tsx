@@ -11,13 +11,16 @@ import { MobileStudiesThumbnailRail } from "@/components/mobile-studies-thumbnai
 
 /** パラパラ表示（イントロ）を始めるまでの待ち時間。
  *
- *  背景（StudiesBackground）のフェードインぶん + 350ms。
+ *  背景（StudiesBackground）のフェードインぶん + 150ms。
  *  フェード直後に始めるとまだ背景の余韻と重なって見えたため、ひと呼吸
  *  置いてから始める — per direct follow-up ("Studiesのパラパラの表示
- *  タイミングをもうワンテンポ遅らせて")。前段の指示（"背景がフェードイン
+ *  タイミングをもうワンテンポ遅らせて" で +350、その後 "パラパラが始まるのを
+ *  もうワンテンポ速くして" で +150)。この 150ms が、サムネが出てから
+ *  動き出すまでの間（INTRO_THUMBNAIL_DELAY_MS が背景フェード完了に張り付いて
+ *  いるため）にもなっている。前段の指示（"背景がフェードイン
  *  する前にパラパラが始まってる"）で入れた待ちの延長なので、背景の
  *  フェード時間を足す形は崩さずに追加ぶんだけ持たせている。 */
-const INTRO_START_DELAY_MS = STUDIES_BACKGROUND_FADE_MS + 350;
+const INTRO_START_DELAY_MS = STUDIES_BACKGROUND_FADE_MS + 150;
 
 /** サムネを出してからパラパラを始めるまでのリード時間。
  *
@@ -27,6 +30,18 @@ const INTRO_START_DELAY_MS = STUDIES_BACKGROUND_FADE_MS + 350;
  *  出た瞬間にもう動き出していて出現が認識しづらい。パラパラの開始
  *  （INTRO_START_DELAY_MS）はそのままに、サムネだけこのぶん先に出す。 */
 const INTRO_THUMBNAIL_LEAD_MS = 550;
+
+/** サムネを実際に出す時刻。
+ *
+ *  INTRO_START_DELAY_MS - INTRO_THUMBNAIL_LEAD_MS をそのまま使うと、リード時間を
+ *  伸ばしたぶんだけ背景のフェードイン中に食い込む（550ms に上げた時点で 250ms に
+ *  なり、"studiesのパラパラのアニメーション開始が先祖返りしてない？" と指摘された
+ *  状態＝背景が出揃う前にサムネが現れる、に戻っていた）。
+ *  背景のフェード完了を下限にして、リードを伸ばしてもそこより前には出ないようにする。 */
+const INTRO_THUMBNAIL_DELAY_MS = Math.max(
+  STUDIES_BACKGROUND_FADE_MS,
+  INTRO_START_DELAY_MS - INTRO_THUMBNAIL_LEAD_MS,
+);
 
 /** Same "margin + N columns" idiom every other Mobile* component uses (see
  *  mobile-not-found.tsx's own TEXT_LEFT) — grid column 3 (margin + 2
@@ -487,10 +502,7 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
   // （set-state-in-effect の回避という意味では rAF と同じく effect 本体の
   // 外で setState することになるので条件は満たしている）。
   useEffect(() => {
-    const thumbnailTimer = setTimeout(
-      () => setThumbnailShown(true),
-      INTRO_START_DELAY_MS - INTRO_THUMBNAIL_LEAD_MS,
-    );
+    const thumbnailTimer = setTimeout(() => setThumbnailShown(true), INTRO_THUMBNAIL_DELAY_MS);
     const timer = setTimeout(() => {
       const start = Math.floor(Math.random() * studies.length);
       updatePosition(start);
