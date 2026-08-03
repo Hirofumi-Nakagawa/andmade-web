@@ -200,7 +200,7 @@ export function RecentNews({ items, hidden = false }: RecentNewsProps) {
           version was simply missing it.
       */}
       <div
-        className={`absolute z-40 flex items-center justify-center mix-blend-exclusion transition-[transform,opacity] duration-500 ease-out ${
+        className={`absolute z-40 flex items-center justify-center mix-blend-exclusion transition-[translate,opacity] duration-500 ease-out ${
           revealed ? "translate-y-0" : "translate-y-[24px]"
         } ${revealed && !hidden ? "opacity-100" : "opacity-0"}`}
         style={{

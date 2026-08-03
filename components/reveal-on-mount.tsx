@@ -49,9 +49,10 @@ export function RevealOnMount({ className = "", style, children, fadeOnly = fals
       // プロパティを出力する（.translate-y-\[24px\]{translate:var(--tw-translate-x)
       // var(--tw-translate-y)}）。そのため transform を対象にしていた間は
       // スライドだけトランジションが乗らず、24px ぶん瞬間移動していた
-      // （フェードは効いていたので気づきにくい）。about-section.tsx や
-      // project-card.tsx が同じ見た目で正しく動いていたのは、あちらが
-      // transition-all を使っているため。
+      // （フェードは効いていたので気づきにくい）。transition-all を使って
+      // いる about-section.tsx などは影響を受けていなかった。同じ書き方を
+      // していた project-card.tsx / project-view-toggle.tsx /
+      // recent-news.tsx も同時に修正済み。
       className={`${fadeOnly ? "transition-opacity" : "transition-[translate,opacity]"} duration-500 ease-out ${
         revealed
           ? `opacity-100${fadeOnly ? "" : " translate-y-0"}`

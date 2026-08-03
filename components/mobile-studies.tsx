@@ -985,7 +985,7 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
       onTouchEnd={handleTouchEnd}
       onClick={handleGalleryClick}
     >
-      <MobileStudiesThumbnailRail studies={studies} position={resolvedPosition} onSelect={handleThumbnailSelect} />
+      <MobileStudiesThumbnailRail studies={studies} position={resolvedPosition} onSelect={handleThumbnailSelect} shown={position !== null} />
 
       <Link
         href="/"

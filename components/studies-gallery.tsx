@@ -895,7 +895,7 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
 
   return (
     <div className="absolute inset-0" onWheel={handleWheel} onClick={handleGalleryClick}>
-      <StudiesThumbnailRail studies={studies} position={resolvedPosition} onSelect={handleThumbnailSelect} />
+      <StudiesThumbnailRail studies={studies} position={resolvedPosition} onSelect={handleThumbnailSelect} shown={position !== null} />
 
       {/* Center image — 348x464 at the 1440x900 Figma canvas (node
          934:312) by default, exactly centered in that frame at that

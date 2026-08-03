@@ -196,7 +196,7 @@ export function ProjectCard({
     // ("やっぱりTxのスライドイン戻して").
     <li
       ref={cardRef}
-      // `transition-[transform,opacity]`, not `transition-all`: this element
+      // `transition-[translate,opacity]`, not `transition-all`: this element
       // carries a per-column `transitionDelay` (baseDelay below), and `all`
       // made that delay apply to *every* animatable property it inherits —
       // including the Konami easter egg's page-wide `text-shadow`, which is
@@ -205,7 +205,15 @@ export function ProjectCard({
       // glitch never rendered there at all while column 0 (0ms) showed it
       // normally. Naming the two properties this element actually animates
       // leaves inherited values to apply instantly, as they should.
-      className={`transition-[transform,opacity] duration-500 ease-out ${
+      //
+      // transform → translate: Tailwind v4 の translate-y-* は transform では
+      // なく CSS の `translate` プロパティを出力する（.translate-y-\[24px\]{
+      // translate:var(--tw-translate-x) var(--tw-translate-y)}）。transform を
+      // 並べていた間はスライドだけトランジションが乗らず、24px ぶん瞬間移動して
+      // いた（フェードは効いていたので気づきにくい。"トップのtxt時の一覧表示時の
+      // スライドインが無くなってる" として報告）。同じ理由で
+      // project-view-toggle.tsx / recent-news.tsx / reveal-on-mount.tsx も修正。
+      className={`transition-[translate,opacity] duration-500 ease-out ${
         revealed ? "translate-y-0 opacity-100" : "translate-y-[24px] opacity-0"
       }`}
       style={{ transitionDelay: `${baseDelay}ms` }}

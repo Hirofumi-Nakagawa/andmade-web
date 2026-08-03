@@ -13,6 +13,10 @@ const RENDER_RADIUS = 10;
  *  distance rather than a full container height. */
 const ENTRANCE_TRANSLATE_PX = 160;
 type StudiesThumbnailRailProps = {
+  /** false の間はレール自体を出さない（透明にする）。既定は true。
+   *  パラパラが始まる瞬間に true を渡すことで、静止したレールが先に
+   *  見えてしまうのを防ぐ — 上の実装コメント参照。 */
+  shown?: boolean;
   /** Forwarded straight from studies-gallery.tsx's own `studies` prop. */
   studies: Study[];
   /** Continuous scroll position, in item-units — a plain integer while
@@ -96,7 +100,7 @@ type StudiesThumbnailRailProps = {
  *  what it did before `srcSet` existed here at all. */
 const THUMB_SIZES = "146px";
 
-export function StudiesThumbnailRail({ studies, position, onSelect }: StudiesThumbnailRailProps) {
+export function StudiesThumbnailRail({ studies, position, onSelect, shown = true }: StudiesThumbnailRailProps) {
   const firstItemRef = useRef<HTMLButtonElement>(null);
   const [itemHeight, setItemHeight] = useState(0);
   const [entranceRevealed, setEntranceRevealed] = useState(false);
@@ -151,7 +155,12 @@ export function StudiesThumbnailRail({ studies, position, onSelect }: StudiesThu
   const slots = Array.from({ length: RENDER_RADIUS * 2 + 1 }, (_, i) => windowStart + i);
 
   return (
-    <div className="absolute top-0 left-0 h-full w-[calc(82px*var(--grid-scale))] overflow-hidden">
+    <div
+      className="absolute top-0 left-0 h-full w-[calc(82px*var(--grid-scale))] overflow-hidden"
+      // opacity — see MobileStudiesThumbnailRail's own comment（パラパラが
+      // 始まるまでレールを出さない）。
+      style={{ opacity: shown ? 1 : 0, transition: "opacity 300ms ease-out" }}
+    >
       <div
         className="relative h-full w-full"
         style={{

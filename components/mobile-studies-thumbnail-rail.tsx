@@ -41,6 +41,10 @@ const FALLBACK_ITEM_HEIGHT_PX = 80;
 const ENTRANCE_TRANSLATE_PX = 120;
 
 type MobileStudiesThumbnailRailProps = {
+  /** false の間はレール自体を出さない（透明にする）。既定は true。
+   *  パラパラが始まる瞬間に true を渡すことで、静止したレールが先に
+   *  見えてしまうのを防ぐ — 上の実装コメント参照。 */
+  shown?: boolean;
   /** Forwarded straight from mobile-studies.tsx's own `studies` prop. */
   studies: Study[];
   /** Continuous scroll position, in item-units — see mobile-studies.tsx's
@@ -70,7 +74,7 @@ type MobileStudiesThumbnailRailProps = {
 // background/noise shows through directly now. Each item's own 40%-opacity
 // (isActive ? 1 : 0.4 below) already matched the "非選択中サムネの透過を
 // 40%に" half of that same request, so nothing else needed changing there.
-export function MobileStudiesThumbnailRail({ studies, position, onSelect }: MobileStudiesThumbnailRailProps) {
+export function MobileStudiesThumbnailRail({ studies, position, onSelect, shown = true }: MobileStudiesThumbnailRailProps) {
   const [entranceRevealed, setEntranceRevealed] = useState(false);
   // Real per-item height, in px — `window.innerHeight / VISIBLE_ITEM_COUNT`
   // so exactly VISIBLE_ITEM_COUNT items always fill the rail's own
@@ -101,7 +105,19 @@ export function MobileStudiesThumbnailRail({ studies, position, onSelect }: Mobi
   const slots = Array.from({ length: RENDER_RADIUS * 2 + 1 }, (_, i) => windowStart + i);
 
   return (
-    <div className="absolute top-0 left-0 h-full overflow-hidden" style={{ width: ITEM_WIDTH }}>
+    <div
+      className="absolute top-0 left-0 h-full overflow-hidden"
+      // opacity — パラパラが始まるまでレールを出さない。per direct follow-up
+      // ("studiesのパラパラ開始前に左サムネ一覧が一瞬止まるので、止まらないように
+      // パラパラが始まるようにして")。以前は position ?? 0 で最初から描かれて
+      // いたため、動き出すまでの数百msだけ静止したレールが見えていた。呼び出し側が
+      // 「動き始めた瞬間」を渡すので、フェードイン中はもう動いている。
+      style={{
+        width: ITEM_WIDTH,
+        opacity: shown ? 1 : 0,
+        transition: "opacity 300ms ease-out",
+      }}
+    >
       <div
         className="relative h-full w-full"
         style={{
