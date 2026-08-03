@@ -11,6 +11,7 @@ import { SiteHeader } from "@/components/site-header";
 import { setLightMenuPill } from "@/lib/menu-theme-store";
 import { setScrollGaugeSuppressed } from "@/lib/scroll-gauge-store";
 import { StatusBarMaskColor } from "@/components/status-bar-mask";
+import { withBasePath } from "@/lib/base-path";
 
 /** How long with zero cursor movement / click before the header + center
  *  row fade out, leaving only ScenicMapBackground's own bottom-of-screen
@@ -325,7 +326,7 @@ export default function NotFound() {
         >
           <Link href="/" className="block shrink-0">
             <Image
-              src="/andmade-logo.svg"
+              src={withBasePath("/andmade-logo.svg")}
               alt="ANDMADE"
               width={LOGO_WIDTH_PX}
               height={LOGO_HEIGHT_PX}

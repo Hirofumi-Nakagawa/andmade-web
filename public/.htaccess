@@ -1,101 +1,74 @@
 # ANDMADE — さくらのレンタルサーバー用 Apache 設定
 # ============================================================================
-# next.config.ts の `output: "export"` で書き出した out/ をそのまま公開領域
-# (/home/<アカウント>/www) に置いた前提。public/ 配下にあるので `next build`
-# の出力に自動でコピーされる。
+# next.config.ts の `output: "export"` で書き出した out/ に、public/ 配下から
+# 自動でコピーされる。アップロード先のディレクトリ直下に置かれる想定。
 #
-# ※ さくらの標準環境は Apache + mod_rewrite が有効。もし 500 エラーになる
-#   場合は、その環境で無効なディレクティブ(Header / AddOutputFilterByType 等)
-#   をコメントアウトして切り分けること。
-
-# ===========================================================================
-# 0. Basic認証（確認用サブドメイン専用）
-# ===========================================================================
-# ★★★ 本番公開（andmade.jp を実サイトに切り替える）時は、この 0. の
-#     ブロックをまるごと削除して push すること。消し忘れると本番サイトが
-#     ID/パスワードを要求する状態で公開される。
+# ★ ここには「リライト」を書かない。
+#   当初は /about → about.html の RewriteRule を置いていたが、さくらの共有
+#   サーバーでは最後まで動かなかった:
+#     - Next は about.html と about/ ディレクトリを同時に出力する
+#     - Apache の mod_dir がリライトより先に「末尾スラッシュを付ける301」を
+#       出すため、/about は結局 about/ への要求になり、index が無いので
+#       403 Forbidden
+#     - それを止める DirectorySlash / Options 系は AllowOverride で許可されて
+#       おらず、書くと 500
+#   next.config.ts を `trailingSlash: true` にして about/index.html を出す
+#   構成に変えたことで、Apache 標準の DirectoryIndex がそのまま解決できる
+#   ようになり、リライト自体が不要になった。
 #
-# 現在の運用: andmade.jp/preview/ （www/preview ディレクトリ）にデプロイし、
-# andmade.jp 直下は手作業で上げた coming-soon ページのまま。
-# この .htaccess は www/preview/ に置かれるので、認証も preview 配下だけに
-# 効く（coming-soon には影響しない）。
+# ★ キャッシュ(ExpiresActive) / 圧縮(AddOutputFilterByType) / Header /
+#   Options / AddDefaultCharset も書かない。さくらの AllowOverride では
+#   許可されておらず、500 になる。足したい場合は1行ずつ追加して都度確認する
+#   こと（まとめて足すと原因の切り分けができない）。
+
+# ---------------------------------------------------------------------------
+# 404ページ
+# ---------------------------------------------------------------------------
+# __BASE_PATH__ は scripts/verify-build.mjs がビルド時に実際の basePath へ
+# 置換する（確認用 /preview 公開なら "/preview"、本番なら空文字）。
+# ErrorDocument は相対パスを受け付けない（スラッシュで始まらない値は
+# 「そのまま表示する文字列」と解釈される）ため、公開先ごとに絶対パスを
+# 埋める必要がある。手で書き換えると本番移行時に忘れるのでビルドに任せる。
+ErrorDocument 404 __BASE_PATH__/404.html
+
+# ---------------------------------------------------------------------------
+# Basic認証（確認用 /preview 公開のときだけ有効にする）
+# ---------------------------------------------------------------------------
+# ★ 本番公開に切り替えたため、まるごと無効化してある（2026-08 公開時）。
+#   有効なままだと本番サイトが ID/パスワードを要求する状態で公開される。
+#   DEPLOY.md の「本番公開に切り替えるとき」も参照。
 #
-# AuthUserFile は「公開領域(www)の外」の絶対パスを指定する。www の中に
-# .htpasswd を置くと、URL を直接叩かれてハッシュを取得される可能性がある。
-# <アカウント> は自分のさくらのアカウント名に書き換えること。
-# .htpasswd の作り方は DEPLOY.md の「確認用ディレクトリの設定」を参照。
-AuthType Basic
-AuthName "ANDMADE preview"
-AuthUserFile /home/<アカウント>/.htpasswd
-Require valid-user
+# もう一度 /preview で確認用に公開したくなったら、下の2ブロックの
+# コメントを外す（AuthType〜Require の4行と、<Files> ブロックは必ずセットで。
+# 認証だけ復活させると now-playing.php まで認証対象になり、ローカル開発の
+# Spotify 表示が止まる）。
+#
+# AuthUserFile は公開領域(www)の外を指すこと。www の中に .htpasswd を置くと
+# URL 直打ちでハッシュを取得される可能性がある。
+# このファイルが無い/読めない状態で AuthUserFile を書くと、サイト全体が 500
+# になるので、無効化するときは4行まとめてコメントアウトする。
+#
+#   確認: ssh andmade@andmade.sakura.ne.jp 'ls -la ~/.htpasswd'
+#   作成: 手元のMacで  htpasswd -c ~/Desktop/htpasswd.txt preview
+#
+# AuthType Basic
+# AuthName "ANDMADE preview"
+# AuthUserFile /home/andmade/.htpasswd
+# Require valid-user
 
-# ---------------------------------------------------------------------------
-# 1. 拡張子なしURL → .html
-# ---------------------------------------------------------------------------
-# 静的書き出しでは /about は out/about.html というファイルになる。一方この
-# サイトの正規URLは全てスラッシュ無し・拡張子無し(/about, /projects/xxx)なので、
-# 実ファイルが無いリクエストに .html を補って解決する。
-<IfModule mod_rewrite.c>
-  RewriteEngine On
-
-  # 既に存在するファイル/ディレクトリはそのまま(画像・JS・CSS・PHP など)
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
-  RewriteRule ^ - [L]
-
-  # /about → /about.html （対応する .html がある場合のみ）
-  RewriteCond %{REQUEST_FILENAME}.html -f
-  RewriteRule ^(.*)$ $1.html [L]
-
-  # どれにも当たらなければ 404 ページ（Next が out/404.html を書き出す）。
-  # 先頭スラッシュ無しの相対指定にしてあるのは、この .htaccess が置かれた
-  # ディレクトリ基準で解決させるため。ルート公開でもサブディレクトリ公開でも
-  # そのまま動く（/404.html と書くと preview 配下では本番ルートを見てしまう）。
-  RewriteRule ^ 404.html [L]
-</IfModule>
-
-# ---------------------------------------------------------------------------
-# 3. キャッシュ
-# ---------------------------------------------------------------------------
-# Next のビルド成果物(/_next/static/...)はファイル名にハッシュが入るので、
-# 内容が変われば必ずURLも変わる = 長期キャッシュしても古いものが残らない。
-# HTML はビルドのたびに同じURLで中身が変わるので、キャッシュさせない。
-<IfModule mod_expires.c>
-  ExpiresActive On
-
-  # ハッシュ付きアセット: 1年
-  <FilesMatch "\.(js|css|woff2|woff|ttf|otf)$">
-    ExpiresDefault "access plus 1 year"
-  </FilesMatch>
-
-  # 画像・動画: 30日（public/ 配下の実ファイルはハッシュが付かないため控えめ）
-  <FilesMatch "\.(jpg|jpeg|png|gif|webp|avif|svg|ico|mp4|webm)$">
-    ExpiresDefault "access plus 30 days"
-  </FilesMatch>
-
-  # HTML: 都度確認
-  <FilesMatch "\.html$">
-    ExpiresDefault "access plus 0 seconds"
-  </FilesMatch>
-</IfModule>
-
-<IfModule mod_headers.c>
-  <FilesMatch "\.html$">
-    Header set Cache-Control "no-cache, must-revalidate"
-  </FilesMatch>
-</IfModule>
-
-# ---------------------------------------------------------------------------
-# 4. 圧縮
-# ---------------------------------------------------------------------------
-<IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml
-  AddOutputFilterByType DEFLATE application/javascript application/json
-  AddOutputFilterByType DEFLATE image/svg+xml
-</IfModule>
-
-# ---------------------------------------------------------------------------
-# 5. 文字コード
-# ---------------------------------------------------------------------------
-AddDefaultCharset UTF-8
-AddType text/plain .txt
+# now-playing.php だけ認証の対象外にする — per direct follow-up
+# ("localhost:3000でspotifyが確認できなくなってるのはなぜ？" への対処)。
+# ローカル開発時（Next の dev サーバーは PHP を実行できない）に
+# components/now-playing-provider.tsx がこのURLを直接叩くため。
+# 返るのは再生中の曲名だけで、認証情報も CMS の内容も含まない。
+# 認証を掛けていない今は不要なので、上とセットで無効化してある。
+# ※ Satisfy Any + Allow from all の組み合わせは Apache 2.2 系の書き方だが、
+#   さくらの環境では 2.4 でも mod_access_compat 経由で有効。
+#   もしここで 500 になるようなら、このブロックを消して
+#   now-playing-provider.tsx 側の開発用URLも戻すこと。
+#
+# <Files "now-playing.php">
+#   Satisfy Any
+#   Order Allow,Deny
+#   Allow from all
+# </Files>

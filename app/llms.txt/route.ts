@@ -64,9 +64,9 @@ export async function GET() {
     "## Pages",
     "",
     `- [Home](${SITE_URL}/): Selected work, studio news, and current projects.`,
-    `- [About](${SITE_URL}/about): Vision, approach, guiding principles, services, and awards.`,
-    `- [Studies](${SITE_URL}/studies): Ongoing visual studies and experiments.`,
-    `- [Contact](${SITE_URL}/contact): Inquiries and social links.`,
+    `- [About](${SITE_URL}/about/): Vision, approach, guiding principles, services, and awards.`,
+    `- [Studies](${SITE_URL}/studies/): Ongoing visual studies and experiments.`,
+    `- [Contact](${SITE_URL}/contact/): Inquiries and social links.`,
     "",
   ];
 
@@ -78,7 +78,7 @@ export async function GET() {
       // what distinguishes work ANDMADE led from work it contributed one part
       // of, a distinction an answer engine otherwise has no way to make.
       lines.push(
-        `- [${project.title}](${SITE_URL}/projects/${slugify(project.title)}): ` +
+        `- [${project.title}](${SITE_URL}/projects/${slugify(project.title)}/): ` +
           `${project.category}. ${project.role}. ${project.date}.`
       );
     }
@@ -88,7 +88,7 @@ export async function GET() {
   lines.push(
     "## Contact",
     "",
-    `Inquiries: ${SITE_URL}/contact`,
+    `Inquiries: ${SITE_URL}/contact/`,
     ""
   );
 

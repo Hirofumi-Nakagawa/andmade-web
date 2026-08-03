@@ -36,6 +36,34 @@ export function spSectionId(id: AboutSectionId): string {
   return `sp-${id}`;
 }
 
+/** About ページ最上部（FV）の見出し3行 — per direct follow-up（添付デザイン
+ *  ＋"Designed with clarity. / Built to last. / Rooted in purpose. のコピーを
+ *  ウェイトregularで表示"）。site-intro.tsx / idle-overlay.tsx が出す3つの
+ *  ピルと同じ文言だが、あちらは配列を独自に持っているので共有はしていない
+ *  （用途も見せ方も別物で、片方だけ変えたい場合があるため）。 */
+export const HERO_LINES = [
+  "Designed with clarity.",
+  "Built to last.",
+  "Rooted in purpose.",
+];
+
+/** FV見出しの下に置くリード文（日本語）。Vision 以下の本文と同じ
+ *  Gen Interface JP Light だが、こちらは行の折り返しを原稿どおりに固定して
+ *  いる（本文のような両端揃えの流し込みではなく、3行の見え方そのものが
+ *  デザイン）ので、1行 = 配列1要素で持つ。 */
+export const HERO_LEAD_JA = [
+  "本質を見極め、目的を形にする。",
+  "一つひとつの判断に意味を持たせ、その積み重ねが、",
+  "時間を重ねても価値を持ち続けるデザインにつながると考えています。",
+];
+
+/** 同じくリード文（英語）。HERO_LEAD_JA と同様に改行位置を固定。 */
+export const HERO_LEAD_EN = [
+  "We uncover what truly matters and give purpose a clear form.",
+  "By making every design decision intentional, we believe that each thoughtful choice",
+  "contributes to work that continues to hold value over time.",
+];
+
 export const VISION_JA = [
   "ANDMADE（アンドメイド）は、企業やブランド、製品のブランディングに関わるウェブサイトやデジタル施策のUI設計から、ビジュアルコミュニケーションにおけるグラフィックデザインまで、包括的にアートディレクションとデザインを手掛けるデザインスタジオです。",
   "明確な美意識と高い視座を持って課題解決に取り組み、クライアントに寄り添いながらモノづくりをする「共創」のスタンスでビジョンを具現化し、未来への方向性を形にしていきます。",
@@ -143,7 +171,9 @@ export const AWARDS_COL_2 = [
 export type MediaItem = { text: string; linked?: boolean; href?: string };
 
 export const MEDIA_COL_1: MediaItem[] = [
-  { text: "The Art Director's Guide to Design", linked: true },
+  // 一旦非表示（URLが未定のため）。再掲するときはこの行のコメントを外し、
+  // href に実URLを入れること（href 無しのままだと `#` 止まりのリンクになる）。
+  // { text: "The Art Director's Guide to Design", linked: true },
   {
     text: "iDID Works Interview",
     linked: true,

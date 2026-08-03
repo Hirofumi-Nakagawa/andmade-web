@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { NowPlayingTicker } from "@/components/now-playing-ticker";
 import { useNowPlaying } from "@/components/now-playing-provider";
 import { introDefinitelyWontShow, willIntroShow } from "@/components/site-intro";
+import { isSamePath } from "@/lib/route-path";
 
 /** fadeIn's own fade-in duration — see that prop's own doc comment. */
 const FADE_IN_MS = 500;
@@ -219,7 +220,8 @@ export function SiteHeader({
         style={revealStyle}
       >
         {NAV_ITEMS.map((item, i) => {
-          const isCurrent = currentHref !== undefined ? item.href === currentHref : pathname === item.href;
+          const isCurrent =
+            currentHref !== undefined ? isSamePath(item.href, currentHref) : isSamePath(pathname, item.href);
           const isClickableCurrent = isCurrent && currentHref !== undefined && currentHrefClickable;
           return (
             <Fragment key={item.label}>

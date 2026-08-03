@@ -25,13 +25,22 @@ const nextConfig: NextConfig = {
   // withBasePath() を通している。
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || undefined,
 
-  // trailingSlash は敢えて既定(false)のまま = /about は out/about.html として
-  // 書き出される。true にすると out/about/index.html になりURLが /about/ に
-  // 変わるが、このコードベースの正規URLはすべてスラッシュ無し
-  // (各ページの alternates.canonical、lib/site.ts の SITE_ROUTES、
-  //  app/sitemap.ts、JSON-LD、app/llms.txt) なので、true にすると全ページで
-  // canonical → 実URL の301リダイレクトが挟まることになる。
-  // 代わりに public/.htaccess の RewriteRule で拡張子を補う。
+  // /about → out/about/index.html として書き出す。
+  //
+  // 当初は false（= out/about.html）にして、.htaccess のリライトで拡張子を
+  // 補う方式にしていたが、さくらの共有サーバーでは動かなかった:
+  //   - Next 16 は about.html を出すのと同時に about/ というディレクトリも
+  //     作る（中身はクライアント遷移用の __next.*.txt のみ、index なし）
+  //   - Apache の mod_dir がリライトより先に「末尾スラッシュを付ける301」を
+  //     出すため、/about は結局 about/ ディレクトリへの要求になり、
+  //     index が無いので 403 Forbidden
+  //   - それを止める DirectorySlash / Options 系のディレクティブは
+  //     AllowOverride で許可されておらず、書くと 500
+  // true にすれば about/index.html になって衝突自体が消え、Apache が標準の
+  // DirectoryIndex でそのまま配信できる。.htaccess でのリライトは不要。
+  // 正規URL（canonical / sitemap / llms.txt / JSON-LD）も末尾スラッシュ付きに
+  // 揃えてあるので、リダイレクトも挟まらない。
+  trailingSlash: true,
 
   // Next.js blocks cross-origin requests to dev-only assets/HMR by default,
   // allowing only `localhost`. Testing on an actual phone over the LAN hits

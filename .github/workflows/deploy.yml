@@ -1,12 +1,12 @@
 # さくらのレンタルサーバーへの自動デプロイ
 # ============================================================================
-# main に push すると、GitHub 上でビルドして out/ を FTP でアップロードする。
+# main に push すると、GitHub 上でビルドして out/ を rsync(SSH) で転送する。
 # GitHub の Actions タブから手動実行もできる（CMS を更新したので中身だけ作り
 # 直したい、というときはこちら。コードは変わっていなくても最新の microCMS の
 # 内容で再ビルドされる）。
 #
 # 必要な設定は DEPLOY.md の「GitHub Actions の設定」を参照。
-# Secrets を1つでも入れ忘れると FTP のログインで失敗する。
+# Secrets を1つでも入れ忘れると SSH のログインで失敗する。
 
 name: Deploy to Sakura
 
@@ -16,7 +16,7 @@ on:
   # Actions タブに「Run workflow」ボタンを出す。CMS 更新後の再ビルド用。
   workflow_dispatch:
 
-# 同時に2本走ると FTP の転送が混ざって壊れるので、後から来た方を待たせる
+# 同時に2本走ると転送が混ざって壊れるので、後から来た方を待たせる
 # （cancel-in-progress: false = 走行中のものは中断せず完走させる。中断すると
 #  中途半端にファイルが上がった状態でサーバーが残るため）。
 concurrency:
@@ -55,9 +55,8 @@ jobs:
           NEXT_PUBLIC_BASE_PATH: ${{ vars.BASE_PATH }}
         run: npm run build
 
-      # ビルドが空振りしていないかの最低限の確認。out/ が無い・index.html が
-      # 無い状態で次の FTP ステップに進むと、サーバー上のファイルを消しかねない
-      # （dangerous-clean-slate は使っていないが、事故は早く止めるに越したことはない）。
+      # ビルドが空振りしていないかの最低限の確認。out/ が空のまま次の rsync
+      # （--delete 付き）に進むと、サーバー上のファイルを全部消してしまう。
       - name: Verify build output
         run: |
           test -f out/index.html || { echo "out/index.html が見つかりません"; exit 1; }
@@ -65,31 +64,46 @@ jobs:
           test -f out/now-playing.php || { echo "out/now-playing.php が見つかりません"; exit 1; }
           echo "OK: $(find out -type f | wc -l) files"
 
-      - name: Deploy via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          # さくらは平文FTPを受け付けず、FTPS(明示的TLS / ポート21で接続後に
-          # AUTH TLS で暗号化に切り替える方式)のみ。protocol を指定しないと
-          # このアクションは平文FTPで繋ぎにいき、さくら側が即座に接続を切るため
-          # "Server sent FIN packet unexpectedly" で失敗する。
-          # ※ それでも繋がらない場合は ftps-legacy（暗黙的TLS / ポート990）を試す。
-          protocol: ftps
-          port: 21
-          # ローカル側。末尾のスラッシュ必須（out フォルダ自体ではなく中身を送る）。
-          local-dir: ./out/
-          # サーバー側の公開ディレクトリ。末尾のスラッシュ必須。
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          # 前回アップロードした状態をサーバー上の .ftp-deploy-sync-state.json に
-          # 記録し、次回は差分だけ送る。初回だけ全ファイル転送になる。
-          state-name: .ftp-deploy-sync-state.json
-          # サーバー側にあってもこのアクションに触らせないもの。
-          # spotify-config.php は www の外に置く想定なので本来ここには来ないが、
-          # 取り違えて中に置いてしまった場合の保険として除外しておく。
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            spotify-config.php
+      # 転送は FTPS ではなく SSH(rsync)。
+      # FTPS を諦めた経緯（同じ所で詰まったとき用のメモ）:
+      #  1. さくらの「国外IPアドレスフィルタ」が FTP を海外IPから遮断していて、
+      #     米国にある GitHub Actions のランナーからは接続すらできなかった
+      #     （TLSハンドシェイク直後に切断 / "Server sent FIN packet unexpectedly"）。
+      #  2. フィルタを解除するとログインは通るようになったが、今度は
+      #     "Client is closed because read ECONNRESET (data socket)" で落ちた。
+      #     さくらの ProFTPD はデータ接続にも制御接続と同じTLSセッションの
+      #     再利用を要求するが、このアクションが使う Node の FTP ライブラリが
+      #     それに対応しておらず、サーバー側にデータ接続を切られる。
+      # SSH はそもそも国外IPフィルタの対象外で、データ接続という概念も無いため
+      # どちらの問題も起きない。パスワードではなく鍵認証になる点でも安全。
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          # 環境変数経由で書き出す（YAML に直接展開すると鍵の改行が壊れる）
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # ホスト鍵を先に取得しておく（対話プロンプトで止まらないように）
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy via rsync over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          TARGET_DIR: ${{ secrets.SSH_TARGET_DIR }}
+        run: |
+          # 安全弁: --delete は転送先にあって out/ に無いファイルを消すので、
+          # 転送先の指定を間違えるとホームディレクトリごと消しかねない。
+          # 公開領域(www)配下であることを必ず確認してから実行する。
+          case "$TARGET_DIR" in
+            */www/*|*/www/) ;;
+            *) echo "SSH_TARGET_DIR が www 配下ではありません: $TARGET_DIR"; exit 1 ;;
+          esac
+
+          # -r 再帰 / -l シンボリックリンク維持 / -t 時刻維持(差分判定に必要)
+          # -z 圧縮 / --delete-after 転送成功後に不要ファイルを削除
+          rsync -rltz --delete-after \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes" \
+            ./out/ "$SSH_USER@$SSH_HOST:$TARGET_DIR"

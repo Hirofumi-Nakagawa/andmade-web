@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { fullViewportHeightPx, installViewportHeightVar } from "@/lib/viewport-height";
+import { useFadeIn } from "@/components/use-fade-in";
 
 /**
  * Contact page's animated "colour blend" background — the second production
@@ -42,7 +44,7 @@ const SETTINGS = {
   blurAngle: 180,
   contrast: 1.1,
   cursorStrength: 0.1,
-  grain: 0.07,
+  grain: 0.06,
   grainSize: 1,
   grainFps: 12,
   renderScale: 0.7,
@@ -58,6 +60,24 @@ const SETTINGS = {
   lineAlpha: 0.5,
   lineCoverage: 0.5,
 } as const;
+
+/** 背景の登場は2段階 — per direct follow-up
+ *  ("aboutとcontactの背景はフェードインしてからグラデが現れるようにして"、
+ *   "ノイズが乗ってる状態でフェードインして、…グラデが表示される感じ")。
+ *   ① canvas 自体の opacity フェードイン（下の style）。この時点では
+ *      色面は単色だが、グレインは乗っているので「紙が現れる」ように見える。
+ *   ② グラデが開く（シェーダーの u_reveal）。別のクロスフェードではなく、
+ *      スクロール収束(u_settle)と同じしきい値スライドを逆再生している。
+ *  ②は①の途中から重ねて始める（REVEAL_DELAY_MS < FADE_MS）。 */
+const FADE_MS = 450;
+/** グラデの開始はフェードインと同時（遅延なし）— per direct follow-up
+ *  ("フェードインとグラデの表示を同時タイミングにして")。
+ *  経緯: 当初は「フェード完了後」→ 遅いので FADE_MS の 3割 → 2割 → 1割 と
+ *  詰めていき、最終的に 0（同時）に落ち着いた。定数自体は残してあるので、
+ *  また遅らせたくなったら値を戻すだけでよい。 */
+const REVEAL_DELAY_MS = 0;
+/** グラデが開き切るまでの時間。1100 → 1400 → 1150（"速度を少しだけ上げて"）。 */
+const REVEAL_MS = 1150;
 
 /** GLSL float literal — always with a decimal point (GLSL ES 1.00 treats
  *  `6` as an int, and int/float mixing is a compile error). */
@@ -95,6 +115,7 @@ precision highp float;
 uniform vec2  u_res;
 uniform float u_time;
 uniform vec2  u_mouse;  // uv, 左下原点, JS側でスムージング済み
+uniform float u_reveal; // 0=単色, 1=本来の色面（登場アニメ用）
 uniform float u_seed;   // ノイズ空間のオフセット — マウント毎にランダム(模様の構図が毎回変わる)
 
 const float SPEED    = ${glf(SETTINGS.speed)};
@@ -183,20 +204,33 @@ void main() {
                  hash(egp * 0.37 + 13.7), 0.5);
   float dn = (en - 0.5) * EDGE_NOISE;
 
-  // 色レイヤー(ラボと同一の閾値、settleのようなスクロール連動はなし)。
-  vec3 col = mix(C0, C1, smoothstep(0.40 - HW, 0.40 + HW, f + dn));
-  col = mix(col, C2, smoothstep(0.60 - HW, 0.60 + HW, q.x + dn) * 0.85);
-  col = mix(col, C3, smoothstep(0.70 - HW, 0.70 + HW, r.y + dn) * 0.75);
-  col = mix(col, C4, smoothstep(0.775 - HW4, 0.775 + HW4, q.y * f * 1.6 + dn) * 0.6);
+  // 色レイヤー。しきい値を s でスライドさせることで、単色から色面が開いて
+  // いく登場アニメになる — per direct follow-up ("aboutページでスクロール
+  // した際にグラデが消えて単色になる逆の感じで、グラデが表示される感じに
+  // したい。contactも同様")。About 側のスクロール収束(u_settle)と同じ
+  // オフセット量・同じ向きで、こちらは登場時に1回だけ逆再生する。
+  // s = 1 で C1 一色、s = 0 で本来の色面。
+  // グレインは s に依存しないので、単色の間もノイズは乗ったまま。
+  float s = 1.0 - u_reveal;
+  float t1 = 0.40 - 1.2 * s;
+  float t2 = 0.60 + 1.5 * s;
+  float t3 = 0.70 + 1.5 * s;
+  float t4 = 0.775 + 1.6 * s;
+  vec3 col = mix(C0, C1, smoothstep(t1 - HW, t1 + HW, f + dn));
+  col = mix(col, C2, smoothstep(t2 - HW, t2 + HW, q.x + dn) * 0.85);
+  col = mix(col, C3, smoothstep(t3 - HW, t3 + HW, r.y + dn) * 0.75);
+  col = mix(col, C4, smoothstep(t4 - HW4, t4 + HW4, q.y * f * 1.6 + dn) * 0.6);
 
-  col = (col - 0.5) * CONTRAST + 0.5;
+  // 収束時の全面色が「コントラスト補正済みのC1もどき」にならないよう、
+  // s に合わせてコントラストを 1.0 へ戻す（About と同じ扱い）。
+  col = (col - 0.5) * mix(CONTRAST, 1.0, s) + 0.5;
 
   // 境界線(ラボと同一): 各レイヤーの境目に沿った線 + 低周波ノイズの
   // カバー率マスク(境界の5割くらいにだけ付き、付く区間は時間で移り変わる)。
-  float e1 = 1.0 - smoothstep(0.0, LINE_WIDTH, abs(f + dn - 0.40));
-  float e2 = 1.0 - smoothstep(0.0, LINE_WIDTH, abs(q.x + dn - 0.60));
-  float e3 = 1.0 - smoothstep(0.0, LINE_WIDTH, abs(r.y + dn - 0.70));
-  float e4 = 1.0 - smoothstep(0.0, LINE_WIDTH, abs(q.y * f * 1.6 + dn - 0.775));
+  float e1 = 1.0 - smoothstep(0.0, LINE_WIDTH, abs(f + dn - t1));
+  float e2 = 1.0 - smoothstep(0.0, LINE_WIDTH, abs(q.x + dn - t2));
+  float e3 = 1.0 - smoothstep(0.0, LINE_WIDTH, abs(r.y + dn - t3));
+  float e4 = 1.0 - smoothstep(0.0, LINE_WIDTH, abs(q.y * f * 1.6 + dn - t4));
   float lineM = max(max(e1, e2), max(e3, e4));
   float covN = noise(p * 1.5 + vec2(31.7, 7.9));
   lineM *= 1.0 - smoothstep(LINE_COVERAGE - 0.08, LINE_COVERAGE + 0.08, covN);
@@ -214,8 +248,15 @@ void main() {
 
 export function ContactBlendBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // ページ表示時のフェードイン — per direct follow-up
+  // ("aboutとstudiesとcontactのページが表示されるとき、背景は
+  //   フェードインで表示させて")。
+  const shown = useFadeIn();
 
   useEffect(() => {
+    // 実測値を --viewport-height に流し込む（lib/viewport-height.ts 参照）。
+    // CSS 側の height: var(--viewport-height) がこれを読む。
+    const uninstallViewportVar = installViewportHeightVar();
     const canvasEl = canvasRef.current;
     if (!canvasEl) return;
 
@@ -266,6 +307,7 @@ export function ContactBlendBackground() {
     const uRes = gl.getUniformLocation(program, "u_res");
     const uTime = gl.getUniformLocation(program, "u_time");
     const uMouse = gl.getUniformLocation(program, "u_mouse");
+    const uReveal = gl.getUniformLocation(program, "u_reveal");
 
     // Random composition per mount — see SETTINGS' own seed note.
     gl.uniform1f(gl.getUniformLocation(program, "u_seed"), Math.random() * 100);
@@ -283,7 +325,8 @@ export function ContactBlendBackground() {
       // — the lab's own "軽い + タダでソフトになる" lever, kept as-tuned.
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.max(1, Math.round(window.innerWidth * dpr * SETTINGS.renderScale));
-      canvas.height = Math.max(1, Math.round(window.innerHeight * dpr * SETTINGS.renderScale));
+      const viewportHeight = fullViewportHeightPx();
+      canvas.height = Math.max(1, Math.round(viewportHeight * dpr * SETTINGS.renderScale));
       gl.viewport(0, 0, canvas.width, canvas.height);
     }
     window.addEventListener("resize", resize);
@@ -301,6 +344,31 @@ export function ContactBlendBackground() {
       gl.uniform2f(uRes, canvas.width, canvas.height);
       gl.uniform1f(uTime, t);
       gl.uniform2f(uMouse, mouseSmoothed[0], mouseSmoothed[1]);
+      // t は秒。REVEAL_DELAY_MS 待ってから REVEAL_MS かけて 0→1。
+      const revealT = Math.min(Math.max((t * 1000 - REVEAL_DELAY_MS) / REVEAL_MS, 0), 1);
+// s（= 1 - u_reveal）が実際に見た目を動かすのは 0.33 以下の範囲だけ
+      // —— それより上ではしきい値が色の値域の外にあり、どの色も出てこない。
+      //
+      // ここのチューニングは2点でつまずいた:
+      //  1. 素直に u_reveal を 0→1 で動かすと、時間の大半を「何も起きない
+      //     0.33〜1」に使ってしまう。ease-out の指数を上げても、見える変化が
+      //     さらに前へ詰まるだけだった（3 → 6 → 12 で "あまり変わってない"）。
+      //  2. S_START を絞って可視範囲だけを走査させた上で指数を上げると、
+      //     今度は可視範囲を通過し終わるのが早すぎて、残り時間は何も動かない
+      //     ＝「急に止まってる感」になった。
+      // 対処: 開始値を可視範囲の境界すぐ上まで下げ（0.42）、イージングを
+      // smootherstep（6t⁵-15t⁴+10t³）にする。この曲線は t=0 と t=1 の両端で
+      // 速度も加速度も 0 なので、動き出しと止まりの両方が滑らかになる。
+      // 可視範囲の通過に全体の6割強を使い、最後まで動きが残る。
+      const S_START = 0.36;
+      // ease-out（1-(1-t)^k）。smootherstep は両端の速度が 0 になるため
+      // 止まり際は滑らかになったが、開き始めまで遅くなってしまった
+      // （"フェードイン途中からグラデが表示されるタイミングが遅くなった"）。
+      // この式は t=0 で速度が最大、t=1 で 0 —— 開始は即時、終わりだけ滑らか。
+      // 指数を 2.2 と低めにしてあるのは、高くすると動きが前に詰まって
+      // 「途中で止まった」ように見えるため（12 まで上げて確認済み）。
+      const eased = 1 - Math.pow(1 - revealT, 2.2);
+      gl.uniform1f(uReveal, 1 - S_START * (1 - eased));
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       rafId = requestAnimationFrame(render);
@@ -308,6 +376,7 @@ export function ContactBlendBackground() {
     render();
 
     return () => {
+      uninstallViewportVar();
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", handlePointerMove);
@@ -320,11 +389,21 @@ export function ContactBlendBackground() {
       aria-hidden
       style={{
         position: "fixed",
-        inset: 0,
+        // top/left のみ。`inset: 0` だと bottom も指定されることになり、
+        // 明示した height と過剰指定になる（どちらが勝つかは実装依存）。
+        top: 0,
+        left: 0,
         width: "100vw",
-        height: "100dvh",
+        // var(--viewport-height) — lib/viewport-height.ts が JS の実測値を
+        // <html> に書き込む。ビューポート系のCSS単位(svh/dvh/lvh)はこの端末では
+        // すべて 664 に解決されツールバー背面に届かないことが実測で確定した
+        // ため、単位ではなく実測px（モバイルでは screen.height = 812）を使う。
+        // フォールバックの 100dvh は JS 実行前の一瞬と、JS 無効時のため。
+        height: "var(--viewport-height, 100dvh)",
         display: "block",
         pointerEvents: "none",
+        opacity: shown ? 1 : 0,
+        transition: `opacity ${FADE_MS}ms ease-out`,
       }}
     />
   );

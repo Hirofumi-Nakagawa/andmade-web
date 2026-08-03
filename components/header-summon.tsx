@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NowPlayingTicker } from "@/components/now-playing-ticker";
 import { useNowPlaying } from "@/components/now-playing-provider";
+import { isSamePath } from "@/lib/route-path";
 
 const NAV_ITEMS = [
   { label: "Projects", href: "/" },
@@ -188,7 +189,8 @@ export function HeaderSummon({
           className="absolute left-[calc(348px*var(--grid-scale))] top-0 flex items-center gap-[calc(5px*var(--scale))] whitespace-nowrap text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium"
         >
           {NAV_ITEMS.map((item, i) => {
-            const isCurrent = currentHref !== undefined ? item.href === currentHref : pathname === item.href;
+            const isCurrent =
+              currentHref !== undefined ? isSamePath(item.href, currentHref) : isSamePath(pathname, item.href);
             const isClickableCurrent = isCurrent && currentHref !== undefined && currentHrefClickable;
             return (
               <Fragment key={item.label}>

@@ -11,6 +11,7 @@ import { HeaderSummon } from "@/components/header-summon";
 import { MobileContact } from "@/components/mobile-contact";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { SiteHeader } from "@/components/site-header";
+import { withBasePath } from "@/lib/base-path";
 
 /** The page's own 3-line English tagline — per direct follow-up ("この英字3
  *  行は下からスライドイン+フェードインは無しで、変わりにカーテンリビールを
@@ -31,7 +32,7 @@ const CONTACT_TAGLINE_LINES = [
 // replaces the parent's `alternates` object wholesale rather than merging
 // field-by-field, so without this override the page would otherwise
 // incorrectly inherit the root layout's own canonical ("/", the home page).
-export const metadata: Metadata = { title: "Contact", alternates: { canonical: "/contact" } };
+export const metadata: Metadata = { title: "Contact", alternates: { canonical: "/contact/" } };
 
 /** `font-feature-settings: "ss09" 1` — matches the stylistic set used for
  *  Gen Interface JP body copy elsewhere (about page, project-card.tsx). */
@@ -73,7 +74,7 @@ const PAGE_HEIGHT = `max(100vh, ${COMPACT_MIN_HEIGHT_PX}px)`;
 const contactJsonLd = {
   "@context": "https://schema.org",
   "@type": "ContactPage",
-  url: `${SITE_URL}/contact`,
+  url: `${SITE_URL}/contact/`,
   name: `Contact - ${SITE_NAME}`,
   mainEntity: {
     "@type": "Organization",
@@ -145,31 +146,15 @@ export default function Contact() {
 
             <ContactHero />
 
-            {/* Right-anchored parenthetical caption — per direct follow-up
-                (attached reference: "( Rooted in purpose , Designed with
-                clarity , Built to last )"), 24px from the screen edge via
-                the same var(--edge-right-inset) convention as every other
-                right-anchored PC element on this page (SiteHeader,
-                HeaderSummon, the logo mark above), bottom-aligned to
-                ContactHero's own bottom edge the same way the "We're
-                always/open to new ideas." block on the left is (this
-                wrapping div is unstyled/sized to ContactHero's own rendered
-                height, so bottom-0 here lands exactly on "Get in touch."'s
-                own bottom edge). Each comma-separated segment gets its own
-                5px gap, the same punctuation-spacing convention used for
-                "Instagram, X" elsewhere on this page/SiteFooter. */}
-            <RevealOnMount
-              className="absolute bottom-0 flex items-center gap-[calc(5px*var(--scale))] text-[length:calc(12px*var(--scale))] leading-[1.15] font-normal whitespace-nowrap text-[#fff]"
-              style={{ right: "calc(var(--edge-right-inset) + 24px)" }}
-            >
-              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">(</span>
-              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Rooted in purpose</span>
-              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">,</span>
-              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Designed with clarity</span>
-              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">,</span>
-              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Built to last</span>
-              <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">)</span>
-            </RevealOnMount>
+            {/* 右端の "( Rooted in purpose , Designed with clarity , Built to
+                last )" キャプションはここにあったが、per direct follow-up
+                ("contactの下記を消して") で削除。SP側(mobile-contact.tsx)は
+                それより前に同じ理由で外されており、これで PC/SP どちらにも
+                出なくなった。同じ3語は site-intro.tsx のピルと
+                idle-overlay.tsx にも出てくるので、そちらは別物として残っている。
+                復活させる場合はこのファイルの版歴から JSX を戻すこと
+                （右端 24px = var(--edge-right-inset) + 24px、ContactHero の
+                 下端揃え、区切りカンマは 5px gap）。 */}
           </div>
 
           <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(40px*var(--scale))] flex flex-col items-start gap-[calc(40px*var(--scale))]">
@@ -288,7 +273,7 @@ export default function Contact() {
           style={{ right: "calc(var(--edge-right-inset) + 24px)" }}
         >
           <Link href="/" className="block h-full w-full">
-            <Image src="/andmade-mark.svg" alt="ANDMADE" width={52} height={52} className="h-full w-full" />
+            <Image src={withBasePath("/andmade-mark.svg")} alt="ANDMADE" width={52} height={52} className="h-full w-full" />
           </Link>
         </RevealOnMount>
 

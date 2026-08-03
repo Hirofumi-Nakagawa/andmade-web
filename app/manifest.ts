@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { withBasePath } from "@/lib/base-path";
 
 /**
  * Web app manifest — Next.js's own file convention (this file, at
@@ -27,13 +28,13 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#000000",
     icons: [
       {
-        src: "/web-app-manifest-192x192.png",
+        src: withBasePath("/web-app-manifest-192x192.png"),
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/web-app-manifest-512x512.png",
+        src: withBasePath("/web-app-manifest-512x512.png"),
         sizes: "512x512",
         type: "image/png",
         purpose: "any",

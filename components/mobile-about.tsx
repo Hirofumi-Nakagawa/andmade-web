@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useLenis } from "lenis/react";
 import { MobileAboutSection } from "@/components/mobile-about-section";
 import { MobileAboutSideNav } from "@/components/mobile-about-side-nav";
+import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
+import { RevealOnMount } from "@/components/reveal-on-mount";
 import { setFooterReady as broadcastFooterReady } from "@/lib/footer-mode-store";
 import { useNowPlaying } from "@/components/now-playing-provider";
 import {
@@ -14,6 +16,9 @@ import {
   AWARDS_COL_1,
   AWARDS_COL_2,
   GUIDING_PRINCIPLES,
+  HERO_LEAD_EN,
+  HERO_LEAD_JA,
+  HERO_LINES,
   MEDIA_COL_1,
   MEDIA_COL_2,
   OUTLINE_COL_1,
@@ -222,6 +227,78 @@ export function MobileAbout() {
         <div className="relative mt-[170px]">
           <MobileAboutSideNav />
 
+          {/* FV — PC (app/about/page.tsx) と同じ内容の SP 版。per direct
+              follow-up（添付デザイン "SPも添付のように調整して"）。
+
+              PC ではこのブロックを左ナビのコンテナの *外* に出しているが、
+              SP では中に入れてある。添付では左ナビ（縦組み）の頭が見出しと
+              同じ高さから始まっているため。sticky の解除位置はコンテナの
+              *下端* で決まるので、上端を FV のぶん上げてもアウトラインの
+              下線で解除される挙動（以前調整した内容）は変わらない。 */}
+          <div style={{ paddingLeft: CONTENT_INDENT }}>
+            {/* 見出しはカーテンリビール（直接の指示 "pc,spともに3行コピーを
+                カーテンリビールで表示して"）。PC 版と同じ理由で text-box-trim
+                は付けない（1行ぶんの overflow-hidden で覆う仕組みなので、
+                trim すると "purpose." の p のディセンダが切れる）。
+
+                サイズ 36px は直接の指示。ただし固定 px にはできない —
+                この3行は SP のコンテンツ幅ほぼいっぱいに組まれているので、
+                36px のままだと幅の狭い端末（393pt 以下）で折り返して
+                レイアウトが崩れる。そこで min(36px, 8.5vw) とし、
+                大きめの端末では指示どおり 36px、狭い端末ではその端末で
+                1行に収まる上限まで自動で縮む形にしてある。
+                （34px → 36px。8.5vw は "Designed with clarity." の字幅
+                 約9.2em が 10マスに収まる限界から逆算した値。）
+                行間 1.12 と字間 -0.02em は PC 版（50px / 56px / -1px）と
+                同じ比率。PC 側を触るときは合わせて見直すこと。 */}
+            <CurtainRevealLines
+              lines={HERO_LINES}
+              // relative top-[-3px] — 直接の指示（2px → さらに1px上へ）。
+              // カーテンリビールのために text-box-trim を外した結果、1行目の
+              // 上にハーフレディング（(36*1.12-36)/2 ≒ 2px）が残るぶんの
+              // 打ち消し。マージンではなく relative なので、下のリード文の
+              // 位置は動かない。
+              className="relative top-[-3px] font-normal [font-kerning:normal] text-black"
+              style={{ fontSize: "min(36px, 8.5vw)", lineHeight: 1.12, letterSpacing: "-0.02em" }}
+            />
+
+            {/* 見出しからの 35px、日本語↔英語の 30px（いずれも直接の指示。
+                PC はそれぞれ 20px / 30px）。PC と違って左のインデント
+                （10マス送り）は無く、見出しと同じ左面に揃う。
+
+                35px は「見た目で 40px」になるよう逆算した値（直接の指示）。
+                見出しは text-box-trim を外してあるので3行目の下にハーフ
+                レディングが約2px残り、さらに見出し全体を relative で3px
+                上げているので、40px 指定だと実測 45px に見えていた。
+                日本語↔英語の 30px のほうは両側とも text-box-trim が効いて
+                いるので、指定値がそのまま見た目の間隔になる。 */}
+            <RevealOnMount fadeOnly>
+              <div
+                className="mt-[35px] w-full font-(family-name:--font-gen-interface-jp) text-[15px] leading-[1.7] font-light tracking-[0.3px] text-black"
+                style={SS09}
+              >
+                {/* 16px → 15px（直接の指示）。Vision 以下の本文と同じサイズ。
+
+                    2段落に組み直している — PC は原稿どおり3行で固定改行する
+                    デザインだが、SP の幅ではその3行が自然に折り返すので、
+                    文としての切れ目（1文目 / 2文目）で分けたほうが読みやすい。
+                    原稿そのものは lib/about-content.ts の1か所のままなので、
+                    文言を直せば PC/SP 両方に効く。 */}
+                {[HERO_LEAD_JA[0], HERO_LEAD_JA.slice(1).join("")].map((line, i, all) => (
+                  <p key={line} className={paragraphTrimClass(i, all.length)}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+              <div className="mt-[30px] w-full text-[14px] leading-[1.2] text-black/50">
+                {/* 英語は1段落に連結。理由は上の日本語と同じ。 */}
+                <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+                  {HERO_LEAD_EN.join(" ")}
+                </p>
+              </div>
+            </RevealOnMount>
+          </div>
+
           {/* items-stretch (was items-start) — per direct follow-up
               ("Aboutの03~06の見出し上の線の長さが10マス分になってない"):
               `items-start` makes each flex-col child (each
@@ -241,7 +318,10 @@ export function MobileAbout() {
               visibly shorter than the intended 10 columns. Stretching every
               section to this wrapper's actual full width fixes all of them
               at once, rather than special-casing 03-06 individually. */}
-          <div className="flex w-full flex-col items-stretch gap-[100px]" style={{ paddingLeft: CONTENT_INDENT }}>
+          {/* mt — 50px（添付デザインからの実測）→ 70px（直接の指示 "spの
+              英語リード文下マージンを70pxに"）。FV から Vision 以下までの
+              間隔。PC は 120px。 */}
+          <div className="mt-[70px] flex w-full flex-col items-stretch gap-[100px]" style={{ paddingLeft: CONTENT_INDENT }}>
             <MobileAboutSection id={spSectionId(ABOUT_NAV_ITEMS[0].id)} label="Vision" index="01">
               <MobileBilingualBody ja={VISION_JA} en={VISION_EN} />
             </MobileAboutSection>

@@ -12,9 +12,11 @@ import { SITE_NAME, SITE_URL } from "@/lib/site";
 import {
   getProjectBySlug,
   getProjects,
+  isLinkableWebsiteUrl,
   slugify,
   type ProjectGalleryBlock,
   type ProjectGalleryImage,
+  type ProjectGalleryTwoColItem,
   type ProjectGalleryWidth,
 } from "@/lib/projects";
 
@@ -63,7 +65,7 @@ export async function generateMetadata({ params }: ProjectsPageProps): Promise<M
   return {
     title: result.project.title,
     description: result.project.description,
-    alternates: { canonical: `/projects/${slug}` },
+    alternates: { canonical: `/projects/${slug}/` },
   };
 }
 
@@ -467,6 +469,17 @@ function insetPaddingClass(suppressTop: boolean, suppressBottom: boolean): strin
     .join(" ");
 }
 
+/** 2カラムの片側1枠。`video` が入っていればその枠は動画になり、`image` は
+ *  ポスターとして使われる — per direct follow-up ("実績詳細で2カラムのとき、
+ *  どちらかに動画も入れられるようにして")。縦横比は画像から取れているので、
+ *  動画側も左右で高さが揃う。 */
+function TwoColumnMedia({ item }: { item: ProjectGalleryTwoColItem }) {
+  if (item.video) {
+    return <GalleryVideo src={item.video} poster={item.image} aspect={item.aspect} />;
+  }
+  return <GalleryImage {...item} sizes="40vw" />;
+}
+
 /** Exactly two images side by side — see ProjectGalleryBlock's own
  *  "twoColumn" doc comment (lib/projects.ts) for what `width` means here.
  *  "full"/"content" (the original, still-default layout): widths flex so the
@@ -480,7 +493,7 @@ function insetPaddingClass(suppressTop: boolean, suppressBottom: boolean): strin
  *  columns via INSET_TWO_COL_PAD_OUTER/INNER above instead of a flat 24px
  *  gap. */
 function TwoColumnBlock({
-  images,
+  items,
   width,
   backgroundColor,
   defaultBackground,
@@ -489,7 +502,7 @@ function TwoColumnBlock({
   collapseGapAbove = false,
   dark = false,
 }: {
-  images: [ProjectGalleryImage, ProjectGalleryImage];
+  items: [ProjectGalleryTwoColItem, ProjectGalleryTwoColItem];
   width: ProjectGalleryWidth;
   /** This block's own CMS-chosen inset background, if any. */
   backgroundColor?: string;
@@ -514,12 +527,12 @@ function TwoColumnBlock({
       >
         <div className="mx-auto flex items-start" style={{ width: GRID_WIDTH_24 }}>
           <div className="flex-1" style={{ paddingLeft: INSET_TWO_COL_PAD_OUTER, paddingRight: INSET_TWO_COL_PAD_INNER }}>
-            <GalleryImage {...images[0]} sizes="40vw" />
-            <GalleryCaption caption={images[0].caption} dark={dark} />
+            <TwoColumnMedia item={items[0]} />
+            <GalleryCaption caption={items[0].caption} dark={dark} />
           </div>
           <div className="flex-1" style={{ paddingLeft: INSET_TWO_COL_PAD_INNER, paddingRight: INSET_TWO_COL_PAD_OUTER }}>
-            <GalleryImage {...images[1]} sizes="40vw" />
-            <GalleryCaption caption={images[1].caption} dark={dark} />
+            <TwoColumnMedia item={items[1]} />
+            <GalleryCaption caption={items[1].caption} dark={dark} />
           </div>
         </div>
       </div>
@@ -528,10 +541,10 @@ function TwoColumnBlock({
 
   return (
     <div className="mx-auto flex items-start gap-[24px]" style={{ width: GRID_WIDTH_24 }}>
-      {images.map((image, i) => (
+      {items.map((item, i) => (
         <div key={i} className="flex-1">
-          <GalleryImage {...image} sizes="40vw" />
-          <GalleryCaption caption={image.caption} dark={dark} />
+          <TwoColumnMedia item={item} />
+          <GalleryCaption caption={item.caption} dark={dark} />
         </div>
       ))}
     </div>
@@ -683,7 +696,7 @@ function GalleryBlockView({
   if (block.type === "twoColumn") {
     return (
       <TwoColumnBlock
-        images={block.images}
+        items={block.items}
         width={block.width}
         backgroundColor={block.backgroundColor}
         defaultBackground={defaultBackground}
@@ -1047,6 +1060,7 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
   if (!result) notFound();
   const { project, next } = result;
   const detail = project.detail;
+  const websiteUrl = detail?.websiteUrl;
   const backgroundColor = detail?.backgroundColor ?? DEFAULT_BACKGROUND;
   // Per direct follow-up ("ヘッダー・フッターの色は実績ごとに#000か#fffを管
   // 理画面で選択可能にする") — governs SiteHeader/HeaderSummon's own `dark`
@@ -1084,7 +1098,7 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
     "@context": "https://schema.org",
     "@type": "CreativeWork",
     name: project.title,
-    url: `${SITE_URL}/projects/${slug}`,
+    url: `${SITE_URL}/projects/${slug}/`,
     ...(project.description ? { description: project.description } : {}),
     // `role` is this studio's own contribution (e.g. "Art Direction, Design")
     // — the closest schema.org equivalent to "what we did on this" is
@@ -1094,7 +1108,9 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
     creator: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
     ...(clientName ? { sourceOrganization: { "@type": "Organization", name: clientName } } : {}),
     ...(detail?.hero.pc.image ? { image: detail.hero.pc.image } : {}),
-    ...(detail?.websiteUrl ? { sameAs: detail.websiteUrl } : {}),
+    ...(detail?.websiteUrl && isLinkableWebsiteUrl(detail.websiteUrl)
+      ? { sameAs: detail.websiteUrl }
+      : {}),
   };
 
   return (
@@ -1249,7 +1265,11 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                so no value ever overflows. */}
             <p className="whitespace-nowrap">{project.category}</p>
             <p className="whitespace-nowrap">{project.role}</p>
-            {detail?.websiteUrl && (
+            {/* websiteUrl を一度ローカルに取り出しているのは、下の三項の
+               else 側で TypeScript が detail の絞り込みを保てないため
+               （detail?.websiteUrl での判定だけだと "detail is possibly
+               undefined" になる）。 */}
+            {websiteUrl &&
               // --underline-offset: calc(-0.1em + 5px) — 3px (per direct
               // follow-up "View websiteの下線の位置を3px上にする") plus a
               // further 2px ("FVエリアのview websiteの下線位置を2px上げる"),
@@ -1257,16 +1277,21 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
               // shared default (see globals.css) — only this FV/hero-area
               // link moves; the later recap row's own "View Website" (Link
               // field) keeps the shared default, unaffected.
-              <a
-                href={detail.websiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline-sweep shrink-0 whitespace-nowrap"
-                style={{ "--underline-offset": "calc(-0.1em + 5px)" } as React.CSSProperties}
-              >
-                View Website
-              </a>
-            )}
+              (isLinkableWebsiteUrl(websiteUrl) ? (
+                <a
+                  href={websiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline-sweep shrink-0 whitespace-nowrap"
+                  style={{ "--underline-offset": "calc(-0.1em + 5px)" } as React.CSSProperties}
+                >
+                  View Website
+                </a>
+              ) : (
+                // URL でない値（"Archived" など）はリンクにせず、書かれた
+                // 文字をそのまま出す — isLinkableWebsiteUrl の doc comment 参照。
+                <p className="shrink-0 whitespace-nowrap">{websiteUrl}</p>
+              ))}
             </div>
           </div>
         </div>
@@ -1374,7 +1399,14 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                     // per direct follow-up ("insetが並びの一番下にくる場合、
                     // 下マージンを無くして"). Only "inset" widths have any to
                     // drop, so this is a no-op for every other width.
-                    suppressBottomPadding={i === detail.gallery.length - 1}
+                    //
+                    // ただしその inset がCMSで独自の背景色を持っている場合は
+                    // 残す — per direct follow-up ("実績詳細の一番下の画像が
+                    // insetで背景色付きの場合は下paddingは残して")。色の付いた
+                    // 帯が見えている状態なので、下だけ padding が無いと画像が
+                    // 帯の下端に貼り付いて見える。背景色を指定していない inset
+                    // はページ地色と同じ帯＝見えないので、従来どおり落とす。
+                    suppressBottomPadding={i === detail.gallery.length - 1 && !hasOwnBackground(block)}
                     // ...and some neighbour pairings meet flush, with the
                     // list's own gap cancelled — see shouldCollapseGap.
                     collapseGapAbove={i > 0 && shouldCollapseGap(block, detail.gallery[i - 1])}
@@ -1430,16 +1462,26 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                  no value shouldn't render at all. */}
               {detail.websiteUrl && (
                 <MetaField label="Link" alignRight dark={headerDark}>
-                  <a
-                    href={detail.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`underline-sweep text-[length:calc(14px*var(--scale))] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
-                      headerDark ? "text-black" : "text-white"
-                    }`}
-                  >
-                    View Website
-                  </a>
+                  {isLinkableWebsiteUrl(detail.websiteUrl) ? (
+                    <a
+                      href={detail.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`underline-sweep text-[length:calc(14px*var(--scale))] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+                        headerDark ? "text-black" : "text-white"
+                      }`}
+                    >
+                      View Website
+                    </a>
+                  ) : (
+                    <p
+                      className={`text-[length:calc(14px*var(--scale))] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+                        headerDark ? "text-black" : "text-white"
+                      }`}
+                    >
+                      {detail.websiteUrl}
+                    </p>
+                  )}
                 </MetaField>
               )}
             </div>
@@ -1650,9 +1692,10 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
             aspect={nextThumb?.aspect}
           />
 
-          {/* mt-300px — per direct follow-up ("Next Projectエリアとフッター
-             のマージンを300pxに"). */}
-          <div className="mt-[calc(300px*var(--scale))]" style={{ marginLeft: CONTENT_ML, width: "var(--content-width-fluid)" }}>
+          {/* mt — 300 → 360（いずれも直接の指示。"Next Projectエリアとフッター
+             のマージンを300pxに" → "実績詳細のフッター上のマージンも360pxに
+             して"）。トップ/About のフッター上マージンと同じ値。 */}
+          <div className="mt-[calc(360px*var(--scale))]" style={{ marginLeft: CONTENT_ML, width: "var(--content-width-fluid)" }}>
             <SiteFooter theme="dark" />
           </div>
         </div>

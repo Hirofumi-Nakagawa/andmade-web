@@ -11,11 +11,13 @@ import { setFooterReady as broadcastFooterReady } from "@/lib/footer-mode-store"
 import { setLightMenuPill } from "@/lib/menu-theme-store";
 import { useNowPlaying } from "@/components/now-playing-provider";
 import {
+  isLinkableWebsiteUrl,
   slugify,
   type Project,
   type ProjectDetail,
   type ProjectGalleryBlock,
   type ProjectGalleryImage,
+  type ProjectGalleryTwoColItem,
 } from "@/lib/projects";
 
 /** Page's own side margin — same fluid `--sp-grid-margin` (8px at the 400px
@@ -23,6 +25,13 @@ import {
  *  margin, rather than a literal `px-[8px]`, so this stays aligned with
  *  GridOverlay's own SP grid at every viewport width. */
 const SIDE_ML = "var(--sp-grid-margin)";
+/** ギャラリーの各ブロック同士、および twoColumn 内の2枚同士の上下間隔。
+ *  10px → 40px → 30px → 20px → 25px（いずれも直接の指示。"SPの実績詳細の
+ *  サムネ間マージンを20px→40pxに変更"、対象は「ギャラリー画像同士＋
+ *  twoColumnの両方」→ 30px → 20px → 25px）。10px は以前の指示（"SPのイメージ
+ *  間のマージンは10pxに"）の値。
+ *  "(Idea)"/"(Outcome)"/フリーテキストも同じ配列に並ぶので、この間隔を共有する。 */
+const GALLERY_GAP_PX = 25;
 /** "ANDMADE Inc." header logo's own left offset — 2 grid columns in from
  *  SIDE_ML, matching every other Mobile* component's own header position
  *  (mobile-home.tsx's own CONTENT_INDENT, mobile-contact.tsx/mobile-
@@ -192,6 +201,15 @@ function MobileGalleryCaption({ caption, dark }: { caption?: string; dark?: bool
   );
 }
 
+/** SP 版の「2カラムの片側1枠」— PC の TwoColumnMedia と同じ扱い
+ *  （`video` が入っていればその枠は動画、`image` はポスター）。 */
+function MobileTwoColumnMedia({ item }: { item: ProjectGalleryTwoColItem }) {
+  if (item.video) {
+    return <MobileGalleryVideo src={item.video} poster={item.image} aspect={item.aspect} />;
+  }
+  return <MobileGalleryImage image={item.image} imageSrcSet={item.imageSrcSet} aspect={item.aspect} />;
+}
+
 function MobileGalleryBlockView({
   block,
   dark = false,
@@ -201,11 +219,16 @@ function MobileGalleryBlockView({
 }) {
   if (block.type === "twoColumn") {
     return (
-      <div className="flex w-full flex-col items-stretch gap-[10px]" style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>
-        {block.images.map((image, i) => (
+      // gap — ブロック間と同じ GALLERY_GAP_PX。twoColumn は PC の左右並びを
+      // SP では縦積みにしたものなので、他のブロック同士の間隔と揃える。
+      <div
+        className="flex w-full flex-col items-stretch"
+        style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML, gap: `${GALLERY_GAP_PX}px` }}
+      >
+        {block.items.map((item, i) => (
           <div key={i}>
-            <MobileGalleryImage {...image} />
-            <MobileGalleryCaption caption={image.caption} dark={dark} />
+            <MobileTwoColumnMedia item={item} />
+            <MobileGalleryCaption caption={item.caption} dark={dark} />
           </div>
         ))}
       </div>
@@ -600,16 +623,25 @@ export function MobileProjectDetail({
         {/* mt-[25px] — per direct follow-up ("View Websiteの上マージンは
            25pxに"), its own distinct gap from the meta block above (not the
            15px shared between title/meta). */}
-        {detail?.websiteUrl && (
-          <a
-            href={detail.websiteUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`underline-sweep mt-[25px] text-[14px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
-          >
-            View Website
-          </a>
-        )}
+        {detail?.websiteUrl &&
+          (isLinkableWebsiteUrl(detail.websiteUrl) ? (
+            <a
+              href={detail.websiteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`underline-sweep mt-[25px] text-[14px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+            >
+              View Website
+            </a>
+          ) : (
+            // URL でない値（"Archived" など）はリンクにせず、書かれた文字を
+            // そのまま出す — isLinkableWebsiteUrl の doc comment 参照。
+            <p
+              className={`mt-[25px] text-[14px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+            >
+              {detail.websiteUrl}
+            </p>
+          ))}
       </div>
 
       {detail ? (
@@ -635,8 +667,7 @@ export function MobileProjectDetail({
 
           <MobileBilingualSection caption="(Overview)" ja={detail.overviewJa} en={detail.overviewEn} dark={headerDark} />
 
-          {/* gap-[10px] — margin between gallery images, per direct follow-up
-             ("SPのイメージ間のマージンは10pxに"). "(Idea)"/"(Outcome)" blocks
+          {/* 間隔は GALLERY_GAP_PX。"(Idea)"/"(Outcome)" blocks
              now render inline as just another top-level item in this same
              list — per direct follow-up ("画像も含めて表示位置を自由に変更
              できるようにしたい。例えばCMSの管理画面の入力の並び順にページ自
@@ -647,7 +678,7 @@ export function MobileProjectDetail({
              image's own wrapper so this gap wouldn't apply to it — no
              longer possible now that Idea/Outcome can appear anywhere, so
              they now get the same 10px gap as every other block. */}
-          <div className="flex w-full flex-col items-stretch gap-[10px]">
+          <div className="flex w-full flex-col items-stretch" style={{ gap: `${GALLERY_GAP_PX}px` }}>
             {detail.gallery.map((block, i) => {
               if (block.type === "idea" || block.type === "outcome") {
                 return (
@@ -743,14 +774,20 @@ export function MobileProjectDetail({
                   >
                     Link
                   </p>
-                  <a
-                    href={detail.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-                  >
-                    View Website
-                  </a>
+                  {isLinkableWebsiteUrl(detail.websiteUrl) ? (
+                    <a
+                      href={detail.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                    >
+                      View Website
+                    </a>
+                  ) : (
+                    <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+                      {detail.websiteUrl}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

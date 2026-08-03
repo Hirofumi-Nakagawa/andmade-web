@@ -476,23 +476,23 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
               that wrapper still blended; the wrapper no longer does (see its
               own comment), but the separation stays since the two have
               different left-margin/width needs anyway. */}
-          {/* mt — Img mode targets a visible 300px gap per direct follow-up
-              ("Img選択時にフッターと一覧のマージンがtxt時と同じく300pxになる
-              ようにして"): the thumbnail grid now cancels its own pull-up so
-              its box ends at the last row's real visible bottom (see
-              project-thumbnail-grid.tsx's own marginBottom comment) — but its
-              CaseCounter, a sticky element with a real in-flow
-              h-[calc(15px*var(--scale))], still sits inside that box after
-              the grid, so this margin starts 15px(*scale) below the visible
-              content. 285px here + those 15px = the 300px gap on screen
-              (verified live: 300px request measured 315px until this).
-              Tx keeps its long-standing 330px, whose visible gap (measured
-              from the meta text under the last titles) is the ~300px the
-              follow-up is matching against. */}
+          {/* mt — 330 → 350 → 400（いずれも直接の指示）。Img mode keeps its own value 45px below
+              Tx's, which is what makes the two modes' *visible* gaps match:
+              per an earlier follow-up ("Img選択時にフッターと一覧のマージンが
+              txt時と同じく300pxになるようにして"), the thumbnail grid's box
+              ends at the last row's real visible bottom (see
+              project-thumbnail-grid.tsx's own marginBottom comment), but its
+              CaseCounter — a sticky element with a real in-flow
+              h-[calc(15px*var(--scale))] — still sits inside that box after
+              the grid, and Tx's own visible gap likewise measures ~30px
+              shorter than its literal margin (measured from the meta text
+              under the last titles). So Img's literal value stays 45px lower
+              to land on the same on-screen distance; keep the two in step
+              when retuning either. */}
           <div
             ref={footerRef}
             className={`ml-[calc(198px*var(--grid-scale))] w-[var(--content-width-fluid)] ${
-              showImages ? "mt-[calc(285px*var(--scale))]" : "mt-[calc(330px*var(--scale))]"
+              showImages ? "mt-[calc(315px*var(--scale))]" : "mt-[calc(360px*var(--scale))]"
             }`}
           >
             <SiteFooter onBackToTopStart={handleBackToTopStart} onBackToTopEnd={handleBackToTopEnd} theme="dark" />

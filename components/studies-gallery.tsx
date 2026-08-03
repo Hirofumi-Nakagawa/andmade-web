@@ -5,7 +5,27 @@ import { mod, ORIENTATION_ASPECT_RATIO, type Study, type StudyOrientation } from
 import { ScrambleText } from "@/components/scramble-text";
 import { SlotDigits } from "@/components/slot-digits";
 import { StudiesCenterImage } from "@/components/studies-center-image";
+import { STUDIES_BACKGROUND_FADE_MS } from "@/components/studies-background";
 import { StudiesThumbnailRail } from "@/components/studies-thumbnail-rail";
+
+/** パラパラ表示（イントロ）を始めるまでの待ち時間。
+ *
+ *  背景（StudiesBackground）のフェードインぶん + 350ms。
+ *  フェード直後に始めるとまだ背景の余韻と重なって見えたため、ひと呼吸
+ *  置いてから始める — per direct follow-up ("Studiesのパラパラの表示
+ *  タイミングをもうワンテンポ遅らせて")。前段の指示（"背景がフェードイン
+ *  する前にパラパラが始まってる"）で入れた待ちの延長なので、背景の
+ *  フェード時間を足す形は崩さずに追加ぶんだけ持たせている。 */
+const INTRO_START_DELAY_MS = STUDIES_BACKGROUND_FADE_MS + 350;
+
+/** サムネを出してからパラパラを始めるまでのリード時間。
+ *
+ *  per direct follow-up ("サムネが表示されるタイミングをもう少し速くして"、
+ *  その後 "さらにワンテンポ速くして" で 200 → 550)。
+ *  直前の指示でサムネの表示とパラパラの開始を同時にしたが、それだとサムネが
+ *  出た瞬間にもう動き出していて出現が認識しづらい。パラパラの開始
+ *  （INTRO_START_DELAY_MS）はそのままに、サムネだけこのぶん先に出す。 */
+const INTRO_THUMBNAIL_LEAD_MS = 550;
 
 /** How many images the mount-time intro glides through before handing
  *  control over to real scroll input — per explicit request ("やっぱり1周
@@ -345,6 +365,7 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
   // own hydration mismatch earlier in this project. The real starting point
   // is only picked once the mount effect below runs, client-side only.
   const [position, setPosition] = useState<number | null>(null);
+  const [thumbnailShown, setThumbnailShown] = useState(false);
   const [introDone, setIntroDone] = useState(false);
   // True only while nothing is actively moving — see this component's own
   // doc comment above on the title readout.
@@ -468,12 +489,26 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
   // rather than called directly in the effect body, matching this project's
   // established fix for the `react-hooks/set-state-in-effect` lint rule
   // (see scenic-map-background.tsx's own mount effect).
+  // 背景（StudiesBackground）のフェードインが終わってから、さらにひと呼吸
+  // 置いて始める — INTRO_START_DELAY_MS の doc comment 参照。
+  // ここで position が null から実値になった瞬間にイントロのグライドが
+  // 走り出す（下の effect）ので、その起点を遅らせるのが一番素直。
+  // rAF ではなく setTimeout なのは待ち時間そのものが目的のため
+  // （set-state-in-effect の回避という意味では rAF と同じく effect 本体の
+  // 外で setState することになるので条件は満たしている）。
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
+    const thumbnailTimer = setTimeout(
+      () => setThumbnailShown(true),
+      INTRO_START_DELAY_MS - INTRO_THUMBNAIL_LEAD_MS,
+    );
+    const timer = setTimeout(() => {
       const start = Math.floor(Math.random() * studies.length);
       updatePosition(start);
-    });
-    return () => cancelAnimationFrame(frame);
+    }, INTRO_START_DELAY_MS);
+    return () => {
+      clearTimeout(thumbnailTimer);
+      clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally mount-only (studies is a stable server-fetched array for this page's lifetime).
   }, []);
 
@@ -896,15 +931,31 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
          is a fully independent animation axis from the zoom above (an inner
          `transform: scale()`, vs. this wrapper's own literal width/height),
          so both can run without conflicting. */}
+      {/* opacity — パラパラが始まるまでサムネ自体を出さない。per direct
+         follow-up ("背景が表示されてからサムネが表示されてすぐにパラパラが
+         はじまるようにして"、その後 "サムネが表示されるタイミングをもう少し
+         速くして"）。「背景フェード → サムネ出現 → INTRO_THUMBNAIL_LEAD_MS
+         後にパラパラ」の順になる。以前は position ?? 0 で Study01 が最初から
+         描かれていて、背景が出ている間ずっと静止したサムネが見えていた。
+
+         出現そのものは opacity ではなく StudiesCenterImage の `revealed`
+         （中央から広がるマスク）に任せている — per direct follow-up
+         ("最初にサムネが表示されるときも、パッと表示させずに中央からマスクが
+         広がって表示されるようにして")。 */}
       <div
         className="absolute cursor-pointer"
-        style={centerImageStyle}
+        style={{ ...centerImageStyle }}
         onClick={handleImageClick}
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
         onMouseMove={handleImageMouseMove}
       >
-        <StudiesCenterImage studies={studies} activeIndex={activeIndex} expanded={introDone} />
+        <StudiesCenterImage
+          studies={studies}
+          activeIndex={activeIndex}
+          expanded={introDone}
+          revealed={thumbnailShown}
+        />
       </div>
 
       {/* Cursor-follow "Zoom" / "Zoom Out" label (per explicit spec:

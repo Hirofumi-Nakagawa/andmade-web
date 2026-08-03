@@ -7,6 +7,8 @@ import { GrainOverlay } from "@/components/grain-overlay";
 import { HeaderSummon } from "@/components/header-summon";
 import { MobileAbout } from "@/components/mobile-about";
 import { PageBodyBackground } from "@/components/page-body-background";
+import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
+import { RevealOnMount } from "@/components/reveal-on-mount";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import {
@@ -16,6 +18,9 @@ import {
   AWARDS_COL_1,
   AWARDS_COL_2,
   GUIDING_PRINCIPLES,
+  HERO_LEAD_EN,
+  HERO_LEAD_JA,
+  HERO_LINES,
   MEDIA_COL_1,
   MEDIA_COL_2,
   OUTLINE_COL_1,
@@ -32,7 +37,7 @@ import {
 // replaces the parent's `alternates` object wholesale rather than merging
 // field-by-field, so without this override the page would otherwise
 // incorrectly inherit the root layout's own canonical ("/", the home page).
-export const metadata: Metadata = { title: "About", alternates: { canonical: "/about" } };
+export const metadata: Metadata = { title: "About", alternates: { canonical: "/about/" } };
 
 // viewportFit: "cover" — per repeated follow-up describing a persistent pink
 // margin at the very top of the screen that AboutBackground's own photo
@@ -152,7 +157,7 @@ function BilingualBody({ ja, en }: { ja: string[]; en: string[] }) {
 const aboutJsonLd = {
   "@context": "https://schema.org",
   "@type": "AboutPage",
-  url: `${SITE_URL}/about`,
+  url: `${SITE_URL}/about/`,
   name: `About - ${SITE_NAME}`,
   mainEntity: {
     "@type": "Organization",
@@ -186,11 +191,11 @@ export default function About() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd) }}
       />
-      {/* #3782c5 — the colour the shader background settles to at full
+      {/* #438ed0（旧 #3782c5、直接の指示で変更）— the colour the shader background settles to at full
           scroll (AboutBlendBackground's own SETTINGS.colors[1]; keep the two
           in step when retuning), so overscroll rubber-banding at the page's
           ends blends with it rather than flashing the old pink. */}
-      <PageBodyBackground color="#3782c5" />
+      <PageBodyBackground color="#438ed0" />
 
       {/* Shared between both trees below, so it renders once,
           unconditionally, rather than being split/duplicated the way the
@@ -216,7 +221,76 @@ export default function About() {
         <div className="relative">
           <SiteHeader dark />
 
-        <div className="relative mt-[calc(280px*var(--scale))]">
+        {/* FV — per direct follow-up（添付デザイン）。見出し3行、その 20px 下に
+            リード文（日本語＋英語）、さらに 120px 下から Vision 以下が始まる。
+            この3つの間隔だけが指定値で、他は添付デザインからの実測。
+
+            セクション群の relative ラッパーの *外* に置いてある。AboutSideNav は
+            そのラッパーを覆う `absolute inset-0` + `sticky` で作られていて、
+            ラッパーの上端が sticky の開始位置になる。FV を中に入れると左ナビが
+            FV の高さぶん上から貼り付き始め、(Vision) の横線と頭が揃わなくなる
+            （以前この揃えを直した経緯がある）。 */}
+        <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(280px*var(--scale))] w-[var(--content-width-fluid)]">
+          {/* 見出しはカーテンリビール（直接の指示 "3行コピーをカーテンリビール
+              で表示して"）— Contact の3行英文と同じ扱いで、下からのスライド＋
+              フェード（RevealOnMount）ではなく1行ずつマスクからせり上がる。
+              リード文は従来どおり RevealOnMount のまま。
+
+              text-box-trim は外してある: CurtainRevealLines は1行ぶんの
+              overflow-hidden の箱で覆って見せる仕組みなので、trim で箱を
+              詰めると "purpose." の p のディセンダが切れる。Contact の3行
+              英文も同じ理由で trim 無し。
+
+              font-normal は直接の指示（"ウェイトregularで表示"）。サイズは
+              添付デザインからの実測 40px → 50px、行間は 1.2（実測）→ 58px →
+              56px（いずれも直接の指示）。行間は倍率ではなく px 指定なので、
+              他と同じく --scale だけ掛けて追従させる。
+
+              文字詰め（直接の指示 "自然な形で文字詰めして"）は2つに分かれる:
+                - font-kerning: normal — 書体が持つカーニングペアを効かせる。
+                  "W/A" や "r." のような組み合わせだけを字面に応じて詰める
+                  もので、これが「自然な」ぶんの詰め。
+                - tracking -1px（50px に対して -0.02em）— 全体を一律に詰める
+                  ぶん。大きい文字は既定のままだと字間が空いて見えるので、
+                  サイズが上がったぶんだけ引き締める。強めたい場合はこの値
+                  だけを触ればよい。 */}
+          <CurtainRevealLines
+            lines={HERO_LINES}
+            className="text-[length:calc(50px*var(--scale))] leading-[calc(56px*var(--scale))] font-normal tracking-[calc(-1px*var(--scale))] [font-kerning:normal] text-black"
+          />
+
+          {/* 見出しからの 20px（直接の指示）。左のインデント 580px は
+              グリッド10マス分（58px × 10）で、添付デザインのリード文の
+              左面と一致する。 */}
+          <RevealOnMount fadeOnly className="mt-[calc(20px*var(--scale))] pl-[calc(580px*var(--grid-scale))]">
+            {/* 日本語・英語とも Vision 以下の本文（BilingualBody）と同じ
+                書体・色。違うのは、こちらは改行位置を原稿どおりに固定して
+                いて両端揃えにしない点と、日本語だけ 16px → 18px（直接の
+                指示。本文の BilingualBody は 16px のまま）。 */}
+            <div
+              className="font-(family-name:--font-gen-interface-jp) text-[length:calc(18px*var(--scale))] leading-[1.7] font-light tracking-[calc(0.48px*var(--scale))] text-black"
+              style={SS09}
+            >
+              {HERO_LEAD_JA.map((line, i) => (
+                <p key={line} className={paragraphTrimClass(i, HERO_LEAD_JA.length)}>
+                  {line}
+                </p>
+              ))}
+            </div>
+            <div className="mt-[calc(30px*var(--scale))] text-[length:calc(14px*var(--scale))] leading-[1.2] text-black/50">
+              {HERO_LEAD_EN.map((line, i) => (
+                <p key={line} className={paragraphTrimClass(i, HERO_LEAD_EN.length)}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          </RevealOnMount>
+        </div>
+
+        {/* mt 280 → 120（直接の指示 "その下120px空けてVision以下コンテンツを
+            表示"）。280px は FV が無かった頃にヘッダーとの間を空けていた値で、
+            今はその役目が上の FV ブロック側に移っている。 */}
+        <div className="relative mt-[calc(120px*var(--scale))]">
           <AboutSideNav />
 
           {/* Width here (and therefore this wrapper's own border-b, "Outline"
@@ -470,7 +544,15 @@ export default function About() {
             </p>
           </div>
 
-          <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(330px*var(--scale))] w-[var(--content-width-fluid)]">
+          {/* mt — 330 → 350 → 400 → 360（いずれも直接の指示）。トップ
+              (home-view.tsx)の Txt 時と同じ値に揃えてある。 */}
+          {/* data-about-footer — AboutSideNav が「Outline は本文の上端では
+              なくフッターまでスクロールしたら current にする」判定に使う
+              目印（per direct follow-up）。見た目には影響しない。 */}
+          <div
+            data-about-footer
+            className="ml-[calc(198px*var(--grid-scale))] mt-[calc(360px*var(--scale))] w-[var(--content-width-fluid)]"
+          >
             <SiteFooter theme="dark" />
           </div>
         </div>

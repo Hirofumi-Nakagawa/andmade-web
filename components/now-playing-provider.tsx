@@ -19,8 +19,24 @@ import type { NowPlaying } from "@/lib/spotify";
  * every route, including nested ones like /projects/<slug>/. withBasePath()
  * because a plain fetch URL is a string Next doesn't rewrite — see
  * lib/base-path.ts.
+ *
+ * 開発時だけ preview 環境の PHP を見に行く — per direct follow-up
+ * ("localhost:3000でspotifyが確認できなくなってるのはなぜ？")。`npm run dev`
+ * が動かすのは Next の開発サーバーで PHP を実行できないため、相対パスのままだと
+ * 404 → 常に「再生なし」になってしまう。サーバー側に置いた本物を叩けば
+ * ローカルでも表示を確認できる。
+ *
+ * 本番公開に伴い /preview/ から直下へ変更した（preview ディレクトリは
+ * 本番デプロイの rsync --delete で消える）。Basic 認証も外れているので、
+ * public/.htaccess 側の <Files "now-playing.php"> 除外は不要になっている。
+ * 返るのは再生中の曲名だけで、認証情報も CMS の内容も含まない。
+ *
+ * NODE_ENV は Next がビルド時に静的な値へ置き換えるので、本番ビルドでは
+ * この分岐ごと消える（開発用の URL が成果物に残ることはない）。
  */
-const NOW_PLAYING_ENDPOINT = withBasePath("/now-playing.php");
+const DEV_NOW_PLAYING_ENDPOINT = "https://andmade.jp/now-playing.php";
+const NOW_PLAYING_ENDPOINT =
+  process.env.NODE_ENV === "development" ? DEV_NOW_PLAYING_ENDPOINT : withBasePath("/now-playing.php");
 
 /** How often to re-poll the endpoint above while the tab is open. Matches
  *  that PHP's own CACHE_SECONDS, so each poll lands on roughly one fresh

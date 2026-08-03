@@ -7,6 +7,8 @@ import { IdleDateTime } from "@/components/idle-datetime";
 import { IdleNowPlaying } from "@/components/idle-now-playing";
 import { VerticalLabel } from "@/components/vertical-label";
 import { fetchTokyoTemperatureC, WEATHER_POLL_MS } from "@/lib/tokyo-weather";
+import { withBasePath } from "@/lib/base-path";
+import { isSamePath } from "@/lib/route-path";
 
 /** How long with zero cursor movement / interaction before this shows —
  *  25s → 30s per direct follow-up ("PCともに秒数を25→30秒にして"). SP briefly
@@ -346,7 +348,7 @@ const SP_PILL_PADDING_Y_PX = 9;
  */
 export function IdleOverlay() {
   const pathname = usePathname();
-  const isContact = pathname === "/contact";
+  const isContact = isSamePath(pathname, "/contact");
   const isKnownRoute = KNOWN_ROUTES.includes(pathname);
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
@@ -1110,7 +1112,7 @@ export function IdleOverlay() {
             </div>
 
             <Image
-              src="/andmade-logo.svg"
+              src={withBasePath("/andmade-logo.svg")}
               alt=""
               width={1410}
               height={188}
@@ -1326,7 +1328,7 @@ export function IdleOverlay() {
                   (percentage-based, not fighting over its own props). */}
               <VerticalLabel className="mix-blend-multiply">
                 <div style={{ width: spLogoWidthCss, height: spLogoHeightCss }}>
-                  <Image src="/andmade-logo.svg" alt="" width={1410} height={190} className="block h-full w-full" />
+                  <Image src={withBasePath("/andmade-logo.svg")} alt="" width={1410} height={190} className="block h-full w-full" />
                 </div>
               </VerticalLabel>
               <VerticalLabel>

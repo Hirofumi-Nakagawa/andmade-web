@@ -302,6 +302,10 @@ function generateRandomPreviewRect(project: Project): PreviewRect {
   return { top, left, width, height };
 }
 
+/** Txt と Img の間の縦線の長さ。40px（"Tx-Thの間の線は40pxにして"）→ 50px
+ *  （"txt-imgの間の線を10px伸ばして"）。 */
+const DIVIDER_HEIGHT_PX = 50;
+
 // VerticalLabel (rotate-90 content technique for Tx/Th/"33 Cases" below) now
 // lives in its own file (components/vertical-label.tsx) — extracted so
 // idle-overlay.tsx's own SP variant (Figma node 1100:384) can reuse the exact
@@ -1075,7 +1079,8 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
               <div className="flex flex-col items-start gap-[40px]">
                 {/* Tx/Th — each individually rotated (VerticalLabel), per
                     direct follow-up ("tx-thと33casesをそれぞれ180°回転させ
-                    て"). Divider 40px long ("Tx-Thの間の線は40pxにして") —
+                    て"). Divider 50px long ("Tx-Thの間の線は40pxにして"、その後
+                    "txt-imgの間の線を10px伸ばして" で 40 → 50) —
                     drawn directly as a vertical bar (not itself rotated — a
                     1px-thick bar looks identical either way, and this
                     sidesteps rotating a zero-content element at all).
@@ -1148,14 +1153,20 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                   <span
                     aria-hidden
                     key={dividerSweep.generation}
-                    className={`w-px h-[40px] bg-white/50 ${
+                    className={`w-px bg-white/50 ${
                       dividerSweep.generation > 0
                         ? dividerSweep.direction === "down"
                           ? "underline-sweep-vertical-down-play"
                           : "underline-sweep-vertical-up-play"
                         : ""
                     }`}
-                    style={{ transform: "translateX(-5px)" }}
+                    // 高さはインラインで持たせている。h-[50px] のような
+                    // 新しい arbitrary クラスは生成CSSが追いつくまで存在せず、
+                    // 高さ0＝線が消えて見える（"txt-imgの間の線が無くなってる"）。
+                    // このコードベースでは同じ理由で
+                    // scroll-progress-gauge.tsx も z-index をインラインに
+                    // している。インラインスタイルはCSSの生成を待たない。
+                    style={{ height: DIVIDER_HEIGHT_PX, transform: "translateX(-5px)" }}
                   />
                   <VerticalLabel>
                     {/* `disabled` while already active — see the Tx button's
@@ -1183,16 +1194,43 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                     Tx/Th group — 100px → 80px per an earlier follow-up
                     ("33casesとのマージンは80pxに"), then 80px → 60px → 40px
                     per two further direct follow-ups ("SPトップのTxt-Imgと
-                    Casesのマージンを20px詰めて" ×2). font-normal (was
-                    font-medium) per
-                    direct follow-up ("33casesのウェイトをregularに変更").
+                    Casesのマージンを20px詰めて" ×2). ウェイトは
+                    font-medium → font-normal（"33casesのウェイトをregularに
+                    変更"）→ font-medium（"PC,SPのCasesのウェイトをmediumに"、
+                    PC の case-counter.tsx も同時に変更）→ 数字だけ medium で
+                    "Cases" は regular（下の span 参照）。
                     SlotDigits — same odometer/slot-machine digit roll as
                     PC's counter (slot-digits.tsx), counting up to the real
                     project count. */}
                 <VerticalLabel className="text-[14px] font-normal text-white">
                   <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-                    <SlotDigits value={projects.length} digits={String(projects.length).length} extraSpins={2} durationMs={1200} /> Cases
+                    {/* 数字だけ medium、"Cases" は regular — 直接の指示
+                        ("SPのcasesの数字はmediumでcasesの文字はregularにして")。
+                        PC (case-counter.tsx) は全体 medium のまま。 */}
+                    <span className="font-medium">
+                      <SlotDigits value={projects.length} digits={String(projects.length).length} extraSpins={2} durationMs={1200} />
+                    </span>{" "}
+                    Cases
                   </span>
+                </VerticalLabel>
+
+                {/* "Contact" — per direct follow-up ("SPのCases下40px位置に
+                    Contactの文字を同じく縦書きで追加メールにリンク")。40px は
+                    このラッパーの gap-[40px] がそのまま効くので、指定は不要
+                    （Tx/Th 群 → Cases と同じ間隔）。
+                    pointer-events-auto — このレールは sticky ラッパー側で
+                    pointer-events-none にしてある（Tx/Th ボタンと同じ理由。
+                    そちらのコメント参照）ので、リンクにだけ復活させる。
+                    touchAction: manipulation も Tx/Th と同じ、実機のタップ
+                    遅延・誤爆対策。 */}
+                <VerticalLabel className="text-[14px] font-medium text-white">
+                  <a
+                    href="mailto:info@andmade.jp"
+                    className="pointer-events-auto [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    Contact
+                  </a>
                 </VerticalLabel>
               </div>
             </div>

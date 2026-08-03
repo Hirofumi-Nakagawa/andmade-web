@@ -90,6 +90,24 @@ export type ProjectGalleryImage = {
 };
 
 /**
+ * 2カラムブロックの片側1枠 — per direct follow-up ("実績詳細で2カラムのとき、
+ * どちらかに動画も入れられるようにして")。
+ *
+ * 画像枠の形（ProjectGalleryImage）はそのままに、`video` が入っているときだけ
+ * その枠が動画になる。画像を捨てて動画専用の枠にしなかったのは、
+ *   - 動画URL（プレーンなテキスト欄。理由は galleryVideo の解析部のコメント
+ *     参照）だけでは縦横比が分からず、左右の高さが揃わなくなる
+ *   - ポスター画像が無いと読み込み中に枠が空く
+ * ため。CMS 側でも従来どおり image1/image2 は必須のまま、`video1`/`video2` に
+ * URL を入れた側だけが動画に変わる、という運用になる。
+ */
+export type ProjectGalleryTwoColItem = ProjectGalleryImage & {
+  /** 動画URL。入っていればこの枠は動画として描画され、`image` はその
+   *  ポスター（と縦横比の取得元）として使われる。 */
+  video?: string;
+};
+
+/**
  * A single-image gallery block's own width, per the general (not just
  * Yatsumonji-specific) authoring rule given directly for this gallery
  * system:
@@ -160,7 +178,9 @@ export type ProjectGalleryBlock =
       /** Only used by the "inset" layout, like the single-image block's own
        *  — see that variant's `backgroundColor`. */
       backgroundColor?: string;
-      images: [ProjectGalleryImage, ProjectGalleryImage];
+      /** `images` から改名 — 片側だけ動画にできるようになったため
+       *  （ProjectGalleryTwoColItem 参照）。 */
+      items: [ProjectGalleryTwoColItem, ProjectGalleryTwoColItem];
     }
   // "idea"/"outcome" are two separate union members (not one member typed
   // `type: "idea" | "outcome"`) despite being otherwise identical shapes —
@@ -272,7 +292,12 @@ export type ProjectDetail = {
   overviewEn: string[];
   /** "View Website" link target (Figma nodes 1349:333 / 1349:364) — the
    *  link itself only renders once this is set; omit while the live site
-   *  URL isn't available yet. */
+   *  URL isn't available yet.
+   *
+   *  URL 以外の文字列を入れてもよい（管理画面でこの欄に「Offline」と入力
+   *  すると、リンクではなくその文字がそのまま表示される）— per direct
+   *  follow-up ("実績詳細のurlに「Offline」と入れたら、この文字をそのまま
+   *  表示するようにして")。判定は isLinkableWebsiteUrl() を参照。 */
   websiteUrl?: string;
   /** This project's own image/video/twoColumn/idea/outcome content, in the
    *  exact order it should render, replacing an earlier design where
@@ -381,6 +406,22 @@ export function getProjectColor(project: Project, index: number): string {
 }
 
 /** Slugifies a project title for use in /projects/[slug] links (ASCII-only, punctuation stripped). */
+/**
+ * ProjectDetail.websiteUrl の値をリンクとして扱えるか。
+ *
+ * per direct follow-up ("実績詳細のurlに「Archived」と入れたら、この文字を
+ * そのまま表示するようにして")。公開終了などの実績で、この欄に URL の
+ * 代わりに「Archived」のような状態を書きたい、という要望。
+ *
+ * 「Archived」だけを特別扱いする作りにはしていない。そうすると別の言葉
+ * （"Coming soon" など）を入れたときに `<a href="Coming soon">` という
+ * 壊れたリンクが出てしまう。代わりに「http(s):// で始まるかどうか」で
+ * 判定し、URL でなければ何であれ素のテキストとして表示する。
+ */
+export function isLinkableWebsiteUrl(value: string): boolean {
+  return /^(https?:)?\/\//i.test(value.trim());
+}
+
 export function slugify(title: string): string {
   return title
     .toLowerCase()
@@ -506,6 +547,11 @@ type GalleryRepeatItem = {
   image1?: MicrocmsImage;
   image2?: MicrocmsImage;
   video?: string;
+  /** `galleryTwoCol` 用。片側だけ動画にしたいときに URL を入れる（空なら
+   *  その枠は従来どおり image1/image2 の画像）。`video` と同じくプレーンな
+   *  テキスト欄。 */
+  video1?: string;
+  video2?: string;
   poster?: MicrocmsImage;
   /** `galleryIdea`/`galleryOutcome` custom fields' own textarea sub-fields —
    *  see buildGalleryFromCms()'s own handling of those two fieldIds. */
@@ -522,6 +568,11 @@ type GalleryRepeatItem = {
    *  inset block did unconditionally before. */
   bgColor?: string;
 };
+
+/** CMS のテキスト欄を trim して、空なら undefined にする。 */
+function trimmedText(value: string | undefined): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
 
 /** Normalises a CMS colour text field — trimmed, `#` prefixed when the
  *  editor typed a bare hex. Returns undefined for anything blank so callers
@@ -608,12 +659,15 @@ function buildGalleryFromCms(items: GalleryRepeatItem[] | undefined): ProjectGal
         type: "twoColumn",
         width,
         backgroundColor: resolveColor(item.bgColor),
-        images: [
+        items: [
           {
             image: microcmsImageUrl(image1.url),
             imageSrcSet: microcmsImageSrcSet(image1.url),
             aspect: image1.width / image1.height,
             caption: item.caption?.trim() || undefined,
+            // 入っていればこの枠は動画になる（上の image1 がポスターになる）
+            // — ProjectGalleryTwoColItem の doc comment 参照。
+            video: trimmedText(item.video1),
           },
           {
             image: microcmsImageUrl(image2.url),
@@ -622,6 +676,7 @@ function buildGalleryFromCms(items: GalleryRepeatItem[] | undefined): ProjectGal
             // Second image gets its own caption field, so a pair can be
             // labelled independently.
             caption: item.caption2?.trim() || undefined,
+            video: trimmedText(item.video2),
           },
         ],
       });
@@ -638,7 +693,7 @@ function buildGalleryFromCms(items: GalleryRepeatItem[] | undefined): ProjectGal
       // delivery URL here. (An earlier version of
       // this comment suggested this project's own public/ folder instead,
       // fine for a one-off video but not once the count keeps growing.)
-      const videoUrl = typeof item.video === "string" && item.video.trim() ? item.video.trim() : undefined;
+      const videoUrl = trimmedText(item.video);
       const poster = asMicrocmsImage(item.poster);
       if (!videoUrl && !poster) continue; // nothing set for this item at all
       blocks.push({
@@ -771,7 +826,15 @@ type ProjectCmsContent = {
    *       here and falls through to the plain default layout instead, see
    *       ProjectGalleryWidth's own doc comment; SP ignores this field
    *       entirely regardless, see ProjectGalleryBlock's own "twoColumn" doc
-   *       comment), `image1` (image), `image2` (image).
+   *       comment), `image1` (image), `image2` (image), `video1` (text),
+   *       `video2` (text)。
+   *       `video1`/`video2` は片側だけ動画にしたいとき用のURL欄 — per direct
+   *       follow-up ("実績詳細で2カラムのとき、どちらかに動画も入れられる
+   *       ようにして")。空ならその枠は従来どおり image1/image2 の画像。URL を
+   *       入れた側は動画になり、同じ番号の画像がポスター（＋縦横比の取得元）
+   *       として使われるので、image1/image2 は動画の枠でも必須のまま。
+   *       URLの入れ方は `galleryVideo` の `video` と同じ（Cloudinary などに
+   *       置いた配信URLを貼る。理由は buildGalleryFromCms 内のコメント参照）。
    *     - `galleryIdea` — a "(Idea)" bilingual text block. Sub-fields: `ja`
    *       (textarea), `en` (textarea). No `width` — always renders at the
    *       same fixed width as Overview's own BilingualSection.

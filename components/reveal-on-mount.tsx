@@ -12,6 +12,12 @@ type RevealOnMountProps = {
   /** Passed straight through — for purely decorative reveals (e.g. the
    *  Contact page's placeholder photo box). */
   "aria-hidden"?: boolean;
+  /** 24px の下からのスライドを外し、フェードインだけにする — per direct
+   *  follow-up（About の FV リード文、"リード文のスライドインはやっぱり無しで
+   *  フェードインだけにして"）。すぐ上の見出しがカーテンリビール（下から
+   *  せり上がる）なので、リード文まで同じ方向に動くと2つの動きがぶつかる。
+   *  既定は false（従来どおりスライド＋フェード）で他の呼び出し側は不変。 */
+  fadeOnly?: boolean;
 };
 
 /**
@@ -24,7 +30,7 @@ type RevealOnMountProps = {
  * the Contact page's info block/photo/copyright — the whole page no longer
  * scrolls at all (see app/contact/page.tsx), so there's nothing to observe.
  */
-export function RevealOnMount({ className = "", style, children, ...rest }: RevealOnMountProps) {
+export function RevealOnMount({ className = "", style, children, fadeOnly = false, ...rest }: RevealOnMountProps) {
   const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
@@ -37,8 +43,19 @@ export function RevealOnMount({ className = "", style, children, ...rest }: Reve
       // Only the two properties this actually animates — `transition-all`
       // would also delay/ease inherited values such as the Konami easter
       // egg's page-wide text-shadow (see project-card.tsx for the full note).
-      className={`transition-[transform,opacity] duration-500 ease-out ${
-        revealed ? "translate-y-0 opacity-100" : "translate-y-[24px] opacity-0"
+      //
+      // transform → translate（直接の指摘 "リード文にスライドイン付いてない"）。
+      // Tailwind v4 の translate-y-* は transform ではなく CSS の `translate`
+      // プロパティを出力する（.translate-y-\[24px\]{translate:var(--tw-translate-x)
+      // var(--tw-translate-y)}）。そのため transform を対象にしていた間は
+      // スライドだけトランジションが乗らず、24px ぶん瞬間移動していた
+      // （フェードは効いていたので気づきにくい）。about-section.tsx や
+      // project-card.tsx が同じ見た目で正しく動いていたのは、あちらが
+      // transition-all を使っているため。
+      className={`${fadeOnly ? "transition-opacity" : "transition-[translate,opacity]"} duration-500 ease-out ${
+        revealed
+          ? `opacity-100${fadeOnly ? "" : " translate-y-0"}`
+          : `opacity-0${fadeOnly ? "" : " translate-y-[24px]"}`
       } ${className}`}
       style={style}
       {...rest}

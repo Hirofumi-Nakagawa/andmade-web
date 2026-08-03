@@ -90,7 +90,7 @@ AuthUserFile /home/<アカウント>/.htpasswd
 
 ### 3-3. デプロイ先を preview に向ける
 
-GitHub の Secret `FTP_SERVER_DIR` を以下にする:
+GitHub の Secret `SSH_TARGET_DIR` を以下にする:
 
 ```
 /home/<アカウント>/www/preview/
@@ -123,14 +123,21 @@ CSS の `url()`、`new Image().src`、`fetch()` のURLなど「文字列とし�
 
 上から順に実行する。順番を変えると事故る。
 
-1. `public/.htaccess` の先頭「0. Basic認証」ブロックを**まるごと削除**して commit・push
+1. `public/.htaccess` の Basic認証ブロックを**まるごとコメントアウト**して commit・push
+   （2026-08 の本番公開時に対応済み。`AuthType`〜`Require` の4行と
+   `<Files "now-playing.php">` はセットで扱うこと）
 2. Variable `BASE_PATH` を**削除**（または空文字に）
-3. Secret `FTP_SERVER_DIR` を `/home/<アカウント>/www/` に変更
+3. Secret `SSH_TARGET_DIR` を `/home/<アカウント>/www/` に変更
 4. Actions から **Run workflow**
 
 > 1 を忘れると本番サイトがID/パスワードを要求する状態で公開される。
 > 2 を忘れるとアセットのパスが `/preview/_next/...` のままで表示が崩れる。
 > 3 を先にやると coming-soon ページが認証付きのまま上書きされる。
+
+`SSH_TARGET_DIR` を `www/` にすると、rsync の `--delete-after` によって
+`www` 直下の「out/ に無いファイル」はすべて消える。手作業で置いた
+coming-soon ページと `www/preview/` も対象になる（`/home/<アカウント>/` 直下の
+`.htpasswd` と `spotify-config.php` は www の外なので消えない）。
 
 サーバー上の `www/preview/` は消しても残しても構わない。
 残す場合、Basic認証が外れた状態のコピーがそこに残るので、
@@ -149,10 +156,55 @@ GitHub リポジトリの **Settings → Secrets and variables → Actions → N
 | `MICROCMS_SERVICE_DOMAIN` | `.env.local` と同じ |
 | `MICROCMS_API_KEY` | `.env.local` と同じ |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | `.env.local` と同じ |
-| `FTP_SERVER` | `<アカウント>.sakura.ne.jp` |
-| `FTP_USERNAME` | さくらのFTPユーザー名（＝アカウント名） |
-| `FTP_PASSWORD` | さくらのFTPパスワード |
-| `FTP_SERVER_DIR` | `/home/<アカウント>/www/`（**末尾のスラッシュ必須**） |
+| `SSH_HOST` | `<アカウント>.sakura.ne.jp` |
+| `SSH_USER` | さくらのアカウント名 |
+| `SSH_PRIVATE_KEY` | 下記で作る秘密鍵の中身（全文） |
+| `SSH_TARGET_DIR` | `/home/<アカウント>/www/preview/`（**末尾のスラッシュ必須**） |
+
+### なぜFTPではなくSSHか
+
+さくらの「国外IPアドレスフィルタ」は**FTPを海外IPから遮断する**。
+GitHub Actions のランナーは米国にあるため、FTPS では
+TLSハンドシェイク直後に切断されて必ず失敗する
+（`Server sent FIN packet unexpectedly`）。
+
+SSHはこのフィルタの対象外なので、フィルタを有効にしたまま使える。
+パスワードではなく鍵認証になる点でもFTPより安全。
+
+### SSH鍵の作成と登録
+
+**1. 手元のMacで鍵を作る**（パスフレーズなし。自動化で使うため）
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/andmade_sakura -C "github-actions" -N ""
+```
+
+**2. 公開鍵をサーバーに登録**
+
+```bash
+ssh-copy-id -i ~/.ssh/andmade_sakura.pub <アカウント>@<アカウント>.sakura.ne.jp
+```
+
+サーバーパスワードを聞かれる。成功したら接続確認:
+
+```bash
+ssh -i ~/.ssh/andmade_sakura <アカウント>@<アカウント>.sakura.ne.jp
+```
+
+パスワードなしでログインできればOK（`exit` で抜ける）。
+
+**3. 秘密鍵をGitHubに登録**
+
+```bash
+pbcopy < ~/.ssh/andmade_sakura
+```
+
+クリップボードに入るので、Secret `SSH_PRIVATE_KEY` にそのまま貼り付ける。
+`-----BEGIN OPENSSH PRIVATE KEY-----` から
+`-----END OPENSSH PRIVATE KEY-----` までの**全文**が必要（改行含む）。
+
+> 貼り付けるのは `.pub` が**付かない方**（秘密鍵）。
+> 秘密鍵は画面に表示させないこと（クリップボード経由で扱う）。
 
 > `SPOTIFY_*` は登録不要。ビルドには使わず、サーバー上の
 > `spotify-config.php` が持つ（2-1参照）。

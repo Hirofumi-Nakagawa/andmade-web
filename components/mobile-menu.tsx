@@ -12,6 +12,8 @@ import { willIntroShow } from "@/components/site-intro";
 import { NAV_ITEMS } from "@/components/site-header";
 import { getFooterReady, getFooterReadyServerSnapshot, subscribeFooterReady } from "@/lib/footer-mode-store";
 import { getLightMenuPill, getLightMenuPillServerSnapshot, subscribeLightMenuPill } from "@/lib/menu-theme-store";
+import { withBasePath } from "@/lib/base-path";
+import { isSamePath } from "@/lib/route-path";
 
 /** Back-to-top start/end — dispatched by handleBackToTop below, listened to
  *  by mobile-home.tsx (to suppress its own project-preview image while
@@ -725,7 +727,7 @@ export function MobileMenu() {
               }}
             >
               {NAV_ITEMS.map((item, i) => {
-                const isCurrent = pathname === item.href;
+                const isCurrent = isSamePath(pathname, item.href);
                 return (
                   <Fragment key={item.label}>
                     {isCurrent ? (
@@ -923,7 +925,7 @@ export function MobileMenu() {
                     disappear against this panel's own inverted white
                     background. */}
                 <Image
-                  src={lightPill ? "/andmade-mark-black.svg" : "/andmade-mark.svg"}
+                  src={withBasePath(lightPill ? "/andmade-mark-black.svg" : "/andmade-mark.svg")}
                   alt="ANDMADE"
                   width={40}
                   height={40}

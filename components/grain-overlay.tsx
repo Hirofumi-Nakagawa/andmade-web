@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { fullViewportHeightPx, installViewportHeightVar } from "@/lib/viewport-height";
+import { useFadeIn } from "@/components/use-fade-in";
 
 /**
  * Full-viewport animated film-grain overlay — a deliberately minimal spin-off
@@ -99,8 +101,15 @@ type GrainOverlayProps = {
 
 export function GrainOverlay({ noiseIntensity = 0.02, noiseScale = 4.7, noiseFlicker = 0.15, className }: GrainOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // ページ表示時のフェードイン — per direct follow-up
+  // ("aboutとstudiesとcontactのページが表示されるとき、背景は
+  //   フェードインで表示させて")。
+  const shown = useFadeIn();
 
   useEffect(() => {
+    // 実測値を --viewport-height に流し込む（lib/viewport-height.ts 参照）。
+    // CSS 側の height: var(--viewport-height) がこれを読む。
+    const uninstallViewportVar = installViewportHeightVar();
     const canvasEl = canvasRef.current;
     if (!canvasEl) return;
 
@@ -155,7 +164,8 @@ export function GrainOverlay({ noiseIntensity = 0.02, noiseScale = 4.7, noiseFli
       // own doc comment for why (a smaller buffer visibly softens grain).
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
+      const viewportHeight = fullViewportHeightPx();
+      canvas.height = viewportHeight * dpr;
       gl.viewport(0, 0, canvas.width, canvas.height);
     }
     window.addEventListener("resize", resize);
@@ -177,6 +187,7 @@ export function GrainOverlay({ noiseIntensity = 0.02, noiseScale = 4.7, noiseFli
     render();
 
     return () => {
+      uninstallViewportVar();
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
     };
@@ -189,11 +200,21 @@ export function GrainOverlay({ noiseIntensity = 0.02, noiseScale = 4.7, noiseFli
       className={className}
       style={{
         position: "fixed",
-        inset: 0,
+        // top/left のみ。`inset: 0` だと bottom も指定されることになり、
+        // 明示した height と過剰指定になる（どちらが勝つかは実装依存）。
+        top: 0,
+        left: 0,
         width: "100vw",
-        height: "100dvh",
+        // var(--viewport-height) — lib/viewport-height.ts が JS の実測値を
+        // <html> に書き込む。ビューポート系のCSS単位(svh/dvh/lvh)はこの端末では
+        // すべて 664 に解決されツールバー背面に届かないことが実測で確定した
+        // ため、単位ではなく実測px（モバイルでは screen.height = 812）を使う。
+        // フォールバックの 100dvh は JS 実行前の一瞬と、JS 無効時のため。
+        height: "var(--viewport-height, 100dvh)",
         display: "block",
         pointerEvents: "none",
+        opacity: shown ? 1 : 0,
+        transition: "opacity 450ms ease-out",
         mixBlendMode: "overlay",
       }}
     />

@@ -4,6 +4,7 @@ import { useLenis } from "lenis/react";
 import Image from "next/image";
 import Link from "next/link";
 import { CopyrightYear } from "@/components/copyright-year";
+import { withBasePath } from "@/lib/base-path";
 
 type SiteFooterProps = {
   /** Called the instant "Back to top" is clicked, before the scroll starts. */
@@ -52,7 +53,7 @@ export function SiteFooter({
         style={{ right: "var(--edge-right-inset)" }}
       >
         <Image
-          src="/andmade-mark.svg"
+          src={withBasePath("/andmade-mark.svg")}
           alt="ANDMADE"
           width={52}
           height={52}

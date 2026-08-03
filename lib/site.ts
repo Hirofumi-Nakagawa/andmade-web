@@ -28,5 +28,10 @@ export const X_URL = "https://x.com/ANDMADE_jp";
 
 /** Every real, indexable route on this site — the single source of truth
  *  for app/sitemap.ts below. app/not-found.tsx (the 404 catch-all) is
- *  deliberately excluded: it isn't a real route to link to or index. */
-export const SITE_ROUTES = ["/", "/about", "/contact", "/studies"] as const;
+ *  deliberately excluded: it isn't a real route to link to or index.
+ *
+ *  末尾スラッシュ付き — next.config.ts の `trailingSlash: true` に合わせる
+ *  （実際に配信されるURLが /about/ なので、sitemap がスラッシュ無しだと
+ *  クローラが毎回301を踏むことになる）。各ページの alternates.canonical も
+ *  同じ形に揃えてある。 */
+export const SITE_ROUTES = ["/", "/about/", "/contact/", "/studies/"] as const;

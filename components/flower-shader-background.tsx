@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { fullViewportHeightPx, installViewportHeightVar } from "@/lib/viewport-height";
 
 /**
  * Full-viewport animated WebGL background — ported from the standalone
@@ -478,6 +479,9 @@ export function FlowerShaderBackground({
   }, [paused]);
 
   useEffect(() => {
+    // 実測値を --viewport-height に流し込む（lib/viewport-height.ts 参照）。
+    // CSS 側の height: var(--viewport-height) がこれを読む。
+    const uninstallViewportVar = installViewportHeightVar();
     const canvasEl = canvasRef.current;
     if (!canvasEl) return;
 
@@ -592,7 +596,8 @@ export function FlowerShaderBackground({
       // pass entirely, neither of which touches grain fidelity at all.
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
+      const viewportHeight = fullViewportHeightPx();
+      canvas.height = viewportHeight * dpr;
       gl.viewport(0, 0, canvas.width, canvas.height);
     }
     window.addEventListener("resize", resize);
@@ -646,6 +651,7 @@ export function FlowerShaderBackground({
     render();
 
     return () => {
+      uninstallViewportVar();
       disposed = true;
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
@@ -667,9 +673,17 @@ export function FlowerShaderBackground({
       className={className}
       style={{
         position: "fixed",
-        inset: 0,
+        // top/left のみ。`inset: 0` だと bottom も指定されることになり、
+        // 明示した height と過剰指定になる（どちらが勝つかは実装依存）。
+        top: 0,
+        left: 0,
         width: "100vw",
-        height: "100dvh",
+        // var(--viewport-height) — lib/viewport-height.ts が JS の実測値を
+        // <html> に書き込む。ビューポート系のCSS単位(svh/dvh/lvh)はこの端末では
+        // すべて 664 に解決されツールバー背面に届かないことが実測で確定した
+        // ため、単位ではなく実測px（モバイルでは screen.height = 812）を使う。
+        // フォールバックの 100dvh は JS 実行前の一瞬と、JS 無効時のため。
+        height: "var(--viewport-height, 100dvh)",
         display: "block",
         pointerEvents: "none",
         // parallaxOffsetPx — see this component's own doc comment on the

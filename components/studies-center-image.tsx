@@ -87,6 +87,21 @@ type StudiesCenterImageProps = {
    *  only the separate click-to-zoom feature ever reveals a study's real
    *  orientation. */
   expanded: boolean;
+  /** 初回の登場マスク。false の間は中央で完全に閉じた状態（inset 50%）で、
+   *  true になると `expanded` 前の通常サイズ（MASK_INSET_PERCENT）まで
+   *  中央から広がる — per direct follow-up ("最初にサムネが表示されるときも、
+   *  パッと表示させずに中央からマスクが広がって表示されるようにして")。
+   *  それまでは呼び出し側が opacity を 0/1 で切り替えていたため、サムネが
+   *  そのまま現れていた。
+   *
+   *  既定は true（＝この段階を持たない）。指定しない呼び出し側の見た目は
+   *  従来どおり変わらない。 */
+  revealed?: boolean;
+  /** `revealed` が false → true になるときのマスクの所要時間とイージング。
+   *  `expanded` 側（expandDurationMs/expandEase）とは別物で、こちらは
+   *  「無 → 縮小サイズ」、あちらは「縮小サイズ → 実サイズ」。 */
+  revealDurationMs?: number;
+  revealEase?: string;
   /** Overrides this component's own default expand duration/ease
    *  (EXPAND_MASK_DURATION_MS/EASE above, ~900ms/cubic-bezier(0.16, 1, 0.3,
    *  1)) — per direct real-device follow-up on SP specifically ("最初のパラ
@@ -285,12 +300,21 @@ function StudyMedia({ study }: { study: Study }) {
   );
 }
 
+/** `revealed` の既定の所要時間／イージング。EXPAND_MASK_* より短くしてある
+ *  — こちらは「出現」で、パラパラが始まる直前のわずかな間に収める必要がある
+ *  （呼び出し側の INTRO_THUMBNAIL_LEAD_MS）。 */
+const REVEAL_MASK_DURATION_MS = 500;
+const REVEAL_MASK_EASE = "cubic-bezier(0.16, 1, 0.55, 1)";
+
 export function StudiesCenterImage({
   studies,
   activeIndex,
   expanded,
   expandDurationMs = EXPAND_MASK_DURATION_MS,
   expandEase = EXPAND_MASK_EASE,
+  revealed = true,
+  revealDurationMs = REVEAL_MASK_DURATION_MS,
+  revealEase = REVEAL_MASK_EASE,
 }: StudiesCenterImageProps) {
   usePreloadStudyImages(studies);
 
@@ -331,10 +355,15 @@ export function StudiesCenterImage({
     <div
       className="relative h-full w-full overflow-hidden"
       style={{
-        clipPath: expanded ? "inset(0%)" : `inset(${MASK_INSET_PERCENT}%)`,
+        // 3段階: 閉（inset 50%）→ 縮小サイズ（MASK_INSET_PERCENT）→ 実サイズ
+        // （0%）。duration/ease を式で切り替えているのは、変化が起きる瞬間の
+        // 値がそのままトランジションに使われるため — `revealed` が立つ
+        // 瞬間は expanded がまだ false なので reveal 側、`expanded` が立つ
+        // 瞬間は expand 側が選ばれる。
+        clipPath: expanded ? "inset(0%)" : revealed ? `inset(${MASK_INSET_PERCENT}%)` : "inset(50%)",
         transitionProperty: "clip-path",
-        transitionDuration: `${expandDurationMs}ms`,
-        transitionTimingFunction: expandEase,
+        transitionDuration: `${revealed && !expanded ? revealDurationMs : expandDurationMs}ms`,
+        transitionTimingFunction: revealed && !expanded ? revealEase : expandEase,
         // Forces this layer to be promoted to its own GPU compositing layer
         // ahead of time, rather than right as the clip-path first starts
         // animating — per direct real-device white-flash follow-up ("白フラ

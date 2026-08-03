@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
+import { fullViewportHeightPx, installViewportHeightVar } from "@/lib/viewport-height";
+import { useFadeIn } from "@/components/use-fade-in";
 
 /**
  * About page's animated "colour blend" background — the production port of
@@ -45,14 +47,14 @@ import type Lenis from "lenis";
  *  lab's own loop, two iterations, same 2.03/(17,9) lacunarity constants,
  *  normalised by the summed amplitude 0.75). */
 const SETTINGS = {
-  colors: ["#87b1db", "#3782c5", "#dfa7da", "#85a7dd", "#d6e3f6"],
+  colors: ["#87b1db", "#438ed0", "#dfa7da", "#85a7dd", "#d6e3f6"],
   speed: 0.15,
   scale: 3.5,
   warp: 1.2,
   streak: 3.5,
   contrast: 1.15,
   cursorStrength: 0.1,
-  grain: 0.07,
+  grain: 0.06,
   grainSize: 1,
   grainFps: 12,
   renderScale: 0.7,
@@ -76,6 +78,24 @@ const SETTINGS = {
   lineAlpha: 0.5,
   lineCoverage: 0.3,
 } as const;
+
+/** 背景の登場は2段階 — per direct follow-up
+ *  ("aboutとcontactの背景はフェードインしてからグラデが現れるようにして"、
+ *   "ノイズが乗ってる状態でフェードインして、…グラデが表示される感じ")。
+ *   ① canvas 自体の opacity フェードイン（下の style）。この時点では
+ *      色面は単色だが、グレインは乗っているので「紙が現れる」ように見える。
+ *   ② グラデが開く（シェーダーの u_reveal）。別のクロスフェードではなく、
+ *      スクロール収束(u_settle)と同じしきい値スライドを逆再生している。
+ *  ②は①の途中から重ねて始める（REVEAL_DELAY_MS < FADE_MS）。 */
+const FADE_MS = 450;
+/** グラデの開始はフェードインと同時（遅延なし）— per direct follow-up
+ *  ("フェードインとグラデの表示を同時タイミングにして")。
+ *  経緯: 当初は「フェード完了後」→ 遅いので FADE_MS の 3割 → 2割 → 1割 と
+ *  詰めていき、最終的に 0（同時）に落ち着いた。定数自体は残してあるので、
+ *  また遅らせたくなったら値を戻すだけでよい。 */
+const REVEAL_DELAY_MS = 0;
+/** グラデが開き切るまでの時間。1100 → 1400 → 1150（"速度を少しだけ上げて"）。 */
+const REVEAL_MS = 1150;
 
 /** Same document-scroll fraction + easing the previous shader era's pink
  *  wash used (about-hero-background.tsx's own WASH_FULL_PROGRESS_FRACTION /
@@ -113,6 +133,7 @@ uniform vec2  u_res;
 uniform float u_time;
 uniform vec2  u_mouse;  // uv, 左下原点, JS側でスムージング済み
 uniform float u_settle; // 0=ラボそのままの見た目, 1=画面全体がC1一色(+グレイン)
+uniform float u_reveal; // 0=単色, 1=本来の色面（登場アニメ用）
 uniform float u_seed;   // ノイズ空間のオフセット — マウント毎にランダム(模様の構図が毎回変わる)
 
 const float SPEED    = ${glf(SETTINGS.speed)};
@@ -165,7 +186,14 @@ float fbm2(vec2 p) {
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
   float aspect = u_res.x / u_res.y;
-  float s = u_settle;
+  // s は「色面がどれだけ単色に寄っているか」。2つの入力を最大値で合成する:
+  //   u_settle … スクロールで 0→1（グラデが縮んで C1 一色になる）
+  //   u_reveal … 登場時に 0→1（1-u_reveal なので、最初は単色でそこから開く）
+  // per direct follow-up ("スクロールした際にグラデが消えて単色になる逆の
+  // 感じで、グラデが表示される感じにしたい") —— 別のクロスフェードを足すの
+  // ではなく、収束に使っているのと同じ仕組みを逆向きに再生している。
+  // グレインは s に依存しないので、単色の間もノイズは乗ったまま。
+  float s = max(u_settle, 1.0 - u_reveal);
 
   // カーソル反応(ラボと同一): 触れた場所の揺らぎだけが局所的に歪む —
   // カーソルからのガウス減衰内でサンプル位置を放射方向に押し出す。
@@ -234,12 +262,19 @@ void main() {
   lineM *= 1.0 - smoothstep(LINE_COVERAGE - 0.08, LINE_COVERAGE + 0.08, covN);
   col = mix(col, LINE_COLOR, lineM * LINE_ALPHA);
 
-  // 画面上部のクリーム帯: 範囲を縮めつつフェード(こちらも「小さくなって
-  // 消える」読みに合わせる)。max()はrange→0でのsmoothstep(1,1,x)の
+  // 画面上部の色帯: スクロールで範囲を縮めつつフェード(こちらも「小さく
+  // なって消える」読みに合わせる)。max()はrange→0でのsmoothstep(1,1,x)の
   // ゼロ割れ回避。
-  float topRange = TOP_RANGE * (1.0 - s);
+  //
+  // ★ ここだけ s ではなく u_settle を直接使う — per direct follow-up
+  //   ("Aboutの上部の色もはフェードインと同時に表示させて")。s は
+  //   u_reveal も含んだ合成値なので、それを使うと上部の色帯だけグラデと
+  //   同じタイミングで遅れて出てくる。この帯は canvas のフェードインと
+  //   同時に見えていてほしいので、登場アニメの影響を受けないようにする。
+  //   スクロール時に縮んで消える挙動は u_settle 側でそのまま維持される。
+  float topRange = TOP_RANGE * (1.0 - u_settle);
   float topM = smoothstep(1.0 - max(topRange, 0.001), 1.0, uv.y);
-  col = mix(col, TOP_COLOR, topM * TOP_MIX * (1.0 - s));
+  col = mix(col, TOP_COLOR, topM * TOP_MIX * (1.0 - u_settle));
 
   // フィルムグレイン — settleに一切依存しない(「ノイズはそのままで」)。
   float gFrame = floor(u_time * GRAIN_FPS);
@@ -251,8 +286,80 @@ void main() {
 }
 `;
 
+/**
+ * ステータスバー / ツールバー周辺の色を、背景のスクロール状態に追従させる。
+ *
+ * 背景canvas自体は lib/viewport-height.ts の実測値でツールバー背面まで
+ * 届くようになったので、地色が覗く問題はそちらで解決している。これが担うのは
+ * canvas が塗れない残りの部分:
+ *   - `<meta name="theme-color">` … Safari がUI周辺のティントに使う
+ *   - `--status-bar-mask` … 上部ステータスバーのマスク色
+ *     (components/status-bar-mask.tsx)
+ *   - html/body の背景色 … オーバースクロール時のラバーバンド領域
+ * どれも単色しか持てないが、この背景は「上部は淡い色 → スクロールすると C1 に
+ * 収束する」という決まった変化をするので、その2色間を settle で補間すれば
+ * 画面の上端・下端どちらでも隣接する実際の色とほぼ一致する。
+ */
+const UI_COLOR_FROM = SETTINGS.topColor; // ページ上部：グラデ上端の淡い色
+const UI_COLOR_TO = SETTINGS.colors[1]; // 収束先：settle 完了時の全面色
+
+/** 直前に適用した値。同じ色を毎tick書き込んでも無駄なので差分だけ反映する。 */
+let appliedUiColor: string | null = null;
+/** 初回に上書きする前の theme-color。アンマウント時に戻すため保持する。 */
+let previousThemeColor: string | null = null;
+
+function mixHex(a: string, b: string, t: number): string {
+  const parse = (hex: string) => {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const [ar, ag, ab] = parse(a);
+  const [br, bg, bb] = parse(b);
+  const ch = (x: number, y: number) =>
+    Math.round(x + (y - x) * t)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${ch(ar, br)}${ch(ag, bg)}${ch(ab, bb)}`;
+}
+
+function syncBrowserUiColor(settle: number) {
+  // 1/32 に量子化 — 1pxスクロールごとに meta を書き換えると Safari 側が
+  // 追従しきれずちらつくため。見た目には連続に見える粒度。
+  const stepped = Math.round(Math.min(Math.max(settle, 0), 1) * 32) / 32;
+  const color = mixHex(UI_COLOR_FROM, UI_COLOR_TO, stepped);
+  if (color === appliedUiColor) return;
+  appliedUiColor = color;
+
+  document.documentElement.style.setProperty("--status-bar-mask", color);
+
+  // html/body の背景色 — オーバースクロール(ラバーバンド)で見える領域。
+  // canvas はビューポートに固定なので、そこを超えて引っ張られた分は
+  // 文書の地色が出る。既定のクリームのままだと明らかに浮くので合わせる。
+  document.documentElement.style.backgroundColor = color;
+  document.body.style.backgroundColor = color;
+
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) return;
+  if (previousThemeColor === null) previousThemeColor = meta.getAttribute("content");
+  meta.setAttribute("content", color);
+}
+
+function restoreBrowserUiColor() {
+  document.documentElement.style.removeProperty("--status-bar-mask");
+  document.documentElement.style.removeProperty("background-color");
+  document.body.style.removeProperty("background-color");
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (meta && previousThemeColor !== null) meta.setAttribute("content", previousThemeColor);
+  appliedUiColor = null;
+  previousThemeColor = null;
+}
+
 export function AboutBlendBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // ページ表示時のフェードイン — per direct follow-up
+  // ("aboutとstudiesとcontactのページが表示されるとき、背景は
+  //   フェードインで表示させて")。
+  const shown = useFadeIn();
   // Ref, not state — settle updates every scroll tick and is only ever read
   // inside the rAF loop below; putting it in state would re-render this
   // component (and re-run nothing useful) 60x/sec while scrolling.
@@ -264,9 +371,17 @@ export function AboutBlendBackground() {
   // mobile-home.tsx's own handleLenisTick doc comment for the history).
   const handleLenisScroll = useCallback((lenis: Lenis) => {
     const linear = Math.min(lenis.progress / SETTLE_FULL_PROGRESS_FRACTION, 1);
-    settleRef.current = linear ** SETTLE_EASE_POWER;
+    const settle = linear ** SETTLE_EASE_POWER;
+    settleRef.current = settle;
+    syncBrowserUiColor(settle);
   }, []);
   const lenis = useLenis(handleLenisScroll);
+
+  // 初期表示ぶん（スクロールする前）の1回。アンマウント時は元の色に戻す。
+  useEffect(() => {
+    syncBrowserUiColor(settleRef.current);
+    return restoreBrowserUiColor;
+  }, []);
 
   useEffect(() => {
     // iOS Safari only composites this page's own real pixels behind the
@@ -287,6 +402,9 @@ export function AboutBlendBackground() {
   }, [lenis]);
 
   useEffect(() => {
+    // 実測値を --viewport-height に流し込む（lib/viewport-height.ts 参照）。
+    // CSS 側の height: var(--viewport-height) がこれを読む。
+    const uninstallViewportVar = installViewportHeightVar();
     const canvasEl = canvasRef.current;
     if (!canvasEl) return;
 
@@ -337,6 +455,7 @@ export function AboutBlendBackground() {
     const uRes = gl.getUniformLocation(program, "u_res");
     const uTime = gl.getUniformLocation(program, "u_time");
     const uMouse = gl.getUniformLocation(program, "u_mouse");
+    const uReveal = gl.getUniformLocation(program, "u_reveal");
     const uSettle = gl.getUniformLocation(program, "u_settle");
 
     // Picked once per mount (i.e. once per visit to this page, since this
@@ -360,7 +479,8 @@ export function AboutBlendBackground() {
       // pixels), matching what the lab showed at this same renderScale.
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.max(1, Math.round(window.innerWidth * dpr * SETTINGS.renderScale));
-      canvas.height = Math.max(1, Math.round(window.innerHeight * dpr * SETTINGS.renderScale));
+      const viewportHeight = fullViewportHeightPx();
+      canvas.height = Math.max(1, Math.round(viewportHeight * dpr * SETTINGS.renderScale));
       gl.viewport(0, 0, canvas.width, canvas.height);
     }
     window.addEventListener("resize", resize);
@@ -379,6 +499,31 @@ export function AboutBlendBackground() {
       gl.uniform2f(uRes, canvas.width, canvas.height);
       gl.uniform1f(uTime, t);
       gl.uniform2f(uMouse, mouseSmoothed[0], mouseSmoothed[1]);
+      // t は秒。REVEAL_DELAY_MS 待ってから REVEAL_MS かけて 0→1。
+      const revealT = Math.min(Math.max((t * 1000 - REVEAL_DELAY_MS) / REVEAL_MS, 0), 1);
+// s（= 1 - u_reveal）が実際に見た目を動かすのは 0.33 以下の範囲だけ
+      // —— それより上ではしきい値が色の値域の外にあり、どの色も出てこない。
+      //
+      // ここのチューニングは2点でつまずいた:
+      //  1. 素直に u_reveal を 0→1 で動かすと、時間の大半を「何も起きない
+      //     0.33〜1」に使ってしまう。ease-out の指数を上げても、見える変化が
+      //     さらに前へ詰まるだけだった（3 → 6 → 12 で "あまり変わってない"）。
+      //  2. S_START を絞って可視範囲だけを走査させた上で指数を上げると、
+      //     今度は可視範囲を通過し終わるのが早すぎて、残り時間は何も動かない
+      //     ＝「急に止まってる感」になった。
+      // 対処: 開始値を可視範囲の境界すぐ上まで下げ（0.42）、イージングを
+      // smootherstep（6t⁵-15t⁴+10t³）にする。この曲線は t=0 と t=1 の両端で
+      // 速度も加速度も 0 なので、動き出しと止まりの両方が滑らかになる。
+      // 可視範囲の通過に全体の6割強を使い、最後まで動きが残る。
+      const S_START = 0.36;
+      // ease-out（1-(1-t)^k）。smootherstep は両端の速度が 0 になるため
+      // 止まり際は滑らかになったが、開き始めまで遅くなってしまった
+      // （"フェードイン途中からグラデが表示されるタイミングが遅くなった"）。
+      // この式は t=0 で速度が最大、t=1 で 0 —— 開始は即時、終わりだけ滑らか。
+      // 指数を 2.2 と低めにしてあるのは、高くすると動きが前に詰まって
+      // 「途中で止まった」ように見えるため（12 まで上げて確認済み）。
+      const eased = 1 - Math.pow(1 - revealT, 2.2);
+      gl.uniform1f(uReveal, 1 - S_START * (1 - eased));
       gl.uniform1f(uSettle, settleRef.current);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -387,6 +532,7 @@ export function AboutBlendBackground() {
     render();
 
     return () => {
+      uninstallViewportVar();
       cancelAnimationFrame(rafId);
       window.removeEventListener("resize", resize);
       window.removeEventListener("pointermove", handlePointerMove);
@@ -395,15 +541,25 @@ export function AboutBlendBackground() {
 
   return (
     <canvas
-      ref={canvasRef}
-      aria-hidden
-      style={{
+        ref={canvasRef}
+        aria-hidden
+        style={{
         position: "fixed",
-        inset: 0,
+        // top/left のみ。`inset: 0` だと bottom も指定されることになり、
+        // 明示した height と過剰指定になる（どちらが勝つかは実装依存）。
+        top: 0,
+        left: 0,
         width: "100vw",
-        height: "100dvh",
+        // var(--viewport-height) — lib/viewport-height.ts が JS の実測値を
+        // <html> に書き込む。ビューポート系のCSS単位(svh/dvh/lvh)はこの端末では
+        // すべて 664 に解決されツールバー背面に届かないことが実測で確定した
+        // ため、単位ではなく実測px（モバイルでは screen.height = 812）を使う。
+        // フォールバックの 100dvh は JS 実行前の一瞬と、JS 無効時のため。
+        height: "var(--viewport-height, 100dvh)",
         display: "block",
         pointerEvents: "none",
+        opacity: shown ? 1 : 0,
+        transition: `opacity ${FADE_MS}ms ease-out`,
       }}
     />
   );

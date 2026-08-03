@@ -5,6 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "//build:preview": "確認用 andmade.jp/preview/ 向けビルド。basePath を付け忘れると _next/ を本番ルートに探しにいって全部404になる（実際に2回やらかしている）ので、環境変数を手で打たずにこのスクリプトを使うこと。out/ の中身を www/preview/ へアップロードする。本番公開時は素の `npm run build`。",
+    "build:preview": "rm -rf .next out && NEXT_PUBLIC_BASE_PATH=/preview next build && node scripts/verify-build.mjs /preview",
+    "//build:production": "本番 andmade.jp 直下向け。basePath なし。",
+    "build:production": "rm -rf .next out && next build && node scripts/verify-build.mjs",
     "start": "next start",
     "lint": "eslint"
   },

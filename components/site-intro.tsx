@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
+import { withBasePath } from "@/lib/base-path";
 
 /** Flip to false once the intro's timing/visuals are finalized — while
  *  testing, it should show on every visit regardless of the one-day check
@@ -368,7 +369,7 @@ export function SiteIntro() {
         style={{ transform: "translate(-50%, calc(-50% - 10px))" }}
       >
         <Image
-          src="/andmade-logo.svg"
+          src={withBasePath("/andmade-logo.svg")}
           alt="ANDMADE"
           width={LOGO_WIDTH_PX}
           height={LOGO_HEIGHT_PX}

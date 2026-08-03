@@ -5,6 +5,8 @@ import { MobileStudies } from "@/components/mobile-studies";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { StatusBarMaskColor } from "@/components/status-bar-mask";
+import { StudiesBackground } from "@/components/studies-background";
 import { StudiesGallery } from "@/components/studies-gallery";
 import { getStudies } from "@/lib/studies";
 
@@ -14,7 +16,7 @@ import { getStudies } from "@/lib/studies";
 // replaces the parent's `alternates` object wholesale rather than merging
 // field-by-field, so without this override the page would otherwise
 // incorrectly inherit the root layout's own canonical ("/", the home page).
-export const metadata: Metadata = { title: "Studies", alternates: { canonical: "/studies" } };
+export const metadata: Metadata = { title: "Studies", alternates: { canonical: "/studies/" } };
 
 // viewportFit: "cover" — per direct follow-up ("studiesページをcontactページ
 // と同じ表示エリアに変更して"): Contact's own SP tree shows a visible band at
@@ -51,6 +53,12 @@ export const viewport: Viewport = { viewportFit: "cover" };
  *  cream `--color-background`. Scoped to just this page (not the shared CSS
  *  variable) since nowhere else asked for this color. */
 const STUDIES_BACKGROUND_COLOR = "#88988D";
+
+/** ステータスバー帯の色 — per direct follow-up ("#88988Dよりほんの少しだけ
+ *  濃い色に変えて")。ページ地色 #88988D (136,152,141) を約6%暗くした
+ *  (127,142,132)。ページ本体の地色とは別定数にしてあるのは、帯だけを
+ *  一段落とした見え方にするため（本文側の地色は変えない）。 */
+const STUDIES_STATUS_BAR_COLOR = "#7F8E84";
 
 /** Tiled background texture (public/images/noise.png, supplied directly by
  *  the user) — per direct follow-up ("背景砂嵐は無しで、代わりに添付のテク
@@ -112,6 +120,15 @@ export default async function Studies() {
     // visible viewport actually is, live — components/mobile-contact.tsx's
     // own outer wrapper already uses this exact unit for the same reason.
     <div className="relative h-dvh w-full">
+      {/* iOS のステータスバー領域をこのページの地色にする — per direct
+         follow-up ("Studiesのヘッダー上のツールバーの背景色をcontactページと
+         同じくページの背景色にしたい")。Contact が同じ仕組みで #000 を
+         指定しているのと同じ扱い。
+         viewport-fit=cover でページはステータスバー下まで広がるが、その帯の
+         色は Safari が theme-color から決めるため、ページ側の要素では塗れない
+         —— components/status-bar-mask.tsx に経緯あり。このコンポーネントが
+         theme-color と上部マスクの色をまとめて差し替える。 */}
+      <StatusBarMaskColor color={STUDIES_STATUS_BAR_COLOR} />
       {/* The page's actual sage-green content, unchanged from before except
          that it now insets `env(safe-area-inset-top)` from this outer box's
          own top and `env(safe-area-inset-bottom)` from its own bottom,
@@ -135,21 +152,13 @@ export default async function Studies() {
         style={{
           top: "env(safe-area-inset-top)",
           bottom: "env(safe-area-inset-bottom)",
-          backgroundColor: STUDIES_BACKGROUND_COLOR,
+          // 地色はこのラッパーではなく StudiesBackground に持たせている —
+          // ここに書くと、フェードインさせたときに内包する本文まで一緒に
+          // 薄くなってしまうため（per direct follow-up "背景はフェードインで
+          // 表示させて"）。
         }}
       >
-        {/* Tiled texture over the flat background color above — see
-           NOISE_TEXTURE_SRC's own doc comment. `mix-blend-mode: multiply`
-           lets the texture read as an even, ink-like darkening on top of the
-           actual background color. Sits below the gallery/header/footer in DOM
-           order (painted first), same as AboutBackground's own layering
-           convention. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-[0.35] mix-blend-multiply"
-          style={{ backgroundImage: `url("${NOISE_TEXTURE_SRC}")`, backgroundRepeat: "repeat" }}
-        />
-
+        <StudiesBackground color={STUDIES_BACKGROUND_COLOR} textureSrc={NOISE_TEXTURE_SRC} />
         {/* 動くフィルムグレイン — per direct follow-up ("studiesページの背景に
            下記値でノイズをのせて grain: 0.08, grainSize: 1, grainFps: 12")、
            bg-lab/About・Contact背景と同じ質感のノイズを静的テクスチャの上に
@@ -159,7 +168,7 @@ export default async function Studies() {
            更新するか」なので、60Hz基準で 12/60 = 0.2)。DOM順でこの位置
            (テクスチャの直後、ギャラリー/ヘッダー/フッターの前)に置くことで
            背景側にだけ乗り、コンテンツの上には出ない。 */}
-        <GrainOverlay noiseIntensity={0.07} noiseScale={1} noiseFlicker={0.2} />
+        <GrainOverlay noiseIntensity={0.06} noiseScale={1} noiseFlicker={0.2} />
 
         {/* The gallery spans the *entire* page height (top-0 to bottom-0), not
            just the space between header and footer — its own thumbnail rail

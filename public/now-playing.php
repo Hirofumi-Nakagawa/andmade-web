@@ -59,11 +59,38 @@ function cache_path(): string
     return sys_get_temp_dir() . '/andmade-now-playing.json';
 }
 
+/**
+ * ローカル開発（http://localhost:3000 など）からの読み取りを許可する。
+ *
+ * per direct follow-up ("localhost:3000でspotifyが確認できなくなってる")。
+ * Next の dev サーバーは PHP を実行できないので、開発時は
+ * components/now-playing-provider.tsx がこのファイルを直接叩く。ただし
+ * 別オリジンになるため、このヘッダーが無いとブラウザ側で弾かれる
+ * （サーバーは正常に JSON を返しているのに表示されない、という状態になる）。
+ *
+ * 許可するのはローカルホストと私設IPからのアクセスだけ。`*` にしないのは、
+ * 必要以上に開かないという原則のため（返る内容自体は曲名だけで機微は無い）。
+ */
+function allow_dev_origin(): void
+{
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    if ($origin === '') {
+        return;
+    }
+    // http://localhost:任意ポート / http://127.0.0.1:任意ポート /
+    // http://192.168.x.x:任意ポート（実機確認用のLAN内アクセス）
+    if (preg_match('#^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?$#', $origin)) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Vary: Origin');
+    }
+}
+
 /** 常にこの形で返して終了する。JSON以外は絶対に出力しない
  *  （PHPのwarningが混ざるとクライアント側のJSON.parseが壊れるため、
  *   このファイル冒頭でエラー表示も切っている）。 */
 function respond(array $payload): void
 {
+    allow_dev_origin();
     header('Content-Type: application/json; charset=utf-8');
     // ブラウザ側では毎回聞きに来てよい（キャッシュはサーバー側で持つ）。
     header('Cache-Control: no-store');
@@ -174,6 +201,7 @@ $cacheFile = cache_path();
 if (is_readable($cacheFile) && (time() - (int) @filemtime($cacheFile)) < CACHE_SECONDS) {
     $cached = @file_get_contents($cacheFile);
     if ($cached !== false && $cached !== '') {
+        allow_dev_origin();
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: no-store');
         echo $cached;

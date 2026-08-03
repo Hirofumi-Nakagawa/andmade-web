@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
 import { useStatusBarInset } from "@/components/status-bar-mask";
+import { isSamePath, normalizePath } from "@/lib/route-path";
 import {
   getScrollGaugeSuppressed,
   getScrollGaugeSuppressedServerSnapshot,
@@ -50,8 +51,8 @@ const THICKNESS_PX = 3;
  * lib/scroll-gauge-store.ts.)
  */
 function gaugeModeFor(pathname: string): "solid" | "blended" | "none" {
-  if (pathname === "/" || pathname === "/about") return "solid";
-  if (pathname.startsWith("/projects/")) return "blended";
+  if (isSamePath(pathname, "/") || isSamePath(pathname, "/about")) return "solid";
+  if (normalizePath(pathname).startsWith("/projects/")) return "blended";
   return "none";
 }
 

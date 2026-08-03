@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
+import { withBasePath } from "@/lib/base-path";
 
 /** Fade-in duration on mount (page-transition entrance). */
 const FADE_MS = 500;
@@ -386,7 +387,7 @@ export function AboutBackground() {
               stretch/squash the rendered image relative to its real pixels. */}
           <Image
             ref={imgRef}
-            src="/images/about/about-hero.jpg"
+            src={withBasePath("/images/about/about-hero.jpg")}
             alt=""
             width={1372}
             height={2047}

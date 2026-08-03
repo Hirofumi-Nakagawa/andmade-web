@@ -6,7 +6,27 @@ import { mod, ORIENTATION_ASPECT_RATIO, type Study, type StudyOrientation } from
 import { ScrambleText } from "@/components/scramble-text";
 import { SlotDigits } from "@/components/slot-digits";
 import { StudiesCenterImage } from "@/components/studies-center-image";
+import { STUDIES_BACKGROUND_FADE_MS } from "@/components/studies-background";
 import { MobileStudiesThumbnailRail } from "@/components/mobile-studies-thumbnail-rail";
+
+/** パラパラ表示（イントロ）を始めるまでの待ち時間。
+ *
+ *  背景（StudiesBackground）のフェードインぶん + 350ms。
+ *  フェード直後に始めるとまだ背景の余韻と重なって見えたため、ひと呼吸
+ *  置いてから始める — per direct follow-up ("Studiesのパラパラの表示
+ *  タイミングをもうワンテンポ遅らせて")。前段の指示（"背景がフェードイン
+ *  する前にパラパラが始まってる"）で入れた待ちの延長なので、背景の
+ *  フェード時間を足す形は崩さずに追加ぶんだけ持たせている。 */
+const INTRO_START_DELAY_MS = STUDIES_BACKGROUND_FADE_MS + 350;
+
+/** サムネを出してからパラパラを始めるまでのリード時間。
+ *
+ *  per direct follow-up ("サムネが表示されるタイミングをもう少し速くして"、
+ *  その後 "さらにワンテンポ速くして" で 200 → 550)。
+ *  直前の指示でサムネの表示とパラパラの開始を同時にしたが、それだとサムネが
+ *  出た瞬間にもう動き出していて出現が認識しづらい。パラパラの開始
+ *  （INTRO_START_DELAY_MS）はそのままに、サムネだけこのぶん先に出す。 */
+const INTRO_THUMBNAIL_LEAD_MS = 550;
 
 /** Same "margin + N columns" idiom every other Mobile* component uses (see
  *  mobile-not-found.tsx's own TEXT_LEFT) — grid column 3 (margin + 2
@@ -45,12 +65,16 @@ const BELOW_HEADER_OFFSET_PX = 30;
 /** Center image's own top offset — a literal fixed px value (Figma's own SP
  *  export, minus that export's 53px fake-status-bar chrome), matching every
  *  other Mobile* component's fixed-px-from-top convention rather than PC's
- *  viewport-centered `top: 50%`. 201 → 191 — per direct follow-up ("SPの
- *  studiesのイメージの位置を10px上に上げる"): every other element anchored
- *  off this same constant (the rotated "Study NN"/title block, the
- *  "01 - 10"/"Tap to zoom." row below the image) moves up together with it,
- *  preserving their own tuned gaps/alignment to the image's edges. */
-const CENTER_TOP_PX = 191 + BELOW_HEADER_OFFSET_PX;
+ *  viewport-centered `top: 50%`. 201 → 191 → 186 — per direct follow-up
+ *  ("SPのstudiesのイメージの位置を10px上に上げる"、その後 "SPのstudiesの
+ *  添付箇所を5px上に上げて" で添付のイメージ＋縦書きタイトル＋"01-09/Tap to
+ *  zoom." のブロックをさらに5px): every other element anchored off this same
+ *  constant (the rotated "Study NN"/title block, the "01 - 10"/"Tap to zoom."
+ *  row below the image) moves up together with it, preserving their own tuned
+ *  gaps/alignment to the image's edges. 上の英字イントロ文だけは
+ *  INTRO_TEXT_TOP_PX で独立しているので動かない（＝イントロ文との間隔が
+ *  そのぶん広がる）。 */
+const CENTER_TOP_PX = 186 + BELOW_HEADER_OFFSET_PX;
 /** Gap between the center image's own bottom edge and the "01 - 10"/"Tap to
  *  zoom." row below it — 25px per direct follow-up ("イメージと01-10、Tap to
  *  zoomのマージンは25pxに"), tightened 5px per a later follow-up ("SPの
@@ -61,7 +85,6 @@ const CENTER_TOP_PX = 191 + BELOW_HEADER_OFFSET_PX;
  *  sync with the image's own real bottom edge at any width other than the
  *  400px reference canvas. */
 const IMAGE_TO_COUNTER_GAP_PX = 20;
-const COUNTER_TOP = `calc(${CENTER_TOP_PX}px + ${CENTER_HEIGHT} + ${IMAGE_TO_COUNTER_GAP_PX}px)`;
 
 /** Intro paragraph's own top offset — 101px (Figma's own SP export, minus
  *  its 53px fake-status-bar chrome) minus a further 10px per direct follow-up
@@ -81,6 +104,60 @@ const INTRO_TEXT_LINES = [
   "and works in progress that shape our",
   "design practice.",
 ];
+/**
+ * 縦に余裕のある端末では、英字リード文〜"Tap to zoom." のブロックを
+ * 「ANDMADE Inc. の下」から「MENU ピルの上端」までの範囲の縦中央に置く
+ * — per direct follow-up ("縦が長い端末の場合は、英語リード文以下のエリアの
+ * 高さに対して、縦位置中央配置にできる？" → 当初はリード文を含めず範囲の
+ * 起点にしていたが、"リード文も含め中央配置にして" で対象に含めた)。
+ *
+ * 動くのはリード文・イメージ・回転タイトル・カウンター行の4点。いずれも
+ * GROUP_TOP を基準にした相対位置なので、互いの間隔は従来のまま一緒に下がる。
+ *
+ * すべて CSS の calc()/max() で書いてあり JS の計測を挟まない。高さの要素が
+ * どれも既知だから成立している:
+ *   - リード文の上端からイメージ上端まで = CENTER_TOP_PX - INTRO_TEXT_TOP_PX
+ *   - イメージ = CENTER_HEIGHT（--sp-grid-column-width 追従）
+ *   - カウンター行 = 12px × leading 1.5 = 18px、その上に 20px
+ *   - 下端 = 画面下から MENU ピルのぶん（mobile-menu.tsx の
+ *     PANEL_BOTTOM_MARGIN_PX 10 + CLOSED_HEIGHT_PX 30）
+ * `100dvh` を使うのは MENU ピルが position: fixed で可視ビューポート基準に
+ * 出ているため（lib/viewport-height.ts の実測値はツールバー背面まで覆う
+ * 用途のもので、ここでは逆に合わない）。
+ *
+ * max() の第1項が従来の INTRO_TEXT_TOP_PX なので、縦に余裕が無い端末では
+ * これまでと1pxも変わらない。余った高さぶんだけ下がる。
+ */
+/** カウンター行（"01 - 09" / "Tap to zoom."）の行ボックス高さ。12px × 1.5。 */
+const COUNTER_ROW_HEIGHT_PX = 18;
+/** "ANDMADE Inc." の下端 — top 50px + cap height（16px × 約0.72）。
+ *  中央寄せの範囲の上端。 */
+const HEADER_BOTTOM_PX = 62;
+/** 画面下端から MENU ピルの上端まで — mobile-menu.tsx の
+ *  PANEL_BOTTOM_MARGIN_PX(10) + CLOSED_HEIGHT_PX(30)。あちらを動かしたら
+ *  ここも合わせること。 */
+const MENU_PILL_RESERVE_PX = 40;
+/** リード文の上端からイメージの上端までの距離。従来の2つの定数の差そのもの
+ *  なので、どちらかを調整すれば自動で追従する。 */
+const INTRO_TEXT_TO_CENTER_PX = CENTER_TOP_PX - INTRO_TEXT_TOP_PX;
+/** 中央寄せの対象ブロック（リード文の上端〜カウンター行の下端）の高さ。 */
+const GROUP_HEIGHT = `calc(${INTRO_TEXT_TO_CENTER_PX}px + ${CENTER_HEIGHT} + ${IMAGE_TO_COUNTER_GAP_PX}px + ${COUNTER_ROW_HEIGHT_PX}px)`;
+/** ブロックの実際の上端（= リード文の上端）。 */
+const GROUP_TOP = `max(${INTRO_TEXT_TOP_PX}px, calc(${HEADER_BOTTOM_PX}px + (100dvh - ${MENU_PILL_RESERVE_PX}px - ${HEADER_BOTTOM_PX}px - ${GROUP_HEIGHT}) / 2))`;
+/** イメージの上端。以降、位置指定はこれを使う（CENTER_TOP_PX /
+ *  INTRO_TEXT_TOP_PX は「詰まっているときの下限値」として上の式の中にだけ
+ *  残る）。 */
+const CENTER_TOP = `calc(${GROUP_TOP} + ${INTRO_TEXT_TO_CENTER_PX}px)`;
+/** パラパラ中だけイメージを持ち上げる量 — per direct follow-up ("パラパラ時の
+ *  サムネの縦位置をもう少し上にして")。introDone の瞬間に定位置（CENTER_TOP）
+ *  まで下りてくる。X は動かないので、この移動は真っ直ぐ縦だけ
+ *  （以前 "中央→定位置の動きがカーブして見える" と指摘された斜め移動には
+ *  ならない）。タイミングは既存の INTRO_SLIDE_* がそのまま効く。 */
+const INTRO_CENTER_RISE_PX = 20;
+
+/** カウンター行の上端 — イメージの下端 + 20px。 */
+const COUNTER_TOP = `calc(${CENTER_TOP} + ${CENTER_HEIGHT} + ${IMAGE_TO_COUNTER_GAP_PX}px)`;
+
 /** Curtain-reveal timing for INTRO_TEXT_LINES — the exact same values as
  *  studies-gallery.tsx's own INTRO_TEXT_EASE/INTRO_TEXT_REVEAL_MS/
  *  INTRO_TEXT_LINE_STAGGER_MS, per direct follow-up ("4行の英字テキストを
@@ -314,6 +391,7 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
   // Starts `null` so the server-rendered HTML and React's first client
   // render match exactly — see studies-gallery.tsx's own identical comment.
   const [position, setPosition] = useState<number | null>(null);
+  const [thumbnailShown, setThumbnailShown] = useState(false);
   const [introDone, setIntroDone] = useState(false);
   // Flips true once, INTRO_SLIDE_DURATION_MS after `introDone` itself first
   // becomes true — distinguishes "the one-time intro center→CENTER_LEFT
@@ -401,12 +479,26 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
     glideFrameRef.current = requestAnimationFrame(tick);
   }
 
+  // 背景（StudiesBackground）のフェードインが終わってから、さらにひと呼吸
+  // 置いて始める — INTRO_START_DELAY_MS の doc comment 参照。
+  // ここで position が null から実値になった瞬間にイントロのグライドが
+  // 走り出す（下の effect）ので、その起点を遅らせるのが一番素直。
+  // rAF ではなく setTimeout なのは待ち時間そのものが目的のため
+  // （set-state-in-effect の回避という意味では rAF と同じく effect 本体の
+  // 外で setState することになるので条件は満たしている）。
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
+    const thumbnailTimer = setTimeout(
+      () => setThumbnailShown(true),
+      INTRO_START_DELAY_MS - INTRO_THUMBNAIL_LEAD_MS,
+    );
+    const timer = setTimeout(() => {
       const start = Math.floor(Math.random() * studies.length);
       updatePosition(start);
-    });
-    return () => cancelAnimationFrame(frame);
+    }, INTRO_START_DELAY_MS);
+    return () => {
+      clearTimeout(thumbnailTimer);
+      clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally mount-only (studies is a stable server-fetched array for this page's lifetime).
   }, []);
 
@@ -761,7 +853,7 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
               height: `${zoomedSizePx.heightPx}px`,
               zIndex: 30,
               willChange: "width, height",
-              transform: `translateY(${CENTER_TOP_PX}px)`,
+              transform: `translateY(${CENTER_TOP})`,
               transitionProperty: "transform, width, height",
               transitionDuration: `${ZOOM_TRANSITION_MS}ms`,
               transitionTimingFunction: ZOOM_EASE,
@@ -786,55 +878,40 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
               transitionTimingFunction: ZOOM_EASE,
             }
       : {
-          // While the mount-time intro is still playing (`!introDone` —
-          // StudiesCenterImage's own mask/scale reveal, gated on this exact
-          // same flag via its `expanded` prop), this box sits centered
-          // *horizontally only* — the Y component of `transform` below is
-          // already pinned at CENTER_TOP_PX from the very start, matching
-          // its normal resting position one to one, rather than also
-          // centering vertically (an earlier version did both axes, per a
-          // since-superseded follow-up, "sp時のStudiesの最初のパラパラアニ
-          // メーションのイメージの位置を縦位置も中央配置にして") — reverted
-          // per direct follow-up that the box still read as tracing a curve
-          // while it slid over afterward ("まだ中央→定位置の動きがカーブし
-          // てるように見える。右に直線で動いてるようにしたい"): with the Y
-          // component also animating at the same time as X, the box slid
-          // diagonally rather than purely sideways. Since Y never actually
-          // changes value now, only X moves, so this slide is a straight
-          // horizontal line by construction, not just by lucky easing/
-          // duration alignment.
+          // マウント時のパラパラ表示（`!introDone` — StudiesCenterImage が
+          // 同じフラグを `expanded` で受けてマスク／スケールのリビールを
+          // 出している間）も、この箱は最終的な定位置に置いたままにする —
+          // per direct follow-up（"最初にサムネがパラパラ表示されるときの
+          // 表示位置を fix 時の位置に対して中央になるように合わせて"、
+          // 選択肢としては「fix位置で再生（スライド無し）」）。
           //
-          // The whole reveal plays centered-horizontally (at its final Y
-          // position throughout), then the box itself slides over into
-          // CENTER_LEFT the instant `introDone` flips true, landing exactly
-          // on today's normal resting position. `zoomed` can't be true yet
-          // while `!introDone` (every zoom entry point below is itself
-          // gated on `introDone`), so this never has to reconcile with the
-          // zoomed branches' own `transform` above.
+          // 経緯: 元は X だけ画面中央（50vw - CENTER_WIDTH/2）に置き、
+          // introDone の瞬間に CENTER_LEFT へ横スライドさせていた。さらに
+          // その前は縦も画面中央にしていたが、X と Y が同時に動くせいで
+          // 斜めに滑って見え（"まだ中央→定位置の動きがカーブしてるように
+          // 見える。右に直線で動いてるようにしたい"）、Y を定位置に固定して
+          // 横移動だけにした経緯がある。今回その横移動自体を無くしたので、
+          // パラパラ表示は最初から最後まで定位置。パラパラ中に見えている
+          // 小さいサムネはこの箱の中央を切り抜いたもの（clip-path の
+          // inset、studies-center-image.tsx）なので、箱を定位置に置くこと
+          // がそのまま「fix 位置に対して中央」になる。
           //
-          // transitionDuration/transitionTimingFunction use the softer
-          // INTRO_SLIDE_* pair for that one slide, then permanently fall
-          // back to the same ZOOM_TRANSITION_MS/ZOOM_EASE every zoom toggle
-          // uses once introSlideSettled flips true — see that state's own
-          // doc comment above for why a one-shot flag (not just `introDone`
-          // itself) is what's needed here.
+          // transitionDuration/transitionTimingFunction が introSlideSettled
+          // で切り替わる仕組みはそのまま残してある。イントロ直後にズームを
+          // 叩いた1回ぶんだけ INTRO_SLIDE_* の柔らかい timing を使い、以降は
+          // ズームと同じ ZOOM_* に戻る（その state 自身の doc comment 参照）。
           //
-          // `50vw - CENTER_WIDTH/2` centers the box on screen (its own left
-          // edge sits half its own real width left of screen-center), and
-          // plain `CENTER_LEFT` lands the left edge exactly there once
-          // introDone — both real, unambiguous absolute lengths (never a
-          // bare percentage inside `translate()`, which would resolve
-          // against this box's own size instead of the viewport/container —
-          // see this branch's zoomed sibling above for why that distinction
-          // matters).
+          // `zoomed` が true になり得るのは introDone 後だけ（ズームの入口が
+          // すべて introDone でガードされている）なので、この分岐が上の
+          // zoomed 側の transform と競合することはない。
           left: 0,
           top: 0,
           width: CENTER_WIDTH,
           height: CENTER_HEIGHT,
           willChange: "width, height",
-          transform: introDone
-            ? `translate(${CENTER_LEFT}, ${CENTER_TOP_PX}px)`
-            : `translate(calc(50vw - (${CENTER_WIDTH} / 2)), ${CENTER_TOP_PX}px)`,
+          transform: `translate(${CENTER_LEFT}, ${
+            introDone ? CENTER_TOP : `calc(${CENTER_TOP} - ${INTRO_CENTER_RISE_PX}px)`
+          })`,
           // `width`/`height` are plain constants (CENTER_WIDTH/CENTER_HEIGHT)
           // throughout every *intro*-related transition (centered → resting
           // slide), so listing them here is a no-op the rest of the time —
@@ -908,7 +985,7 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
 
       <div
         className="absolute text-[14px] leading-[17px] font-normal whitespace-nowrap text-black"
-        style={{ top: `${INTRO_TEXT_TOP_PX}px`, left: TEXT_LEFT }}
+        style={{ top: GROUP_TOP, left: TEXT_LEFT }}
       >
         {/* Manual line breaks per explicit spec, replacing an earlier
            auto-wrapped (width-constrained) paragraph. Curtain-reveal per
@@ -935,7 +1012,22 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
         ))}
       </div>
 
-      <div className="absolute" style={centerImageStyle} onClick={handleImageClick}>
+      {/* opacity — パラパラが始まるまでサムネ自体を出さない。per direct
+         follow-up ("背景が表示されてからサムネが表示されてすぐにパラパラが
+         はじまるようにして"、その後 "サムネが表示されるタイミングをもう少し
+         速くして"）。「背景フェード → サムネ出現 → INTRO_THUMBNAIL_LEAD_MS
+         後にパラパラ」の順になる。以前は position ?? 0 で Study01 が最初から
+         描かれていて、背景が出ている間ずっと静止したサムネが見えていた。
+
+         出現そのものは opacity ではなく StudiesCenterImage の `revealed`
+         （中央から広がるマスク）に任せている — per direct follow-up
+         ("最初にサムネが表示されるときも、パッと表示させずに中央からマスクが
+         広がって表示されるようにして")。 */}
+      <div
+        className="absolute"
+        style={{ ...centerImageStyle }}
+        onClick={handleImageClick}
+      >
         {/* expandDurationMs/expandEase reuse this exact same INTRO_SLIDE_*
            pair as the outer wrapper's own centered→CENTER_LEFT/CENTER_TOP_PX
            slide (centerImageStyle above) — per direct follow-up that the
@@ -955,6 +1047,7 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
           expanded={introDone}
           expandDurationMs={INTRO_SLIDE_DURATION_MS}
           expandEase={INTRO_SLIDE_EASE}
+          revealed={thumbnailShown}
         />
 
         {/* "Tap to return" — per explicit spec ("拡大時は画像右下に「Tap to
@@ -1085,7 +1178,7 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
          behind the same opacity gate PC's own title uses means that pop now
          happens while invisible, and the scramble reveal is the very first
          thing shown once it fades back in — no visible pop beforehand. */}
-      <div className="absolute" style={{ left: TEXT_LEFT, top: `${CENTER_TOP_PX}px` }}>
+      <div className="absolute" style={{ left: TEXT_LEFT, top: CENTER_TOP }}>
         <div
           className="absolute flex flex-col items-start gap-[8px] whitespace-nowrap text-black transition-opacity"
           style={{

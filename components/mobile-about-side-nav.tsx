@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { useLenis } from "lenis/react";
 import { VerticalLabel } from "@/components/vertical-label";
 import { ABOUT_NAV_ITEMS, spSectionId, type AboutSectionId } from "@/lib/about-content";
+import { useFadeIn } from "@/components/use-fade-in";
 
 /**
  * SP counterpart to components/about-side-nav.tsx — Figma node 1067:4
@@ -52,8 +53,8 @@ import { ABOUT_NAV_ITEMS, spSectionId, type AboutSectionId } from "@/lib/about-c
  * otherwise fight the very user-driven scroll that's *causing* this to run
  * in the first place.
  *
- * Skips the very first activeId (the initial "Vision" default, before any
- * real scrolling has happened) — per direct follow-up reporting the nav
+ * Skips the very first activeId (the initial "nothing selected" state,
+ * before any real scrolling has happened) — per direct follow-up reporting the nav
  * "completely unresponsive" to taps right after this was added: on a real
  * touch device, a `.focus()` call landing on a link at the exact moment a
  * tap/scroll gesture is starting is a plausible way to disrupt that
@@ -112,10 +113,22 @@ const STICKY_TOP_PX = 30;
 
 export function MobileAboutSideNav() {
   const lenis = useLenis();
-  const [activeId, setActiveId] = useState<string>(ABOUT_NAV_ITEMS[0].id);
+  // 初期値は空文字＝どれも current にしない — per direct follow-up
+  // ("SPの左ナビのVisionが最初からcurrentになってるので、はじめは非選択状態に
+  // しておいて")。以前は Vision を決め打ちで入れていたが、FV（3行コピー＋
+  // リード文）が入ったことで、ページを開いた時点ではまだ Vision の本文まで
+  // スクロールしていない。current は下の IntersectionObserver が実際に
+  // セクションを捉えてから初めて付く。
+  const [activeId, setActiveId] = useState<string>("");
   const linkRefs = useRef<Partial<Record<string, HTMLAnchorElement>>>({});
   const hasActiveIdChangedRef = useRef(false);
   const stickyRef = useRef<HTMLDivElement>(null);
+  // 表示時のフェードイン — per direct follow-up
+  // ("SPのaboutの左ナビはフェードインをつける")。PC の AboutSideNav が
+  // 既に持っている登場アニメの SP 版。sticky を包む外側の
+  // `absolute inset-0` ではなく sticky 要素自身に掛けている —— 外側は
+  // sticky が張り付くための領域なので、そこを触ると追従が壊れる。
+  const shown = useFadeIn();
   const lineRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -132,8 +145,17 @@ export function MobileAboutSideNav() {
           if (entry.isIntersecting) visible.add(entry.target.id);
           else visible.delete(entry.target.id);
         }
+        // 帯（rootMargin で作った画面中央の判定域）にどのセクションも
+        // 入っていなければ current を外す — per direct follow-up ("一度
+        // currentになってからページ上まで戻ってもvisionがcurrentになった
+        // ままなので、非選択にするようにして")。以前は `if (firstVisible)`
+        // で、見つからないときは直前の値を保持していたため、FV まで
+        // スクロールを戻しても Vision が点いたままだった。
+        // ページ最下部（フッター付近）で Outline が帯から外れたときも
+        // 同じく非選択になる。「今いるセクション」を示す表示なので、
+        // どのセクションにもいない状態では何も点かないほうが一貫する。
         const firstVisible = ABOUT_NAV_ITEMS.find((item) => visible.has(spSectionId(item.id)));
-        if (firstVisible) setActiveId(firstVisible.id);
+        setActiveId(firstVisible ? firstVisible.id : "");
       },
       { rootMargin: "-40% 0px -55% 0px", threshold: 0 },
     );
@@ -175,7 +197,16 @@ export function MobileAboutSideNav() {
 
   return (
     <div className="absolute inset-0">
-      <div ref={stickyRef} className="sticky" style={{ top: STICKY_TOP_PX, willChange: "transform" }}>
+      <div
+        ref={stickyRef}
+        className="sticky"
+        style={{
+          top: STICKY_TOP_PX,
+          willChange: "transform",
+          opacity: shown ? 1 : 0,
+          transition: "opacity 500ms ease-out",
+        }}
+      >
         <VerticalLabel>
           {/* Pre-rotation flex-ROW (not flex-col) — per direct follow-up
               with a reference screenshot ("AboutのVision上の線は添付のよう
