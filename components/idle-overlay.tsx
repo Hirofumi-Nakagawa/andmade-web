@@ -739,7 +739,13 @@ export function IdleOverlay() {
   // stays gated on `showOverlay`.
   const showOverlay = visible && isKnownRoute;
 
-  const blend = isContact ? "" : "mix-blend-multiply";
+  // konami-glitch-no-blend — エッグ実行中はブレンドを外す（globals.css）
+  // per direct follow-up ("エッグ時に30秒後に表示されるレイヤーはブレンド
+  // モードは無しにして")。エッグの全面反転（difference）の上に multiply が
+  // 重なると、青要素が反転背景と掛け合わさって意図しない色になっていた。
+  // ここで JS 的にエッグの状態を持つより、html.konami-glitch を起点に CSS で
+  // 上書きするほうが、エッグの ON/OFF と確実に同期する。
+  const blend = isContact ? "" : "mix-blend-multiply konami-glitch-no-blend";
   // text-box-trim removes the font's own half-leading above/below the
   // glyphs, so the 16px/20px padding below renders as an accurate literal
   // gap from the actual letter shapes instead of including extra
@@ -1133,7 +1139,10 @@ export function IdleOverlay() {
           に配置して") rather than Figma's own literal `top: calc(50% - 35px)`
           — falls back to plain 50% until that measurement actually runs.
           Fades in the same simple way as the pills/logo group there. */}
-      <div className={`hidden lg:block ${layerClassName}`} style={layerStyle} onClick={dismiss} role="presentation">
+      {/* konami-glitch-no-blend — こちらのレイヤーはブレンド自体を持たないが、
+          エッグ中は z-index を反転レイヤーの上に上げる必要があるのは同じ
+          （globals.css の同クラスのコメント参照）。 */}
+      <div className={`hidden lg:block ${layerClassName} konami-glitch-no-blend`} style={layerStyle} onClick={dismiss} role="presentation">
         <div className="relative w-full" style={{ height: OVERLAY_HEIGHT }}>
           <div
             className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 transition-opacity ease-out"

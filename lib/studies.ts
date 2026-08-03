@@ -187,19 +187,27 @@ export function mod(n: number, m: number) {
   return ((n % m) + m) % m;
 }
 
-const STUDY_ORIENTATIONS = new Set<string>(["portrait", "landscape", "square", "wide"]);
-
-function isStudyOrientation(value: unknown): value is StudyOrientation {
-  return typeof value === "string" && STUDY_ORIENTATIONS.has(value);
-}
-
 /** Resolves a CMS `orientation` field's raw value (`string | string[] |
  *  undefined` — see `StudyCmsContent.orientation`'s own doc comment for why
  *  it can be an array) into a real `StudyOrientation`, falling back to
- *  "portrait" if it's missing, mistyped, or an empty array. */
+ *  "portrait" if it's missing, mistyped, or an empty array.
+ *
+ *  完全一致だけでなく「前方一致（小文字化・trim後）」も通す — per direct
+ *  follow-up ("studiesで画像比率wide8:5を選択してもzoom時にportraitのまま
+ *  表示される")。ダッシュボードのセレクト選択肢が "wide 8:5" や "Wide" の
+ *  ような表記で作られていると、厳密一致では黙って portrait に落ちる
+ *  （square のときも同型の症状があった）。管理画面の入力ゆれでレイアウトが
+ *  静かに壊れるくらいなら、コード側で吸収するほうがよい。 */
 function resolveOrientation(value: string | string[] | undefined): StudyOrientation {
-  const candidate = Array.isArray(value) ? value[0] : value;
-  return isStudyOrientation(candidate) ? candidate : "portrait";
+  const candidates = Array.isArray(value) ? value : [value];
+  for (const raw of candidates) {
+    if (typeof raw !== "string") continue;
+    const normalized = raw.trim().toLowerCase();
+    for (const orientation of ["portrait", "landscape", "square", "wide"] as const) {
+      if (normalized === orientation || normalized.startsWith(orientation)) return orientation;
+    }
+  }
+  return "portrait";
 }
 
 /** Field-ID/purpose mapping is the plain, unswapped one — `title` is the

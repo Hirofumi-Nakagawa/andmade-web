@@ -908,61 +908,17 @@ body::-webkit-scrollbar {
 /*
  * Konami-code easter egg (components/konami-glitch.tsx) — ↑↑↓↓←→←→BA, PC,
  * top page only. That component owns the trigger, the full-screen inversion
- * layer and two custom properties; everything here just reads them:
- *   --konami-glitch      0..1, how hard the page is currently scrolling
- *   --konami-glitch-dir  -1 or 1, which way (so the trail lags *behind*)
+ * layer and two custom properties (--konami-glitch / --konami-glitch-dir)。
  *
- * `text-shadow` on the root class rather than a per-element rule: it's an
- * inherited property, so one declaration reaches every piece of text on the
- * page without selecting anything, and — unlike a transform — it can't
- * collide with the transforms several components here already animate.
- *
- * The shadows form a motion trail rather than a single offset copy: four
- * steps at increasing distance and decreasing alpha, all pointing opposite
- * to the scroll direction, so text smears into a streak that stretches with
- * speed and retracts as the page settles. The two colours alternate down the
- * trail, which is what makes it read as a chromatic tear rather than as a
- * plain blur.
- *
- * Each step also carries a blur radius that grows faster than its own
- * offset, so the trail sharpens toward the text and dissolves at the far
- * end — the near copy stays legible as a duplicated glyph while the distant
- * ones smear into a wash, which is what a real motion streak does and what
- * keeps a 170px trail from reading as discrete ghosts. The blur is
- * multiplied by --konami-glitch rather than --konami-trail because a blur
- * radius cannot be negative and --konami-trail carries the direction sign;
- * scaling it by the magnitude also collapses it to 0 at rest along with
- * everything else. Alphas are lifted from the unblurred version to
- * compensate for the blur spreading each copy thinner.
- *
- * Four steps rather than six, and the nearest one left completely unblurred:
- * a blurred text-shadow is rasterised on the CPU and costs roughly the square
- * of its radius, *per shadow, per text node* — and this rule is inherited by
- * every text node on the page, repainted on every scroll frame. The first
- * blurred version (six steps, radii up to 42px) was reported as making
- * scrolling feel heavy. Halving the peak radius and dropping two steps keeps
- * the same 172px reach and the same near-sharp/far-diffuse read at roughly a
- * third of the blur work.
- *
- * The first two shadows are a separate, purely horizontal chromatic split,
- * held deliberately small (3px, down from 10px): it runs on a fixed axis
- * regardless of scroll direction, so at any real size it fought the vertical
- * trail and read as the text wobbling side to side rather than streaking.
- * At this size it just tints the edges.
- *
- * Every offset, every blur radius *and every alpha* is multiplied by
- * var(--konami-glitch), which sits at exactly 0 whenever the page isn't
- * moving, so the whole effect costs nothing and shows nothing at rest.
- *
- * The alpha multiplication is not cosmetic. Scaling only the offsets leaves
- * each shadow fully opaque at rest, stacked at zero offset directly beneath
- * its own glyph — invisible under solid black text, but plainly visible
- * through anything that isn't: the category/role/date lines are `text-black/50`
- * and showed the stack straight through the letterforms (a dark magenta that
- * inverted to pale green), and the header nav and now-playing ticker render
- * through `mix-blend-exclusion`, which blends against that same stack and came
- * out pink. Fading the alphas in with the intensity fixes both, and makes the
- * effect ramp up rather than pop in.
+ * かつてここには、ページ全体に継承される text-shadow によるスクロール連動の
+ * グリッチ（3pxのRGB色ずれ＋18/52/104/172pxの4段トレイル、回転要素用の軸
+ * 入れ替え版 .konami-rotated も）があった。per direct follow-up ("エッグ画面の
+ * スクロール時のグリッチは無しで、…リキッドグラスエフェクトで歪む演出を
+ * 加えて") で撤去し、スクロール演出は konami-warp-canvas.tsx のリキッド
+ * グラス屈折（画面上下の帯に入った行がガラス越しに潰れる）に一本化した。
+ * --konami-glitch 自体は今も konami-glitch.tsx が毎フレーム書いており、
+ * canvas 側が強度として読む（CSSからの読み手がいなくなっただけ）。
+ * 復活させたい場合はこのファイルの git 履歴の text-shadow ブロックを参照。
  */
 html.konami-glitch {
   /* The site's cream background (#f6f6f4) inverts to rgb(9,9,11) — very dark,
@@ -980,52 +936,6 @@ html.konami-glitch {
      un-inverted below, and painting a separate black layer would sit above
      the page rather than behind it. */
   --background: #ffffff;
-
-  /* --konami-glitch-dir already *is* the Y direction the trail should point
-     (-1 up, +1 down) — konami-glitch.tsx derives it from the scroll delta and
-     flips it there, so nothing needs negating here. */
-  --konami-trail: calc(var(--konami-glitch, 0) * var(--konami-glitch-dir, -1));
-  text-shadow:
-    calc(var(--konami-glitch, 0) * -3px) 0
-      rgb(255 0 90 / calc(var(--konami-glitch, 0) * 0.9)),
-    calc(var(--konami-glitch, 0) * 3px) 0
-      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.9)),
-    0 calc(var(--konami-trail) * 18px) 0
-      rgb(255 0 90 / calc(var(--konami-glitch, 0) * 0.6)),
-    0 calc(var(--konami-trail) * 52px) calc(var(--konami-glitch, 0) * 6px)
-      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.46)),
-    0 calc(var(--konami-trail) * 104px) calc(var(--konami-glitch, 0) * 14px)
-      rgb(255 255 255 / calc(var(--konami-glitch, 0) * 0.3)),
-    0 calc(var(--konami-trail) * 172px) calc(var(--konami-glitch, 0) * 26px)
-      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.18));
-}
-
-/*
- * Axis swap for content that is itself rotated 90° — currently just the
- * "recent news" block (components/recent-news.tsx). `text-shadow` offsets
- * are expressed in the element's own coordinate system and are rotated along
- * with it, so the page-wide rule above (which trails on Y) would render as a
- * sideways streak here while everything else trails vertically on screen.
- *
- * Under `rotate(90deg)` local +X maps to screen +Y and local +Y maps to
- * screen -X, so the two axes simply trade places: the trail moves to X and
- * the chromatic split to Y, and both come out pointing the same way on
- * screen as they do everywhere else.
- */
-.konami-glitch .konami-rotated {
-  text-shadow:
-    0 calc(var(--konami-glitch, 0) * 3px)
-      rgb(255 0 90 / calc(var(--konami-glitch, 0) * 0.9)),
-    0 calc(var(--konami-glitch, 0) * -3px)
-      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.9)),
-    calc(var(--konami-trail) * 18px) 0 0
-      rgb(255 0 90 / calc(var(--konami-glitch, 0) * 0.6)),
-    calc(var(--konami-trail) * 52px) 0 calc(var(--konami-glitch, 0) * 6px)
-      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.46)),
-    calc(var(--konami-trail) * 104px) 0 calc(var(--konami-glitch, 0) * 14px)
-      rgb(255 255 255 / calc(var(--konami-glitch, 0) * 0.3)),
-    calc(var(--konami-trail) * 172px) 0 calc(var(--konami-glitch, 0) * 26px)
-      rgb(0 240 255 / calc(var(--konami-glitch, 0) * 0.18));
 }
 
 /*
@@ -1056,6 +966,64 @@ html.konami-glitch {
  * changes at rest; #top only exists on the top page and Contact, and the egg
  * only ever runs on the top page.
  */
+/* エッグ実行中はアイドルオーバーレイ（30秒放置で出るレイヤー）を
+   「ブレンド無し・素の色」で出す — per direct follow-up ("エッグ時に30秒後に
+   表示されるレイヤーはブレンドモードは無しにして" ほか計3回の追随)。
+
+   3つセットで初めて成立する:
+   1. レイヤーと全子孫の mix-blend を normal に（レイヤー自体の multiply と、
+      SP 版から流用されている子孫の multiply の両方を確実に殺す）
+   2. z-index をエッグの全面反転レイヤー（difference、z-9997）より上へ —
+      これが無いとレイヤーごと色反転され、multiply を外しても
+      「ブレンドが効いたまま」に見える
+   3. レイヤー内の img/video のフィルタを打ち消す — サイト全体の
+      .konami-glitch img { invert(1) } は「反転レイヤーの下にある写真」の
+      ための相殺で、反転レイヤーの上に居るこのレイヤー内では、相殺相手が
+      おらず一人だけ反転されてしまう（ANDMADE ロゴの img が黄色く見えて
+      いた原因）。
+   （経緯: 一時 z-index の代わりにレイヤー自体を invert(1) して difference に
+   戻させる方式も試したが、確実性で z-index 案に戻した。） */
+html.konami-glitch .konami-glitch-no-blend,
+html.konami-glitch .konami-glitch-no-blend * {
+  mix-blend-mode: normal !important;
+}
+
+html.konami-glitch .konami-glitch-no-blend {
+  z-index: 9998 !important;
+  filter: none !important;
+}
+
+html.konami-glitch .konami-glitch-no-blend img,
+html.konami-glitch .konami-glitch-no-blend video {
+  filter: none !important;
+}
+
+/* エッグ実行中、ホバープレビューの残像（ひとつ前の画像がモノクロ 10% へ
+   引いていく）の遷移を遅くする — per direct follow-up ("ひとつ前の画像が
+   モノクロになって薄くなる際の動きをもう少し視認できる速度にして")。
+   通常時は 300ms（project-hover-preview.tsx の duration-300）のままで、
+   エッグ中だけ引き伸ばす。エッグでは現在の画像が canvas の紙アニメで
+   出てくるぶん、残像の 300ms は一瞬で終わって見えていた。 */
+html.konami-glitch .project-hover-preview {
+  transition-duration: 800ms;
+}
+
+/* konami-warp-canvas.tsx が実DOMを隠すためのマーカー（エッグ実行中のみ）。
+   inline style ではなく属性 + CSS なのは、ホバープレビューのように React が
+   style.opacity を管理している要素と衝突しないため — 同ファイルの
+   HIDDEN_ATTRIBUTE の doc comment 参照。
+
+   隠すのは配下の img だけ — per direct follow-up ("Img時のサムネ下の
+   タイトルがスクロールした際に消える")。canvas が代わりに描くのは写真だけ
+   なので、要素ごと隠すとサムネ下のタイトルやキャプションまで消えていた。
+   写真だけ入れ替われば、テキストは実DOMのまま見え続ける（歪みはしないが、
+   消えるよりよい）。ホバープレビューも中身は img 1枚なので同じ規則で足りる。
+   ※ テキスト用ラスタ経路（現在未使用）を再有効化する場合、この規則では
+   テキストが隠れないことに注意。 */
+html.konami-glitch [data-konami-warp-hidden] img {
+  opacity: 0 !important;
+}
+
 html.konami-glitch #top {
   background: transparent;
 }

@@ -248,7 +248,8 @@ const EXPAND_MASK_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
  * inline, which would never even start automatically). `muted` is also load-
  * bearing beyond just the spec: browsers (mobile Safari/Chrome alike) refuse
  * autoplay on any video that isn't muted, regardless of this `autoPlay`
- * attribute. No `poster` — the thumbnail rail (a separate component,
+ * attribute. 読み込み中の静止画は StudyVideo が img を重ねて出す（poster を
+ * 使わない理由もそちらの doc comment 参照）。No `poster` — the thumbnail rail (a separate component,
  * studies-thumbnail-rail.tsx/mobile-studies-thumbnail-rail.tsx) already
  * covers the "static preview" need via `imageSrc`, and this component only
  * ever renders once actually in view (backdrop/top layer), so there's no
@@ -275,18 +276,50 @@ const EXPAND_MASK_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
  */
 const CENTER_IMAGE_SIZES = "(min-width: 1024px) 928px, 100vw";
 
-function StudyMedia({ study }: { study: Study }) {
-  if (study.mediaType === "video" && study.videoSrc) {
-    return (
+/**
+ * 動画つきスタディの表示 — 動画が再生可能になるまで、下に敷いた静止画
+ * （imageSrc、サムネイルレールと同じ画像）を見せておく — per direct
+ * follow-up ("パラパラ時から動画を読み込むまでは静止画を表示させておいて")。
+ * それまでは poster 無しの <video> だけだったので、パラパラで動画つきの
+ * スタディに切り替わった瞬間から読み込みが済むまで、枠が空（黒/透明）に
+ * 見えていた。
+ *
+ * <video poster> ではなく img を重ねる実装なのは、poster に srcset/sizes が
+ * 無く（1枚のURLしか渡せない）、静止画側の解像度選択が既存の
+ * CENTER_IMAGE_SIZES の仕組みから外れてしまうため。
+ * onCanPlay（最初のフレームが描画可能になった時点）で動画側を出す。
+ * 200ms のフェードは切り替わりのポップを消すためだけの最小値。
+ */
+function StudyVideo({ study }: { study: Study }) {
+  const [ready, setReady] = useState(false);
+  return (
+    <div className="relative h-full w-full">
+      {/* eslint-disable-next-line @next/next/no-img-element -- StudyMedia の img と同じ理由 */}
+      <img
+        src={study.imageSrc}
+        srcSet={study.imageSrcSet}
+        sizes={CENTER_IMAGE_SIZES}
+        alt=""
+        className="absolute inset-0 h-full w-full object-cover"
+      />
       <video
         src={study.videoSrc}
         autoPlay
         loop
         muted
         playsInline
-        className="h-full w-full object-cover"
+        onCanPlay={() => setReady(true)}
+        className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
+          ready ? "opacity-100" : "opacity-0"
+        }`}
       />
-    );
+    </div>
+  );
+}
+
+function StudyMedia({ study }: { study: Study }) {
+  if (study.mediaType === "video" && study.videoSrc) {
+    return <StudyVideo study={study} />;
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- fluidly-sized box (--scale/--grid-scale calc()), same reasoning as project-hover-preview.tsx's own plain <img>.

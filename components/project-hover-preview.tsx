@@ -1,6 +1,7 @@
 "use client";
 
 import { PC_PREVIEW_SIZES, previewSrcSet } from "@/lib/preview-image";
+import { KONAMI_WARP_HOVER_ATTRIBUTE } from "@/components/konami-warp-canvas";
 
 import { useEffect, useState } from "react";
 
@@ -135,7 +136,18 @@ function HoverPreviewImage({ entry, isCurrent, released }: HoverPreviewImageProp
   return (
     <div
       aria-hidden
-      className="pointer-events-none fixed overflow-hidden border transition-[opacity,filter,border-color] duration-300 ease-out"
+      // KONAMI_WARP_HOVER_ATTRIBUTE — エッグ実行中、この画像に紙の登場
+      // アニメ（回転・スライド・拡大＋しなり）を掛ける対象のマーカー
+      // （konami-warp-canvas.tsx の紙モード。エッグが動いていなければ誰も
+      // 読まない不活性な属性）。一度 CSS transform 版に移行したが、CSS では
+      // しなり（面の曲げ）が出せないためシェーダー版に戻した — per direct
+      // follow-up ("紙のしなりとかついてないんだけど")。
+      // 「現在ホバー中」のエントリだけに付ける — 残像側まで対象にすると
+      // canvas が実DOMを隠して不透明で描き直すため、残像のフェードが壊れる。
+      {...(isCurrent && !released ? { [KONAMI_WARP_HOVER_ATTRIBUTE]: "" } : {})}
+      // project-hover-preview — エッグ実行中だけ遷移を遅くする CSS の
+      // フック（globals.css）。通常時は何も変えない。
+      className="project-hover-preview pointer-events-none fixed overflow-hidden border transition-[opacity,filter,border-color] duration-300 ease-out"
       style={{
         top: `${entry.rect.top}px`,
         left: `${entry.rect.left}px`,

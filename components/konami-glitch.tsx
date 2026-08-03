@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
-import { KonamiDissolveLogo } from "@/components/konami-dissolve-logo";
+import { KonamiLogo3D } from "@/components/konami-logo-3d";
 import { KonamiWarpCanvas } from "@/components/konami-warp-canvas";
 
 /** ↑↑↓↓←→←→BA. Compared against `event.key`, so the letters are matched
@@ -37,10 +37,16 @@ const VELOCITY_AT_FULL_GLITCH = 18;
 
 /** How fast the glitch decays once scrolling stops — a plain exponential
  *  ease toward 0 applied per frame, so it settles smoothly instead of
- *  snapping off the instant velocity hits zero. Slightly faster than it was
- *  now that the effect itself is stronger — a big glitch lingering on a
- *  stationary page reads as broken rather than as a reaction to scrolling. */
-const GLITCH_DECAY = 0.82;
+ *  snapping off the instant velocity hits zero.
+ *  0.82 → 0.9 — per direct follow-up ("グラスエフェクトをもっと滑らかに
+ *  して")。リキッドグラスは残っても「ガラスが戻る」ようにしか見えないので、
+ *  旧グリッチ時代（残ると壊れて見えるので速めに切っていた）より長く
+ *  尾を引かせて、戻りをぬるっとさせている。 */
+const GLITCH_DECAY = 0.9;
+
+/** 立ち上がり側の低域通過係数（1フレームで目標へ寄る割合）— 同じ指示で
+ *  追加。1.0 が旧来の「即値」。 */
+const GLITCH_ATTACK = 0.16;
 
 /** Below this the variable is pinned to exactly 0, so the browser can stop
  *  recalculating the (inherited, page-wide) text-shadow entirely rather than
@@ -64,10 +70,14 @@ const GLITCH_QUANTIZE_STEPS = 16;
 
 /**
  * Konami-code easter egg — PC, top page only: type ↑↑↓↓←→←→BA and the page
- * inverts (photography excepted — see .konami-glitch img in globals.css),
- * with text tearing into an RGB-split glitch that intensifies with scroll
- * speed. Media is deliberately left out of the glitch itself and only has its
- * colours restored. Entering the sequence again (or pressing Escape) turns it
+ * inverts (photography excepted — see .konami-glitch img in globals.css)。
+ * スクロール演出は、かつての RGB 色ずれ＋残像トレイル（CSS text-shadow ＋
+ * canvas での再現）から、リキッドグラスの屈折（画面上下の帯に入った一覧の
+ * 行がガラス越しに潰れる — konami-warp-canvas.tsx）へ置き換えた — per
+ * direct follow-up ("スクロール時のグリッチは無しで…リキッドグラスエフェクト
+ * で歪む演出を加えて")。この component が毎フレーム書く --konami-glitch
+ * （スクロール強度 0..1）の仕組みはそのままで、読み手が CSS から canvas に
+ * 変わっただけ。Entering the sequence again (or pressing Escape) turns it
  * back off.
  *
  * The inversion is a full-screen `mix-blend-mode: difference` layer over a
@@ -258,10 +268,13 @@ export function KonamiGlitch() {
       const delta = lenis.scroll - prevScrollRef.current;
       prevScrollRef.current = lenis.scroll;
       const trailDirection = delta > 0 ? -1 : delta < 0 ? 1 : 0;
-      // Rising edges snap, falling edges decay — a glitch that fades in
-      // gradually reads as a slow filter rather than as tearing.
+      // 立ち上がりも減衰も低域通過で均す — per direct follow-up ("画面上下の
+      // グラスエフェクトをもっと滑らかにして")。旧グリッチ時代は「立ち上がり
+      // は即値・減衰のみ緩やか」（tearing らしさのための意図的な設計）だった
+      // が、リキッドグラスでは速度の細かな揺れがそのまま歪みのビクつきに
+      // なるため、上りにも補間を挟む。ATTACK は1フレームで目標へ寄る割合。
       if (target >= glitchRef.current) {
-        writeGlitch(target, trailDirection);
+        writeGlitch(glitchRef.current + (target - glitchRef.current) * GLITCH_ATTACK, trailDirection);
       } else {
         writeGlitch(glitchRef.current * GLITCH_DECAY);
       }
@@ -289,11 +302,11 @@ export function KonamiGlitch() {
 
   return (
     <>
-      {/* Dissolving ANDMADE wordmark behind the whole page — see its own doc
-          comment for the reference it reproduces and the negative-z stacking
-          that makes it read as the background. Mounted only while the egg
-          runs, like everything else here. */}
-      <KonamiDissolveLogo />
+      {/* 3D wireframe の ANDMADE ロゴ背景 — per direct follow-up ("現状の
+          背景は消して、代わりに…3D化して")。旧 KonamiDissolveLogo は退役
+          （ファイルは残置）。negative-z の重なりで背景として読める点は
+          同じ。Mounted only while the egg runs, like everything else here. */}
+      <KonamiLogo3D />
 
       {/* Warps the project list's text on scroll. Mounted only while the egg
           runs, and it tears itself down completely on unmount (texture, GL

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { KONAMI_WARP_IMAGES_ATTRIBUTE } from "@/components/konami-warp-canvas";
 import { useRouter } from "next/navigation";
 import { CaseCounter } from "@/components/case-counter";
 import { ScrambleText } from "@/components/scramble-text";
@@ -269,6 +270,12 @@ export function ProjectThumbnailGrid({ projects }: ProjectThumbnailGridProps) {
       <div style={{ marginBottom: `-${trailingHeight}px` }}>
         <ul
           ref={listRef}
+          // Konami エッグのリキッドグラス（画面上下の歪み）の対象マーカー —
+          // per direct follow-up ("Img時も画面上下のグラスエフェクトが効く
+          // ようにして")。Txt 一覧の data-konami-warp と対になる画像用の
+          // 属性で、konami-warp-canvas.tsx が各 <img> を敷き直したテクスチャ
+          // を作って歪ませる。エッグ起動中しか読まれない。
+          {...{ [KONAMI_WARP_IMAGES_ATTRIBUTE]: "" }}
           className="grid w-full content-start items-start"
           style={{
             gridTemplateColumns: `repeat(${COLUMNS}, calc(${COLUMN_WIDTH_PX}px * var(--grid-scale)))`,

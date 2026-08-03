@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { ProjectCard } from "@/components/project-card";
-import { KONAMI_WARP_TARGET_ATTRIBUTE } from "@/components/konami-warp-canvas";
 import type { Project } from "@/lib/projects";
 
 type ProjectListProps = {
@@ -53,11 +52,12 @@ export function ProjectList({
   return (
     <ul
       ref={listRef}
-      // Marks this subtree as the Konami easter egg's warp target. Inert
-      // unless the egg is running — see components/konami-warp-canvas.tsx,
-      // which finds this by attribute rather than by a forwarded ref so no
-      // component in between has to carry one.
-      {...{ [KONAMI_WARP_TARGET_ATTRIBUTE]: "" }}
+      // data-konami-warp（エッグのリキッドグラスの対象マーカー）はここから
+      // 外した — per direct follow-up ("txt時の画面上下のグラスエフェクトは
+      // 無し")。Txt モードでエッグ中に歪むのはホバープレビューの画像だけ
+      // （project-hover-preview.tsx の KONAMI_WARP_HOVER_ATTRIBUTE）。
+      // Img（サムネイルグリッド）側の対象マーカーは従来どおり
+      // project-thumbnail-grid.tsx に付いている。
       className="grid content-start items-start"
       style={{
         gridTemplateColumns: "repeat(3, calc(220px * var(--grid-scale)))",

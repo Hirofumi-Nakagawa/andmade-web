@@ -215,17 +215,13 @@ export function RecentNews({ items, hidden = false }: RecentNewsProps) {
         }}
         data-name="news"
       >
-        {/* konami-rotated — a marker for the Konami easter egg's own glitch
-            trail (globals.css). That trail is a text-shadow, whose offsets
-            are in this element's *local* coordinates and so get carried
-            around by the rotate(90deg) below: without swapping its axes here,
-            the trail would run sideways on screen while every other piece of
-            text on the page trails vertically. Purely cosmetic and inert
-            unless the egg is running. */}
         <div
           ref={contentRef}
           style={{ transform: "rotate(90deg)" }}
-          className="konami-rotated flex-none"
+          // konami-rotated クラスは削除済み — エッグの text-shadow グリッチ
+          // （回転要素用に軸を入れ替える必要があった）ごとリキッドグラス
+          // 演出へ置き換えたため（globals.css / konami-warp-canvas.tsx 参照）。
+          className="flex-none"
         >
           {/* Inter-item gap 16px → 18px (+2px, between the two news entries)
               — per direct follow-up ("2つのお知らせのマージンを2px増やす"). */}
