@@ -31,8 +31,24 @@ export function useStatusBarInset(): string {
       (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
     // Every iOS browser is WebKit; the non-Safari ones mark themselves in
     // the UA instead (CriOS = Chrome, FxiOS = Firefox, EdgiOS = Edge,
-    // GSA = Google app, OPT = Opera).
-    const isIosSafari = isIosDevice && !/CriOS|FxiOS|EdgiOS|GSA|OPT\//.test(ua);
+    // GSA = Google app, OPT = Opera). これらは末尾が Safari/xxx のままなので
+    // 除外リストが要る。
+    //
+    // 加えて「UA が Safari/<version> で終わること」を条件にしている — per
+    // direct follow-up（LINE のアプリ内ブラウザのスクリーンショット付きで
+    // "プログレスバー上部に余白ができるんだけど、インスタやXでも同様の症状に
+    // なる？"）。アプリ内ブラウザ（LINE / Instagram / X / Facebook など）は
+    // どれも WKWebView で、素の Safari の UA の *後ろ* に自前のトークンを
+    // 足す（"... Safari/604.1 Line/14.0.0"、"... Mobile/15E148 Instagram ..."、
+    // "... Twitter for iPhone" など）。末尾判定なら、アプリ名を1つずつ
+    // 数え上げなくてもまとめて外れる。
+    //
+    // これらを外すのは、下の 16px の下限が「Safari が半透明のステータスバー
+    // 裏にページ上端を引き伸ばす」挙動への対策だから。アプリ内ブラウザは
+    // 自前の不透明なタイトルバーを持っていて透けが起きないので、下限を入れると
+    // 余白だけが残る（iOS Chrome で同じ指摘を受けたときと同じ理屈）。
+    const isIosSafari =
+      isIosDevice && !/CriOS|FxiOS|EdgiOS|GSA|OPT\//.test(ua) && /Safari\/[\d.]+$/.test(ua.trim());
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot sync from an external system (the UA string); not derivable during render without breaking SSR hydration
     if (isIosSafari) setInset("max(env(safe-area-inset-top, 0px), 16px)");
   }, []);
