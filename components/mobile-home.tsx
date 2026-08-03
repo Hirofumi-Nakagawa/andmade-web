@@ -1218,19 +1218,23 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                     Contactの文字を同じく縦書きで追加メールにリンク")。40px は
                     このラッパーの gap-[40px] がそのまま効くので、指定は不要
                     （Tx/Th 群 → Cases と同じ間隔）。
+                    リンク先はメール → /contact ページへ変更（per direct
+                    follow-up "cases下のcontactのリンク先をcontactページに
+                    して"）。ページ内リンクになったので next/link に替えて
+                    クライアント遷移にする。
                     pointer-events-auto — このレールは sticky ラッパー側で
                     pointer-events-none にしてある（Tx/Th ボタンと同じ理由。
                     そちらのコメント参照）ので、リンクにだけ復活させる。
                     touchAction: manipulation も Tx/Th と同じ、実機のタップ
                     遅延・誤爆対策。 */}
                 <VerticalLabel className="text-[14px] font-medium text-white">
-                  <a
-                    href="mailto:info@andmade.jp"
+                  <Link
+                    href="/contact"
                     className="pointer-events-auto [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
                     style={{ touchAction: "manipulation" }}
                   >
                     Contact
-                  </a>
+                  </Link>
                 </VerticalLabel>
               </div>
             </div>
