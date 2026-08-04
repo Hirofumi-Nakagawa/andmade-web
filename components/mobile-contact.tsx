@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { CopyEmail } from "@/components/copy-email";
 import Link from "next/link";
 import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
 import { RevealOnMount } from "@/components/reveal-on-mount";
@@ -263,12 +264,8 @@ export function MobileContact() {
           <p className="font-(family-name:--font-courier) text-[12px] text-[#757575] tracking-[-0.6px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
             Inquiries
           </p>
-          <a
-            href="mailto:info@andmade.jp"
-            className="[text-decoration-skip-ink:none] [text-underline-position:from-font] text-[17px] text-white underline decoration-solid decoration-from-font [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-          >
-            info@andmade.jp
-          </a>
+          {/* mailto → クリックでコピー＋"Copied" 表示（copy-email.tsx）。 */}
+          <CopyEmail inverted belowMenu className="[text-decoration-skip-ink:none] [text-underline-position:from-font] text-[17px] text-white underline decoration-solid decoration-from-font [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]" />
         </div>
         <div className="flex flex-col items-start gap-[12px]">
           <p className="font-(family-name:--font-courier) text-[12px] text-[#757575] tracking-[-0.6px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">

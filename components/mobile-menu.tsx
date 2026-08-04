@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { CopyEmail } from "@/components/copy-email";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -864,13 +865,14 @@ export function MobileMenu() {
                 <p className={`font-(family-name:--font-courier) tracking-[-0.7px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${panelMuted}`}>
                   Inquiries
                 </p>
-                <a
-                  href="mailto:info@andmade.jp"
+                {/* mailto → クリックでコピー＋"Copied" 表示（copy-email.tsx）。 */}
+                <CopyEmail
+                  // パネルは lightPill で白/黒が切り替わる（doc comment 参照）
+                  // ので、ピルの反転もそれに追従 — 黒パネルでは白ピル。
+                  inverted={!lightPill}
                   className={`font-medium underline [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${panelText}`}
                   tabIndex={expanded ? 0 : -1}
-                >
-                  info@andmade.jp
-                </a>
+                />
               </div>
               <div className="flex flex-col items-center gap-[12px] whitespace-nowrap">
                 <p className={`font-(family-name:--font-courier) tracking-[-0.7px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${panelMuted}`}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useLenis } from "lenis/react";
+import { CopyEmail } from "@/components/copy-email";
 import Image from "next/image";
 import Link from "next/link";
 import { CopyrightYear } from "@/components/copyright-year";
@@ -77,12 +78,11 @@ export function SiteFooter({
           >
             Inquiries
           </p>
-          <a
-            href="mailto:info@andmade.jp"
+          {/* mailto → クリックでコピー＋"Copied" 表示（copy-email.tsx）。 */}
+          <CopyEmail
+            offsetY={2}
             className={`font-medium ${text} underline transition-colors ${hoverMuted} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
-          >
-            info@andmade.jp
-          </a>
+          />
         </div>
         <div className="flex w-[calc(72px*var(--scale))] flex-col items-start gap-[calc(12px*var(--scale))] whitespace-nowrap">
           <p

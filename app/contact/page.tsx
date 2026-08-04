@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CopyEmail } from "@/components/copy-email";
 import { INSTAGRAM_URL, SITE_NAME, SITE_URL, X_URL } from "@/lib/site";
 import Image from "next/image";
 import Link from "next/link";
@@ -204,12 +205,9 @@ export default function Contact() {
                 <p className="font-(family-name:--font-courier) text-[length:calc(12px*var(--scale))] text-[#fff]/50 tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                   Inquiries
                 </p>
-                <a
-                  href="mailto:info@andmade.jp"
-                  className="underline-sweep text-[length:calc(18px*var(--scale))] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-                >
-                  info@andmade.jp
-                </a>
+                {/* mailto → クリックでコピー＋"Copied" 表示（copy-email.tsx）
+                    — per direct follow-up。見た目のクラスは従来のまま。 */}
+                <CopyEmail inverted className="underline-sweep text-[length:calc(18px*var(--scale))] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]" />
               </div>
               <div className="flex flex-col items-start gap-[calc(15px*var(--scale))]">
                 <p className="font-(family-name:--font-courier) text-[length:calc(12px*var(--scale))] text-[#fff]/50 tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
