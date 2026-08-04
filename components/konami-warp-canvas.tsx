@@ -53,6 +53,14 @@ const TRAIL_MAX_PX = 172;
 const QUAD_MARGIN_X = 16;
 const QUAD_MARGIN_Y = TRAIL_MAX_PX + 32;
 
+/** 紙モード（ホバー）のクアッドの張り出し（px、全辺共通）。回転（±6.5°の
+ *  コーナー変位）・スライド（〜31px）・しなり（〜44px）の登場アニメーション
+ *  中の最大はみ出しをカバーする。スクロール用の QUAD_MARGIN_* と別なのは、
+ *  紙モードではこの矩形がそのままカウンター反転レイヤー（render 内の
+ *  counterDiv 参照）の大きさになる — クアッドの黒地が3Dロゴの線を覆う範囲
+ *  でもあるので、必要以上に広げない。 */
+const HOVER_QUAD_MARGIN_PX = 96;
+
 /** How far outside its own box a card's *sampling* may reach. Deliberately
  *  much tighter than the quad margins: sampling is what keeps each card's
  *  ghosts sourced from its own glyphs — anything past this reads a neighbour
@@ -247,7 +255,16 @@ void main() {
     // たわみに沿う簡易シェーディング（uCurl が 0 に戻ると消える）。
     // premultiplied なので a には触れない。
     col.rgb *= clamp(1.0 - (uCurl / 40.0) * nx * 0.9, 0.82, 1.18);
-    gl_FragColor = col * uAlpha;
+    col *= uAlpha;
+    // クアッド全面を不透明にする（黒地に紙を敷く。premultiplied なので
+    // rgb はそのまま、a を 1 に立てるだけ）— 紙モードのキャンバスは一覧の
+    // テキストより背面（負の z）に居て、全面反転レイヤー（z-9997）に一度
+    // 反転される。真上のカウンター反転（counterDiv、白の difference）との
+    // 二重反転で素の色に戻す方式のため、クアッドに透けがあると、そこは
+    // 下のエッグ用白背景が二重反転で「白いまま」見えてしまう。地の黒
+    // （エッグの黒背景と同色）で塞いでおけば、透け＝黒背景として溶ける。
+    col.a = 1.0;
+    gl_FragColor = col;
     return;
   }
 
@@ -469,6 +486,36 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
     /** Whether the drawing buffer holds anything that would need clearing. */
     let canvasDirty = false;
 
+    /** カウンター反転レイヤー — 紙モード（Txt のホバー画像）専用。
+     *
+     *  per direct follow-up ("エッグ時のtxtのホバー時のイメージは一覧より
+     *  背面に表示して")。通常時のホバープレビューは DOM 順で本文テキストの
+     *  背面に居るが、エッグ中は canvas が描くため、canvas の z がそのまま
+     *  前後になる。一覧より背面に出すには canvas を負の z（-5 — 3Dロゴの
+     *  -10 より上、本文より下）へ降ろすしかないが、そこは全面反転レイヤー
+     *  （z-9997）の下なので写真が一度色反転されてしまう。
+     *
+     *  そこでクアッドと同一矩形の白い difference（この div、z -4 = canvas の
+     *  上・本文の下）を挟み、反転レイヤーとの二重反転で素の色に戻す。以前の
+     *  「テクスチャを sRGB で事前反転しておく」方式と違い、二つの反転は
+     *  どちらもブラウザの合成段階＝ディスプレイの色空間で行われるので、
+     *  広色域環境での色沈み（"まだ色が沈んでる" の原因だった sRGB→P3 の
+     *  非可逆往復）は起きない。本文のテキストはこの div より上に居るので
+     *  反転レイヤーで白くなるだけ＝白文字が写真の上に乗る。
+     *
+     *  矩形はクアッドと 1px もずれてはいけない（div が小さいとクアッドの
+     *  黒地が単独反転で白く縁取り、大きいと白背景が二重反転で白い縁になる）
+     *  ので、スクリーン座標を整数へスナップした同じ値を GL 側と共有する
+     *  （render ループ参照）。React を経由せず直接 DOM に持つのは、engage /
+     *  disengage（テクスチャ準備完了のタイミング）とフレーム単位で同期
+     *  させるため — 1フレームでもクアッドより先に出ると、その間だけ背景が
+     *  二重反転で白く光る。 */
+    let counterDiv: HTMLDivElement | null = null;
+    const removeCounter = () => {
+      counterDiv?.remove();
+      counterDiv = null;
+    };
+
     /** CORS 済み画像のキャッシュ（URL → 読み込み Promise）。Img/Txt を
      *  何度切り替えても同じ画像を再取得しない。 */
     const corsImageCache = new Map<string, Promise<HTMLImageElement>>();
@@ -672,6 +719,12 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       }
       const hoverMode = target?.hasAttribute(KONAMI_WARP_HOVER_ATTRIBUTE) ?? false;
 
+      // 紙モード中だけ一覧より背面へ（counterDiv の doc comment 参照）。
+      // Img グリッドのスクロール歪みは従来どおり反転レイヤーの上（9998）で
+      // 素の色を描く。JSX の初期値も 9998。
+      const desiredZ = hoverMode ? "-5" : "9998";
+      if (canvas.style.zIndex !== desiredZ) canvas.style.zIndex = desiredZ;
+
       const strength = Math.max(0, Math.min(1, intensityRef.current));
       if (hoverMode || strength > 0) {
         // ホバーモードは強度に関係なく常時ウォープ（見えている間ずっと
@@ -695,6 +748,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       }
 
       if (!engaged || !raster || !target) {
+        removeCounter();
         if (canvasDirty) {
           gl.clearColor(0, 0, 0, 0);
           gl.clear(gl.COLOR_BUFFER_BIT);
@@ -753,12 +807,27 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
+      const marginX = hoverMode ? HOVER_QUAD_MARGIN_PX : QUAD_MARGIN_X;
+      const marginY = hoverMode ? HOVER_QUAD_MARGIN_PX : QUAD_MARGIN_Y;
+      /** 紙モードのクアッドのスクリーン矩形（スナップ済み）。ループの後で
+       *  counterDiv をこれと同一矩形に置く。紙モードのカードは常に1枚。 */
+      let counterBox: { left: number; top: number; width: number; height: number } | null = null;
+
       for (const card of cards) {
         // Screen box, expanded so the lean and the trail have room to draw.
-        const sLeft = origin.left + card.x - QUAD_MARGIN_X;
-        const sRight = origin.left + card.x + card.w + QUAD_MARGIN_X;
-        const sTop = origin.top + card.y - QUAD_MARGIN_Y;
-        const sBottom = origin.top + card.y + card.h + QUAD_MARGIN_Y;
+        let sLeft = origin.left + card.x - marginX;
+        let sRight = origin.left + card.x + card.w + marginX;
+        let sTop = origin.top + card.y - marginY;
+        let sBottom = origin.top + card.y + card.h + marginY;
+        if (hoverMode) {
+          // counterDiv と 1px もずれないよう整数へスナップ（doc comment 参照。
+          // CSS px 整数なら整数 dpr の物理ピクセルにも整数で乗る）。
+          sLeft = Math.round(sLeft);
+          sRight = Math.round(sRight);
+          sTop = Math.round(sTop);
+          sBottom = Math.round(sBottom);
+          counterBox = { left: sLeft, top: sTop, width: sRight - sLeft, height: sBottom - sTop };
+        }
         if (sBottom < 0 || sTop > vh) continue;
 
         gl.uniform4f(
@@ -769,13 +838,15 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
           1 - (sTop / vh) * 2
         );
         // Same box in texture space. The texture's origin sits padX left of
-        // and padY above the target's own top-left corner.
+        // and padY above the target's own top-left corner. スクリーン側を
+        // スナップした場合もここが同じ座標（origin 相対）から出るので、
+        // テクスチャの対応はずれない。
         gl.uniform4f(
           uUvQuad,
-          (padX + card.x - QUAD_MARGIN_X) / cssWidth,
-          (padY + card.y + card.h + QUAD_MARGIN_Y) / cssHeight,
-          (padX + card.x + card.w + QUAD_MARGIN_X) / cssWidth,
-          (padY + card.y - QUAD_MARGIN_Y) / cssHeight
+          (padX + (sLeft - origin.left)) / cssWidth,
+          (padY + (sBottom - origin.top)) / cssHeight,
+          (padX + (sRight - origin.left)) / cssWidth,
+          (padY + (sTop - origin.top)) / cssHeight
         );
         gl.uniform4f(
           uClamp,
@@ -798,6 +869,30 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
         }
 
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+
+      // カウンター反転レイヤーをクアッドと同一矩形に同期（doc comment 参照）。
+      // innerWidth ガードは canvas 自身の `hidden lg:block` の写し — エッグ中に
+      // ウィンドウを縮めた場合、canvas は消えるのにこの div だけ残ると、
+      // 背景がそこだけ二重反転で白く抜ける。
+      if (counterBox && window.innerWidth >= 1024) {
+        if (!counterDiv) {
+          counterDiv = document.createElement("div");
+          counterDiv.setAttribute("aria-hidden", "true");
+          const s = counterDiv.style;
+          s.position = "fixed";
+          s.zIndex = "-4"; // canvas（紙モードで -5）の上、本文（auto）の下
+          s.background = "#fff";
+          s.mixBlendMode = "difference";
+          s.pointerEvents = "none";
+          document.body.appendChild(counterDiv);
+        }
+        counterDiv.style.left = `${counterBox.left}px`;
+        counterDiv.style.top = `${counterBox.top}px`;
+        counterDiv.style.width = `${counterBox.width}px`;
+        counterDiv.style.height = `${counterBox.height}px`;
+      } else {
+        removeCounter();
       }
     };
 
@@ -822,6 +917,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       if (settleTimer !== null) window.clearTimeout(settleTimer);
       window.removeEventListener("resize", handleResize);
+      removeCounter();
       if (engaged) target?.removeAttribute(HIDDEN_ATTRIBUTE);
       // The texture is the only large allocation here and is released
       // explicitly; the context itself is deliberately left alone.
@@ -842,16 +938,25 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
   }, [intensityRef, directionRef]);
 
   return (
-    // zIndex 9998 — 反転レイヤー（z-9997）の**上**、デバッググリッド（9999）の
-    // 下 — per direct follow-up ("まだ色が沈んでる")。以前は 9996（反転の下）
-    // で、写真をテクスチャの段階で invert しておき difference に戻させる
-    // 相殺をしていたが、invert は sRGB で、difference の合成はディスプレイの
-    // 色空間（P3 など）で行われるため、広色域環境では往復が厳密に元へ戻らず
-    // 彩度と明度がわずかに沈む。反転の上に出して素の色をそのまま描けば、
-    // 往復自体が無くなる（このキャンバスが描くのは写真だけなので、反転
-    // したい内容はそもそも無い）。inline style なのは z-[9998] が新規の
-    // arbitrary クラスで、このプロジェクトで繰り返し起きている生成CSSの
-    // 遅延に踏まれないため（scroll-progress-gauge.tsx と同じ理由）。
+    // zIndex は render ループがモードで切り替える（インラインの 9998 は
+    // 初期値 = Img グリッド用）:
+    //  - Img のスクロール歪み: 9998 — 反転レイヤー（z-9997）の**上**、
+    //    デバッググリッド（9999）の下 — per direct follow-up ("まだ色が
+    //    沈んでる")。以前は 9996（反転の下）で、写真をテクスチャの段階で
+    //    invert しておき difference に戻させる相殺をしていたが、invert は
+    //    sRGB で、difference の合成はディスプレイの色空間（P3 など）で
+    //    行われるため、広色域環境では往復が厳密に元へ戻らず彩度と明度が
+    //    わずかに沈む。反転の上に出して素の色をそのまま描けば、往復自体が
+    //    無くなる。
+    //  - Txt のホバー紙モード: -5 — 一覧のテキストより背面 — per direct
+    //    follow-up ("エッグ時のtxtのホバー時のイメージは一覧より背面に
+    //    表示して")。反転レイヤーの下に入るぶんの色反転は、クアッドと同一
+    //    矩形のカウンター反転（effect 内 counterDiv の doc comment 参照）で
+    //    二重反転して素の色に戻す — 二重とも合成段階の反転なので上記の
+    //    色沈みは起きない。
+    // inline style なのは z-[9998] が新規の arbitrary クラスで、この
+    // プロジェクトで繰り返し起きている生成CSSの遅延に踏まれないため
+    // （scroll-progress-gauge.tsx と同じ理由）。
     // `pointer-events-none` keeps the real list underneath clickable.
     <canvas
       ref={canvasRef}
