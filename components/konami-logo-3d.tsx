@@ -104,10 +104,10 @@ const SPIN_MAX_DEG = 6;
  *  現れて走りながら消える。 */
 // 3000 → 2000（直接の指示 "走り線は2秒に一回"）。
 const SPARK_INTERVAL_MS = 2000;
-/** 1回に走らせる本数の範囲。3〜6 → 6〜12 → 8〜15 → 10〜15（いずれも直接の
- *  指示）。 */
-const SPARK_MIN = 10;
-const SPARK_MAX = 15;
+/** 1回に走らせる本数の範囲。3〜6 → 6〜12 → 8〜15 → 10〜15 → 12〜16
+ *  （いずれも直接の指示）。 */
+const SPARK_MIN = 12;
+const SPARK_MAX = 16;
 /** 実線部分の長さの範囲（pathLength=1000 に対する割合千分率）。 */
 const SPARK_DASH_MIN = 40;
 const SPARK_DASH_MAX = 110;
