@@ -349,7 +349,13 @@ const SP_PILL_PADDING_Y_PX = 9;
 export function IdleOverlay() {
   const pathname = usePathname();
   const isContact = isSamePath(pathname, "/contact");
-  const isKnownRoute = KNOWN_ROUTES.includes(pathname);
+  // includes(pathname) の生比較 → isSamePath — per direct follow-up
+  // ("aboutでアイドルレイヤー発動しない？")。trailingSlash: true の本番では
+  // usePathname() が "/about/"（末尾スラッシュ付き）を返すため、生比較だと
+  // トップ（"/"）以外のページで一致せず、アイドルレイヤーが一切出なかった
+  // （ナビの current 判定で直したのと同じクラスのバグ。dev では "/about" が
+  // 返るので気づきにくい）。
+  const isKnownRoute = KNOWN_ROUTES.some((route) => isSamePath(pathname, route));
   const [visible, setVisible] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [revealed, setRevealed] = useState(false);
