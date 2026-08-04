@@ -80,6 +80,8 @@ const CLAMP_MARGIN_Y = 24;
  *     たわみに沿う簡易シェーディング（平らに戻ると消える）
  *  透明度は前半 30% で上げ切る。 */
 const HOVER_REVEAL_MS = 750;
+/** 以下の3つは「基準値」— 実際の登場では毎回、向き（±）と振幅（70〜130%
+ *  程度）が抽選で揺らぐ（render ループの hoverSign / hover*Amp 参照）。 */
 const HOVER_THETA_DEG = -5;
 const HOVER_SHIFT_PX = 26;
 /** しなりの初期振幅（px）と、減衰振動のパラメータ — per direct follow-up
@@ -454,6 +456,16 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
     let lastMovingAt = 0;
     /** ホバーの登場アニメーションが始まった時刻（0 = 未開始）。 */
     let hoverRevealStartedAt = 0;
+    /** 登場1回ぶんの抽選値 — per direct follow-up ("紙のしなりの表示時の
+     *  歪みを左右ランダムにしつつ、歪みの数値も少しランダムにして")。
+     *  向き（±1。回転としなりの符号を揃えて反転 — 別々に反転させると
+     *  「右に傾いた紙が左向きにしなる」という不自然な組み合わせが出る）と、
+     *  各成分の振幅（基準値の 70〜130% 程度）を、リビール開始のたびに
+     *  引き直す。ホバーするたび毎回少し違う紙の落ち方になる。 */
+    let hoverSign = 1;
+    let hoverCurlAmp = HOVER_CURL_PX;
+    let hoverThetaAmp = (HOVER_THETA_DEG * Math.PI) / 180;
+    let hoverShiftAmp = HOVER_SHIFT_PX;
     /** Whether the drawing buffer holds anything that would need clearing. */
     let canvasDirty = false;
 
@@ -670,7 +682,14 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
         // 参照）。engage が成立した＝テクスチャが用意できて canvas 側の描画に
         // 切り替わった最初のフレーム。adopt 時ではなくここなのは、CORS 画像の
         // 読み込み待ちをアニメーション時間に食い込ませないため。
-        if (hoverMode && engaged && hoverRevealStartedAt === 0) hoverRevealStartedAt = now;
+        if (hoverMode && engaged && hoverRevealStartedAt === 0) {
+          hoverRevealStartedAt = now;
+          // 登場パラメータの抽選（宣言部の doc comment 参照）。
+          hoverSign = Math.random() < 0.5 ? -1 : 1;
+          hoverCurlAmp = HOVER_CURL_PX * (0.7 + Math.random() * 0.6);
+          hoverThetaAmp = ((HOVER_THETA_DEG * Math.PI) / 180) * (0.7 + Math.random() * 0.6);
+          hoverShiftAmp = HOVER_SHIFT_PX * (0.8 + Math.random() * 0.4);
+        }
       } else if (engaged && now - lastMovingAt > REST_HANDOFF_MS) {
         disengage();
       }
@@ -713,12 +732,14 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       const revealE = 1 + 2.70158 * back * back * back + 1.70158 * back * back;
       const undone = 1 - revealE;
       // しなりは減衰振動（HOVER_CURL_PX の doc comment 参照）。
+      // 振幅・向きは登場ごとの抽選値（hoverSign / hover*Amp）。定数を直接
+      // 使っていた頃から式の形は同じで、係数だけ差し替わっている。
       const curl =
-        HOVER_CURL_PX * Math.exp(-HOVER_CURL_DAMP * revealT) * Math.cos(revealT * Math.PI * HOVER_CURL_FREQ);
+        hoverSign * hoverCurlAmp * Math.exp(-HOVER_CURL_DAMP * revealT) * Math.cos(revealT * Math.PI * HOVER_CURL_FREQ);
       gl.uniform1f(uMode, hoverMode ? 1 : 0);
       gl.uniform1f(uCurl, hoverMode ? curl : 0);
-      gl.uniform1f(uTheta, hoverMode ? (HOVER_THETA_DEG * Math.PI / 180) * undone : 0);
-      gl.uniform1f(uShift, hoverMode ? HOVER_SHIFT_PX * undone : 0);
+      gl.uniform1f(uTheta, hoverMode ? hoverSign * hoverThetaAmp * undone : 0);
+      gl.uniform1f(uShift, hoverMode ? hoverShiftAmp * undone : 0);
       gl.uniform1f(uScale, hoverMode ? HOVER_SCALE_START + (1 - HOVER_SCALE_START) * revealE : 1);
       gl.uniform1f(uAlpha, hoverMode ? Math.min(1, revealT / 0.3) : 1);
       gl.uniform2f(uViewport, window.innerWidth, window.innerHeight);
