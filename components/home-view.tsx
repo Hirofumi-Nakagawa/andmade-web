@@ -147,6 +147,23 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
   const titleEls = useRef<(HTMLElement | null)[]>(Array(projects.length).fill(null));
   const [showImages, setShowImages] = useState(false);
 
+  // Txt/Img トグルの登場アニメを、イントロ完了時に再生し直すための世代
+  // カウンタ — per direct follow-up ("pc, spのtxt-Imgもスライドイン+フェード
+  // インで表示")。トグル（project-view-toggle.tsx）はマウント時に自前で
+  // スライド＋フェードするが、初回訪問ではイントロのスプラッシュの裏で
+  // 終わってしまい見えない。一覧のカード（project-list.tsx の
+  // replayGeneration）と同じく、andmade:intro-complete で key を変えて
+  // 丸ごと再マウントする — トグルの reveal 状態はトグル自身が持っている
+  // ので、再マウント＝初期状態からのやり直しになる。
+  const [toggleReplayGeneration, setToggleReplayGeneration] = useState(0);
+  useEffect(() => {
+    function handleIntroComplete() {
+      setToggleReplayGeneration((generation) => generation + 1);
+    }
+    window.addEventListener("andmade:intro-complete", handleIntroComplete);
+    return () => window.removeEventListener("andmade:intro-complete", handleIntroComplete);
+  }, []);
+
   // Tx (ProjectGridSection, a long list) and Th (ProjectThumbnailGrid, a
   // fixed 4-column grid) render very different total heights — per direct
   // report ("Thにしたとき、フッターまでスクロールできない。Tx時のページの
@@ -433,7 +450,12 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
           <SiteHeader fadeIn />
 
         <div className="relative mt-[calc(280px*var(--scale))]">
-          <ProjectViewToggle showImages={showImages} onShowImagesChange={setShowImages} onToggleClick={handleToggleClick} />
+          <ProjectViewToggle
+            key={toggleReplayGeneration}
+            showImages={showImages}
+            onShowImagesChange={setShowImages}
+            onToggleClick={handleToggleClick}
+          />
 
           {/* FV-right "recent news" list — per direct follow-up ("トップの
               FV右側に最近のお知らせを追加したいので...")。See

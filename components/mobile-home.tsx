@@ -500,15 +500,28 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
     window.addEventListener("andmade:intro-complete", handleIntroComplete);
     return () => window.removeEventListener("andmade:intro-complete", handleIntroComplete);
   }, []);
-  // Tx/Th+"33 Cases" rail's own entrance — matches PC's ProjectViewToggle
-  // exactly (rAF-deferred so the initial unrevealed state actually paints
-  // before flipping, or the browser can coalesce both into one paint and
-  // skip the transition — see project-view-toggle.tsx's own identical
-  // pattern), per explicit follow-up ("tx/th 33casesは表示時にPCと同じアニ
-  // メーションを付けて"). Plain mount-only effect (empty deps) — the replay
-  // above is handled by remounting this whole subtree via `key`, not by
-  // re-running this same effect in place.
+  // Tx/Th+"33 Cases"+Contact rail's own entrance — matches PC's
+  // ProjectViewToggle exactly (rAF-deferred so the initial unrevealed state
+  // actually paints before flipping), per explicit follow-up ("tx/th
+  // 33casesは表示時にPCと同じアニメーションを付けて")。イントロ完了の
+  // 再生は `key` の再マウント + 下の世代替わりリセットの2点セット
+  // （どちらか片方では動かない — リセットの comment 参照）。
   const [railRevealed, setRailRevealed] = useState(false);
+  // 世代が変わったレンダーで railRevealed を未表示に戻す（レンダー中の
+  // 前値比較 setState — idle-overlay.tsx などと同じ確立された書き方）。
+  // ここが per direct follow-up ("pc, spのtxt-Imgもスライドイン+フェード
+  // インで表示 / SPのcasesとcontactも同様に") の本体: `key` の再マウントは
+  // DOM を作り直すが、railRevealed はこの親コンポーネントの state なので
+  // true のまま残り、作り直された瞬間から表示済み＝アニメーション無しに
+  // なっていた（上の doc comment は「再マウントで初期状態から始まる」と
+  // 書いていたが、state が子ではなく親にある以上そうならない）。レンダー
+  // 時に false へ戻せば、再マウント直後の初回描画が未表示状態になり、
+  // 下の effect が世代替わりでもう一度 rAF で true に流す。
+  const [prevRailGeneration, setPrevRailGeneration] = useState(introReplayGeneration);
+  if (prevRailGeneration !== introReplayGeneration) {
+    setPrevRailGeneration(introReplayGeneration);
+    setRailRevealed(false);
+  }
   useEffect(() => {
     const frame = requestAnimationFrame(() => setRailRevealed(true));
     // Safety net matching mobile-project-list.tsx's own REVEAL_FALLBACK_MS —
@@ -519,7 +532,10 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
       cancelAnimationFrame(frame);
       clearTimeout(fallback);
     };
-  }, []);
+    // introReplayGeneration を deps に — イントロ完了の再マウント後に
+    // もう一度 false → true を流すため（従来はマウント時のみで、
+    // 再マウント後は誰も true に戻さず…ではなく true のままだった。上記）。
+  }, [introReplayGeneration]);
   // Tx/Th+"33 Cases" rail's own release fade-out — per direct follow-up
   // ("SPトップのtx-thと33 casesは固定解除されるタイミングでフェードアウト
   // で消える仕様にして"): this rail is `position: sticky` inside
