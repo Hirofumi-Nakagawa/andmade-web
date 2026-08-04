@@ -199,6 +199,15 @@ export function KonamiGlitch() {
       const pressed = event.key.length === 1 ? event.key.toLowerCase() : event.key;
 
       if (pressed === expected) {
+        // 2打目以降（= 進行中のシーケンスを続ける入力）はブラウザの既定
+        // 動作に流さない — per direct follow-up ("↑↑と入力して次に↓を
+        // 入力するとき、ページが下スクロールに反応しないようにして")。
+        // 矢印キーの既定動作はページスクロールなので、コナミコードの
+        // 途中でページが上下してしまっていた。1打目だけは奪わない —
+        // 「↑を1回押す」はまだ普通のキー操作かもしれず、通常のスクロール
+        // 操作を壊さないため（1打目の↑で上に少し動くのは、コードを入力
+        // する人はたいていページ最上部にいるので実害がない）。
+        if (progressRef.current > 0) event.preventDefault();
         progressRef.current += 1;
         if (progressRef.current === SEQUENCE.length) {
           progressRef.current = 0;
