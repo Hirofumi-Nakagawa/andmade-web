@@ -230,7 +230,16 @@ export default function About() {
             ラッパーの上端が sticky の開始位置になる。FV を中に入れると左ナビが
             FV の高さぶん上から貼り付き始め、(Vision) の横線と頭が揃わなくなる
             （以前この揃えを直した経緯がある）。 */}
-        <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(280px*var(--scale))] w-[var(--content-width-fluid)]">
+        {/* 幅は --content-width-fluid ではなく --content-width × --grid-scale —
+            per direct follow-up ("ウィンドウ幅1200px以下くらいからFVのリード文の
+            画面右端マージンが無くなって隠れる")。--content-width-fluid は
+            1440px 未満で 1218px に固定される（globals.css の doc comment 参照）
+            一方、左マージンの 198px×grid-scale は縮み続けるため、1383px 幅
+            あたりから箱の右端がビューポートからはみ出し、右寄せ配置の
+            リード文が画面外に切れていた。grid-scale を直接掛ければ箱も左
+            マージンと同率で縮み、右端が常に画面内に収まる（AboutSection の
+            横線が同じ理由で同じ式を使っている）。1440px 以上では両者は同値。 */}
+        <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(280px*var(--scale))] w-[calc(var(--content-width)*var(--grid-scale))]">
           {/* 見出しはカーテンリビール（直接の指示 "3行コピーをカーテンリビール
               で表示して"）— Contact の3行英文と同じ扱いで、下からのスライド＋
               フェード（RevealOnMount）ではなく1行ずつマスクからせり上がる。
