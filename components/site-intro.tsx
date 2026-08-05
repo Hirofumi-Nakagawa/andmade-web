@@ -46,6 +46,17 @@ const TAGLINE_LINE_STAGGER_MS = 150;
  *  intro sits still before disappearing and navigating (the "静止時間"). */
 const POST_REVEAL_DELAY_MS = 1500;
 
+/** 消えるときの中身（ロゴ・タグライン・ピル）の素早いフェードアウト —
+ *  per direct follow-up ("イントロが消えるとき、素早いフェードアウトを
+ *  付けて")。フェードするのは**中身だけ**で、全画面レイヤー自体は従来
+ *  どおりフェード完了と同時に即アンマウント — レイヤーのフェードアウトは
+ *  過去に iOS の「Menuがすぐ押せない」の原因になって撤去した経緯がある
+ *  （exit effect の doc comment 参照）。レイヤーの背景（#f6f6f4）はトップ
+ *  ページの背景と同色なので、中身さえフェードすれば見た目は「イントロが
+ *  フェードで消えた」になる。 */
+// 200 → 150（直接の指示 "あともうほんの少しだけ速くして"）。
+const EXIT_FADE_MS = 150;
+
 /** Logo's own real aspect ratio (public/andmade-logo.svg viewBox is
  *  1410x190) at a size matching the Figma design's own 160x22. */
 const LOGO_WIDTH_PX = 160;
@@ -231,6 +242,8 @@ export function SiteIntro() {
   const [shouldShow, setShouldShow] = useState(false);
   const [active, setActive] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  /** 消え際の中身フェードが走っている間 true（EXIT_FADE_MS 参照）。 */
+  const [exiting, setExiting] = useState(false);
 
   // Decide once, client-side only (localStorage isn't available during SSR,
   // and shouldn't be — starting at `false` on both server and the first
@@ -320,6 +333,18 @@ export function SiteIntro() {
   useEffect(() => {
     if (!revealed) return;
 
+    // 静止時間が終わったら、まず中身だけを EXIT_FADE_MS でフェードアウト
+    // させる（EXIT_FADE_MS の doc comment 参照）。レイヤーの unmount は
+    // その完了後（下の exiting effect）— unmount そのものが即時・同期で
+    // ある性質は変えていないので、過去のタップ問題は再発しない。
+    const timeout = setTimeout(() => setExiting(true), POST_REVEAL_DELAY_MS);
+
+    return () => clearTimeout(timeout);
+  }, [revealed]);
+
+  useEffect(() => {
+    if (!exiting) return;
+
     const timeout = setTimeout(() => {
       // Tells the top page's project list (plus the Tx/Th rail and
       // MobileRecentNews) to reset and replay its own slide-up entrance --
@@ -344,12 +369,13 @@ export function SiteIntro() {
       // that's never coming a second time.
       recordIntroDecision(false);
       router.replace("/");
-      // Unmount entirely, right away -- no fade-out stage left to wait on.
+      // Unmount entirely, right away -- the inner content has already
+      // finished its own quick fade by now (EXIT_FADE_MS).
       setShouldShow(false);
-    }, POST_REVEAL_DELAY_MS);
+    }, EXIT_FADE_MS);
 
     return () => clearTimeout(timeout);
-  }, [revealed, router]);
+  }, [exiting, router]);
 
   if (!shouldShow) return null;
 
@@ -366,7 +392,14 @@ export function SiteIntro() {
           replaced a brief attempt at anchoring the pills row specifically). */}
       <div
         className="absolute top-1/2 left-1/2 flex flex-col items-center"
-        style={{ transform: "translate(-50%, calc(-50% - 10px))" }}
+        // 消え際は中身ごと素早くフェードアウト（EXIT_FADE_MS の doc
+        // comment 参照）。opacity だけの transition なので、子の
+        // フェードイン（active 起点）とは干渉しない。
+        style={{
+          transform: "translate(-50%, calc(-50% - 10px))",
+          opacity: exiting ? 0 : 1,
+          transition: `opacity ${EXIT_FADE_MS}ms ease-out`,
+        }}
       >
         <Image
           src={withBasePath("/andmade-logo.svg")}
