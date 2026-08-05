@@ -84,6 +84,38 @@ export function CopyEmail({
     };
   }, []);
 
+  // ボタンが動いたり消えたりしたらピルを即座に消す — per direct follow-up
+  // ("spのmenu内のメアドタップでcopiedが表示されてすぐcloseすると、copiedが
+  // 残る")。ピルは表示した瞬間の実測位置に固定で置く方式（コンポーネントの
+  // doc comment 参照）なので、表示中の1.5秒の間にアンカーのボタン側が
+  // 動く・隠れると、ピルだけが元の位置に浮いて残る。MENU の Close（パネルの
+  // 縮小でボタンが移動）がその代表例で、スクロール（PC フッター）でも同じ
+  // ことが起きる。「メニューが閉じたか」をここから知る術はない（呼び出し元
+  // ごとに状態が違う）ため、表示中だけ rAF でボタンの現在地を実測し続け、
+  // ピルを置いたときの位置から 2px 超ずれたら（または rect が潰れて
+  // いたら＝非表示）畳む、という自立した検知にしている。表示中しか回らない
+  // ので常時コストは無い。
+  useEffect(() => {
+    if (!pill) return;
+    let frame: number;
+    const check = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      const moved =
+        !rect ||
+        rect.width === 0 ||
+        rect.height === 0 ||
+        Math.abs(rect.left + rect.width / 2 - pill.x) > 2 ||
+        Math.abs(rect.top - 10 + offsetY - pill.y) > 2;
+      if (moved) {
+        setPill(null);
+        return;
+      }
+      frame = requestAnimationFrame(check);
+    };
+    frame = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(frame);
+  }, [pill, offsetY]);
+
   async function handleClick() {
     // ガクッ対策（per direct follow-up ×2 "menuがガクってなる"）: 非HTTPS
     // （LAN の IP で実機確認する開発時）は navigator.clipboard が無く、
