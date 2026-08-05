@@ -16,6 +16,7 @@ import { SmoothScroll } from "@/components/smooth-scroll";
 import { TabFaviconSwap } from "@/components/tab-favicon-swap";
 import {
   INSTAGRAM_URL,
+  OGP_IMAGE,
   SITE_DESCRIPTION,
   SITE_NAME,
   SITE_URL,
@@ -50,14 +51,12 @@ const genInterfaceJP = localFont({
 // the user — a real, already-designed 1200x630 card, not a Claude-authored
 // placeholder), reused verbatim for both `openGraph.images` and
 // `twitter.images` below per direct request ("ogpとtwitter用画像はこれを使
-// 用して") — one single shared image/description for every page on the site
-// rather than per-page variants, matching how `description` below is itself
-// one shared value (no page in this codebase sets its own `openGraph`/
-// `twitter`, so every route inherits this root definition wholesale — see
-// Next.js's own metadata-inheritance rules: a child segment that doesn't
-// define `openGraph`/`twitter` at all inherits the parent's in full, not
-// merged field-by-field).
-const OGP_IMAGE = { url: "/images/ogp.png", width: 1200, height: 630 };
+// 用して")。かつては「どのページも openGraph/twitter を持たず全ページが
+// このルート定義を丸ごと継承する」構成だったが、実績詳細ページだけは
+// per-project の meta を CMS から設定できるようにしたため（per direct
+// follow-up "各実績ページのmetaを設定できるようにして"）、定数自体は
+// lib/site.ts へ移し、そちらの generateMetadata のフォールバックとも共有
+// している。それ以外のページは引き続きここを丸ごと継承する。
 
 // Organization structured data (schema.org) — read by search engines to
 // build a Knowledge Panel / sitelinks-style entity for the company. Rendered

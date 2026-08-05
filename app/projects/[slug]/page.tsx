@@ -8,7 +8,7 @@ import { ProjectTitleScramble } from "@/components/project-title-scramble";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ProjectHeroParallax } from "@/components/project-hero-parallax";
-import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { OGP_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_URL, TWITTER_HANDLE } from "@/lib/site";
 import {
   getProjectBySlug,
   getProjects,
@@ -58,14 +58,49 @@ export async function generateStaticParams() {
   return projects.map((project) => ({ slug: slugify(project.title) }));
 }
 
+/**
+ * Per-project meta — per direct follow-up ("各実績ページのmetaを設定できる
+ * ようにして")。CMS の3つの任意フィールド（metaTitle / metaDescription /
+ * metaOgImg — lib/projects.ts の ProjectCmsContent 参照）から組み、未設定は
+ * それぞれ 実績名 / サイト共通説明文 / KV→共通ogp.png へフォールバックする
+ * ので、何も入れていない既存の実績も従来どおり成立する。
+ *
+ * openGraph/twitter をここで持つのは、Next の metadata 継承がオブジェクト
+ * 丸ごと（フィールド単位でのマージではない）なため — ルート（app/layout.tsx）
+ * のを継承すると title も url も画像もサイト共通のままになる。逆に言えば
+ * ここで定義する以上、siteName/locale/card などの共通項も全部自前で埋める
+ * 必要がある。title に "- ANDMADE Inc." を明示で付けるのは、ルートの
+ * title.template が plain <title> にしか働かない（OGP には適用されない）ため。
+ */
 export async function generateMetadata({ params }: ProjectsPageProps): Promise<Metadata> {
   const { slug } = await params;
   const result = await getProjectBySlug(slug);
   if (!result) return {};
+  const { project } = result;
+  const title = project.metaTitle ?? project.title;
+  const description = project.description ?? SITE_DESCRIPTION;
+  const ogImage = project.ogImage ?? OGP_IMAGE;
   return {
-    title: result.project.title,
-    description: result.project.description,
+    title,
+    description,
     alternates: { canonical: `/projects/${slug}/` },
+    openGraph: {
+      title: `${title} - ${SITE_NAME}`,
+      description,
+      url: `/projects/${slug}/`,
+      siteName: SITE_NAME,
+      images: [ogImage],
+      locale: "ja_JP",
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${title} - ${SITE_NAME}`,
+      description,
+      images: [ogImage.url],
+      site: TWITTER_HANDLE,
+      creator: TWITTER_HANDLE,
+    },
   };
 }
 

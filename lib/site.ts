@@ -20,6 +20,13 @@ export const SITE_NAME = "ANDMADE Inc.";
 export const SITE_DESCRIPTION =
   "ANDMADE Inc.は、クライアントと共にモノづくりをする共創のスタンスで、ウェブ、CI・VI、ビジュアルに関わるグラフィックまで、包括的にアートディレクションとデザインを行っているデザインスタジオです。";
 
+/** サイト共通の OGP/Twitter カード画像（1200x630、支給済みの実画像）。
+ *  元は app/layout.tsx のローカル定数だったが、実績詳細ページの
+ *  generateMetadata（app/projects/[slug]/page.tsx）が「metaOgImg 未設定時の
+ *  最終フォールバック」として同じ画像を参照するようになったため、SITE_URL
+ *  などと同じ理由（複製のドリフト防止）でここへ昇格。 */
+export const OGP_IMAGE = { url: "/images/ogp.png", width: 1200, height: 630 };
+
 /** components/mobile-menu.tsx's own Social links — reused here rather than a
  *  second independent copy of the same handle. */
 export const TWITTER_HANDLE = "@ANDMADE_jp";

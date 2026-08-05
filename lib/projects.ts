@@ -350,16 +350,19 @@ export type Project = {
    *  dtlBgColor — reverted in favor of just reading the one field that
    *  already exists. */
   color?: string;
-  /** Per-project SEO description, meant to be authored/edited in microCMS
-   *  and surfaced via that future detail page's own
-   *  `generateMetadata({ params }) { ... return { description: project.description ?? DEFAULT_DESCRIPTION } }`
-   *  — falling back to the root layout's own site-wide description
-   *  (app/layout.tsx) whenever a given project hasn't had one written yet.
-   *  Undefined here since the placeholder data below predates the actual
-   *  microCMS projects endpoint (see this file's own top-of-array TODO) —
-   *  once that's wired up, this becomes a real per-project CMS field
-   *  instead of always undefined. */
+  /** Per-project meta の <title> 側 — CMS の `metaTitle`（trim 済み）。
+   *  未設定なら undefined で、generateMetadata 側が title（実績名）に
+   *  フォールバックする。ProjectCmsContent.metaTitle の doc comment 参照。 */
+  metaTitle?: string;
+  /** Per-project SEO description — CMS の `metaDescription`（trim 済み）。
+   *  generateMetadata（app/projects/[slug]/page.tsx）が meta description /
+   *  OGP description に、JSON-LD が CreativeWork.description に使う。
+   *  未設定なら undefined で、サイト共通の SITE_DESCRIPTION に落ちる。 */
   description?: string;
+  /** Per-project OGP 画像（配信 URL・実寸込み、buildOgImage() で構築済み）。
+   *  未設定なら undefined で、generateMetadata 側がサイト共通の OGP_IMAGE
+   *  （lib/site.ts）にフォールバックする。 */
+  ogImage?: { url: string; width: number; height: number };
   /** This project's own /projects/[slug] detail-page content — see
    *  ProjectDetail's own doc comment. Undefined for every project except
    *  the one reference implementation (Yatsumonji Gakuen 70th) below until
@@ -751,6 +754,24 @@ type ProjectCmsContent = {
    *  this project's previewRatio when not uploaded yet. */
   image?: { url: string; height: number; width: number };
 
+  // ---- per-project meta（SEO/OGP）フィールド — per direct follow-up
+  // ("各実績ページのmetaを設定できるようにして")。すべて任意。ダッシュ
+  // ボードでの追加: テキストフィールド `metaTitle`、テキストエリア
+  // `metaDescription`、画像 `metaOgImg` の3つ。 ----
+  /** テキストフィールド — この実績ページの <title>（"◯◯ - ANDMADE Inc."
+   *  の ◯◯ 部分）と OGP タイトル。未設定なら title（実績名）をそのまま
+   *  使う — 通常はそれで足りるので、検索結果側だけ別の表記にしたい実績
+   *  だけ書けばよい。 */
+  metaTitle?: string;
+  /** テキストエリア — meta description と OGP description。未設定なら
+   *  サイト共通の説明文（lib/site.ts の SITE_DESCRIPTION）に落ちる。
+   *  JSON-LD（CreativeWork.description）も同じ値を読む。 */
+  metaDescription?: string;
+  /** 画像 — この実績の OGP/Twitter カード画像（推奨 1200x630）。未設定
+   *  なら dtlHeroPcImg（KV）→ サイト共通の ogp.png の順でフォールバック
+   *  （buildOgImage() 参照）。 */
+  metaOgImg?: MicrocmsImage;
+
   // ---- /projects/[slug] detail-page fields — all optional; see
   // buildProjectDetail() below for exactly which ones are required together
   // before a project gets a real `detail` at all. ----
@@ -979,6 +1000,28 @@ function buildProjectDetail(content: ProjectCmsContent): ProjectDetail | undefin
  * `orders` query override yet; manual drag-order control would need an
  * extra numeric "order" field.
  */
+/** この実績の OGP 画像を組み立てる — `metaOgImg`（専用フィールド）が
+ *  あればそれ、無ければ `dtlHeroPcImg`（KV。詳細ページを持つ実績なら必ず
+ *  ある）。どちらも無ければ undefined で、generateMetadata がサイト共通の
+ *  OGP_IMAGE に落とす。
+ *
+ *  配信 URL は microcmsImageUrl() を使わず組む — あちらは fm=webp 固定で、
+ *  OGP のスクレイパーには webp を読めないものが残っている（LINE 等）ため
+ *  fm=jpg にする。幅は OGP の標準 1200px 上限（fit=max なので元がそれ以下
+ *  なら元のまま）。width/height は縮小後の実寸を計算して持たせる — OGP の
+ *  og:image:width/height としてそのまま出るので、URL のパラメータと
+ *  食い違わせない。 */
+function buildOgImage(
+  content: ProjectCmsContent
+): { url: string; width: number; height: number } | undefined {
+  const source = content.metaOgImg ?? content.dtlHeroPcImg;
+  if (!source || !source.url || !source.width || !source.height) return undefined;
+  const width = Math.min(1200, source.width);
+  const height = Math.round((source.height * width) / source.width);
+  const separator = source.url.includes("?") ? "&" : "?";
+  return { url: `${source.url}${separator}fm=jpg&fit=max&w=1200&q=80`, width, height };
+}
+
 export async function getProjects(): Promise<Project[]> {
   const client = getMicrocmsClient();
   if (!client) return [];
@@ -1004,6 +1047,9 @@ export async function getProjects(): Promise<Project[]> {
       imageSrc: content.image ? microcmsImageUrl(content.image.url) : undefined,
       imageSrcSet: content.image ? microcmsImageSrcSet(content.image.url) : undefined,
       color: content.dtlBgColor?.trim() || undefined,
+      metaTitle: trimmedText(content.metaTitle),
+      description: trimmedText(content.metaDescription),
+      ogImage: buildOgImage(content),
       detail: buildProjectDetail(content),
     }));
   } catch {

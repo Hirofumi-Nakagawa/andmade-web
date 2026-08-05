@@ -16,7 +16,15 @@ import { getStudies } from "@/lib/studies";
 // replaces the parent's `alternates` object wholesale rather than merging
 // field-by-field, so without this override the page would otherwise
 // incorrectly inherit the root layout's own canonical ("/", the home page).
-export const metadata: Metadata = { title: "Studies", alternates: { canonical: "/studies/" } };
+// description — per direct follow-up ("各ページのdescriptionを以下に変更
+// して")。プレーンな meta description のみで、OGP/Twitter の description は
+// 従来どおりルート（app/layout.tsx）のサイト共通文を丸ごと継承する。
+export const metadata: Metadata = {
+  title: "Studies",
+  description:
+    "グラフィック、アイデア、リサーチ、実験など、ANDMADEの思考と表現を収めたアーカイブ。プロジェクトの背景にある視点や試みを紹介しています。",
+  alternates: { canonical: "/studies/" },
+};
 
 // viewportFit: "cover" — per direct follow-up ("studiesページをcontactページ
 // と同じ表示エリアに変更して"): Contact's own SP tree shows a visible band at

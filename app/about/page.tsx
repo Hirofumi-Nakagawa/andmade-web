@@ -37,7 +37,15 @@ import {
 // replaces the parent's `alternates` object wholesale rather than merging
 // field-by-field, so without this override the page would otherwise
 // incorrectly inherit the root layout's own canonical ("/", the home page).
-export const metadata: Metadata = { title: "About", alternates: { canonical: "/about/" } };
+// description — per direct follow-up ("各ページのdescriptionを以下に変更
+// して")。プレーンな meta description のみで、OGP/Twitter の description は
+// 従来どおりルート（app/layout.tsx）のサイト共通文を丸ごと継承する。
+export const metadata: Metadata = {
+  title: "About",
+  description:
+    "ANDMADEは東京を拠点に活動するインディペンデントデザインスタジオです。ブランドの本質を見極め、アートディレクション、グラフィック、ウェブサイトを通して長く愛されるデザインをつくっています。",
+  alternates: { canonical: "/about/" },
+};
 
 // viewportFit: "cover" — per repeated follow-up describing a persistent pink
 // margin at the very top of the screen that AboutBackground's own photo

@@ -33,7 +33,15 @@ const CONTACT_TAGLINE_LINES = [
 // replaces the parent's `alternates` object wholesale rather than merging
 // field-by-field, so without this override the page would otherwise
 // incorrectly inherit the root layout's own canonical ("/", the home page).
-export const metadata: Metadata = { title: "Contact", alternates: { canonical: "/contact/" } };
+// description — per direct follow-up ("各ページのdescriptionを以下に変更
+// して")。プレーンな meta description のみで、OGP/Twitter の description は
+// 従来どおりルート（app/layout.tsx）のサイト共通文を丸ごと継承する。
+export const metadata: Metadata = {
+  title: "Contact",
+  description:
+    "ブランドづくりやウェブサイト、グラフィックに関するご相談を承っています。新しいプロジェクトやコラボレーションなど、お気軽にお問い合わせください。",
+  alternates: { canonical: "/contact/" },
+};
 
 /** `font-feature-settings: "ss09" 1` — matches the stylistic set used for
  *  Gen Interface JP body copy elsewhere (about page, project-card.tsx). */
