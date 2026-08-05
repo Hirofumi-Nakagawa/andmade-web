@@ -57,16 +57,17 @@ export const viewport: Viewport = { viewportFit: "cover" };
  *  site) rather than reinstating this export. */
 
 /** Studies page's own background color — per explicit spec ("背景色を
- *  #88988Dにして"), a muted sage green, distinct from the rest of the site's
- *  cream `--color-background`. Scoped to just this page (not the shared CSS
- *  variable) since nowhere else asked for this color. */
-const STUDIES_BACKGROUND_COLOR = "#88988D";
+ *  #88988Dにして" → "#819387に変更"), a muted sage green, distinct from the
+ *  rest of the site's cream `--color-background`. Scoped to just this page
+ *  (not the shared CSS variable) since nowhere else asked for this color. */
+const STUDIES_BACKGROUND_COLOR = "#819387";
 
 /** ステータスバー帯の色 — per direct follow-up ("#88988Dよりほんの少しだけ
- *  濃い色に変えて")。ページ地色 #88988D (136,152,141) を約6%暗くした
- *  (127,142,132)。ページ本体の地色とは別定数にしてあるのは、帯だけを
- *  一段落とした見え方にするため（本文側の地色は変えない）。 */
-const STUDIES_STATUS_BAR_COLOR = "#7F8E84";
+ *  濃い色に変えて")。「ページ地色より約6%暗い」関係を保って、地色の
+ *  #819387 (129,147,135) から (121,138,127) に追従させた。ページ本体の
+ *  地色とは別定数にしてあるのは、帯だけを一段落とした見え方にするため
+ *  （本文側の地色は変えない）。 */
+const STUDIES_STATUS_BAR_COLOR = "#798A7F";
 
 /** Tiled background texture (public/images/noise.png, supplied directly by
  *  the user) — per direct follow-up ("背景砂嵐は無しで、代わりに添付のテク
