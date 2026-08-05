@@ -417,9 +417,12 @@ export function KonamiLogo3D() {
 
   return (
     // -z-10 — KonamiDissolveLogo と同じ層。ページ本体より下、body 背景より上。
+    // konami-viewport-fill — エッグ切り替えの板の3D回転中、fixed inset-0 の
+    // 基準がドキュメント全体に変わってロゴが画面外の「ドキュメント中央」へ
+    // 行ってしまうのを防ぐ（globals.css の html.konami-cube ルール参照）。
     <div
       aria-hidden
-      className="pointer-events-none fixed inset-0 -z-10 hidden items-center justify-center lg:flex"
+      className="konami-viewport-fill pointer-events-none fixed inset-0 -z-10 hidden items-center justify-center lg:flex"
       style={{ perspective: `${PERSPECTIVE_PX}px` }}
     >
       <div

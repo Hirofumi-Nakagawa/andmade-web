@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
+import { KonamiGrain } from "@/components/konami-grain";
 import { KonamiLogo3D } from "@/components/konami-logo-3d";
 import { KonamiWarpCanvas } from "@/components/konami-warp-canvas";
 import { KonamiWipe } from "@/components/konami-wipe";
@@ -108,19 +109,18 @@ export function KonamiGlitch() {
   const pathname = usePathname();
   const isTopPage = pathname === "/";
   const [active, setActive] = useState(false);
-  /** 切り替えトランジション（KonamiWipe — ブロブ状の反転マスクが画面を
-   *  覆っていく演出）の走行状態。null = 非走行 — per direct follow-up
-   *  ("黒のレイヤーがランダムに覆いかぶさってきて" → "ブロブレイヤーを
-   *  マスクにするイメージ" → "反転表示が一瞬出るの気になるな")。
+  /** 切り替えトランジション（KonamiWipe — ページの板が立体的に倒れて
+   *  はけ、反対側からもう一方のモードの面が起き上がる演出）の走行状態。
+   *  null = 非走行 — per direct follow-up（Savee の立方体スクロール動画
+   *  "表示中のデフォルト時の画面が立体的に左上にはけて、右下からダーク
+   *  モードの画面が現れるイメージ"）。
    *
-   *  ワイプ中はエッグの全面反転レイヤーの**代わり**に KonamiWipe の
-   *  キャンバス（同じ z 9997 の白 difference、ただしブロブ形）が立つ。
-   *  ブロブ内を本物のエッグと同じ見た目にするため、"on" ではワイプ開始と
-   *  同時に active も true にして CSS 側（写真の相殺反転・アイドル
-   *  レイヤーの前面化・背景色）を先に効かせる。3Dロゴと warp canvas
-   *  だけはワイプ完了までマウントしない（未反転領域に黒線ロゴが素で
-   *  見えてしまうため）— 描画側のゲートは最下部参照。"off" は active を
-   *  保ったまま反転マスクに穴が開いていき、開け切ったら active を落とす。 */
+   *  KonamiWipe はもう何も描かない純粋なアニメーター（body の 3D
+   *  transform を駆動する）。active の反転は板が最も倒れた折り返しの
+   *  onSwitch で行う — 前半はライトの面、後半はダークの面が同じ板に
+   *  乗って回る。エッグ本体（反転レイヤー・ロゴ・warp canvas）は active
+   *  だけでゲートし、ワイプ中も普通にマウントされる — 板の中身として
+   *  丸ごと回すため。 */
   const [wipeMode, setWipeMode] = useState<"on" | "off" | null>(null);
   /** How far into SEQUENCE the current run of keystrokes has matched. */
   const progressRef = useRef(0);
@@ -238,16 +238,10 @@ export function KonamiGlitch() {
         if (progressRef.current === SEQUENCE.length) {
           progressRef.current = 0;
           // 直接の即時反転はしない — ワイプを開始する（wipeMode の doc
-          // comment 参照）。ON 方向は CSS 側を先に効かせるため active も
-          // ここで立てる。OFF 方向の active はワイプの onComplete が落とす。
-          // ワイプ走行中の完了入力は無視。
+          // comment 参照）。active の反転はワイプの折り返し（onSwitch）が
+          // 行う。ワイプ走行中の完了入力は無視。
           if (!wipeModeRef.current) {
-            if (activeRef.current) {
-              setWipeMode("off");
-            } else {
-              setWipeMode("on");
-              setActive(true);
-            }
+            setWipeMode(activeRef.current ? "off" : "on");
           }
         }
         return;
@@ -288,16 +282,6 @@ export function KonamiGlitch() {
       writtenDirectionRef.current = Number.NaN;
     };
   }, [active]);
-
-  // ワイプ走行中だけ <html> に konami-wiping を立てる — 写真の相殺反転
-  // （.konami-glitch img { invert }）の保留用（globals.css の
-  // .konami-wiping ルールと konami-wipe.tsx の doc comment 参照）。
-  useEffect(() => {
-    const root = document.documentElement;
-    if (wipeMode !== null) root.classList.add("konami-wiping");
-    else root.classList.remove("konami-wiping");
-    return () => root.classList.remove("konami-wiping");
-  }, [wipeMode]);
 
   // --- scroll velocity -> glitch intensity --------------------------------
   // Reads Lenis's own velocity rather than differencing scrollY by hand, for
@@ -358,24 +342,39 @@ export function KonamiGlitch() {
 
   return (
     <>
-      {/* 3Dロゴと warp canvas はワイプ完了までマウントしない — ロゴは黒線で
-          描かれていて（反転レイヤー前提）、反転がまだ全面でない画面では
-          未反転領域に黒いワイヤーフレームが素で見えてしまう（wipeMode の
-          doc comment 参照）。 */}
-      {active && wipeMode === null && (
+      {/* エッグ本体は active だけでゲートする — ワイプ（板の3D回転）中も、
+          折り返しで active が立った瞬間から板の中身として丸ごと回るため
+          （wipeMode の doc comment 参照）。 */}
+      {active && (
         <>
           {/* 3D wireframe の ANDMADE ロゴ背景 — per direct follow-up ("現状の
               背景は消して、代わりに…3D化して")。旧 KonamiDissolveLogo は退役
               （ファイルは残置）。negative-z の重なりで背景として読める点は
-              同じ。Mounted only while the egg runs, like everything else here. */}
-          <KonamiLogo3D />
+              同じ。
+              ON のワイプ中はまだマウントしない — 頂点からの描き込み登場
+              アニメーションは、板が据わり切ってダークモードが完全に表示
+              されてから始める — per direct follow-up ("背面ロゴのアニメー
+              ションスタートは、ダークモードの画が完全に表示されてからに
+              して")。OFF のワイプ中は逆に出したままにする（解除で板が
+              はけていく間、ダークの面からロゴだけ先に消えると不自然）。 */}
+          {(wipeMode === null || wipeMode === "off") && <KonamiLogo3D />}
 
           {/* Warps the project list's text on scroll. Mounted only while the egg
               runs, and it tears itself down completely on unmount (texture, GL
               context and the list's own hidden state) — see its doc comment. It
               reads the same two refs that drive the CSS half, so the two stay in
-              lockstep without a second velocity calculation. */}
-          <KonamiWarpCanvas intensityRef={glitchRef} directionRef={trailDirectionRef} />
+              lockstep without a second velocity calculation.
+              ロゴと同じく ON のワイプ完了までマウントしない — per direct
+              follow-up ("エッグ切り替わり時に、一瞬止まる挙動あり。黒地を
+              無くした対応をしたからかも"): マスク方式で WebGL コンテキストが
+              2本になり、板の回転中（折り返しの active 反転直後）に生成＋
+              シェーダーコンパイルが同期で走ってヒッチしていた。ワイプ完了後
+              （静止画面）に初期化を移す。回転中はスクロールもホバーも実質
+              起きないので、無くて困る瞬間はない。OFF のワイプ中は出した
+              まま（ロゴと同じ理由）。 */}
+          {(wipeMode === null || wipeMode === "off") && (
+            <KonamiWarpCanvas intensityRef={glitchRef} directionRef={trailDirectionRef} />
+          )}
 
           {/* z-[9997] — above the page, above the warp canvas (so the warped text
               gets inverted along with everything else), but deliberately below
@@ -385,23 +384,26 @@ export function KonamiGlitch() {
               active. */}
           <div
             aria-hidden
-            className="pointer-events-none fixed inset-0 z-[9997] hidden bg-white mix-blend-difference lg:block"
+            // konami-viewport-fill — 板の3D回転中のビューポート固定
+            // （globals.css の html.konami-cube ルール参照）。
+            className="konami-viewport-fill pointer-events-none fixed inset-0 z-[9997] hidden bg-white mix-blend-difference lg:block"
           />
         </>
       )}
 
-      {/* 切り替えのブロブワイプ（konami-wipe.tsx の doc comment 参照）。
-          上の全面反転レイヤーの代わりに、同じ z 9997 にブロブ形の反転を
-          立てる。完了時の差し替え（"off" の active 落としとワイプ撤去）は
-          同じハンドラ＝同一コミットで行う — 分けると全面反転キャンバスと
-          本物の反転レイヤーの間に素のページが1フレーム挟まる。 */}
+      {/* Contact と同じ質感のフィルムグレイン — per direct follow-up
+          ("エッグ時の黒背景にcontactと同じノイズをのせて")。ワイプ中も
+          含め、エッグが立っている間ずっと乗せる（konami-grain.tsx）。 */}
+      {active && <KonamiGrain />}
+
+      {/* 切り替えの立体回転ワイプ（konami-wipe.tsx の doc comment 参照）。
+          折り返し（板が最も倒れた瞬間）の onSwitch で active を反転し、
+          据わり切ったら wipeMode を畳む。 */}
       {wipeMode !== null && (
         <KonamiWipe
           mode={wipeMode}
-          onComplete={() => {
-            if (wipeMode === "off") setActive(false);
-            setWipeMode(null);
-          }}
+          onSwitch={() => setActive((current) => !current)}
+          onComplete={() => setWipeMode(null)}
         />
       )}
     </>

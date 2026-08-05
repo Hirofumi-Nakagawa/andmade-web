@@ -55,10 +55,11 @@ const QUAD_MARGIN_Y = TRAIL_MAX_PX + 32;
 
 /** 紙モード（ホバー）のクアッドの張り出し（px、全辺共通）。回転（±6.5°の
  *  コーナー変位）・スライド（〜31px）・しなり（〜44px）の登場アニメーション
- *  中の最大はみ出しをカバーする。スクロール用の QUAD_MARGIN_* と別なのは、
- *  紙モードではこの矩形がそのままカウンター反転レイヤー（render 内の
- *  counterDiv 参照）の大きさになる — クアッドの黒地が3Dロゴの線を覆う範囲
- *  でもあるので、必要以上に広げない。 */
+ *  中の最大はみ出しをカバーする。スクロール用の QUAD_MARGIN_* と別なのは
+ *  値の由来が違うだけ。かつてはこの矩形がそのまま黒地＋カウンター反転の
+ *  矩形になり、広げるほど背後の3Dロゴを隠したが、紙の形どおりのマスク方式
+ *  （JSX のマスクキャンバスの doc comment 参照）になってからは単なる描画の
+ *  余地で、見た目には何も出ない。 */
 const HOVER_QUAD_MARGIN_PX = 96;
 
 /** How far outside its own box a card's *sampling* may reach. Deliberately
@@ -99,7 +100,8 @@ const HOVER_SHIFT_PX = 26;
  *  戻って平らに落ち着く＝約1往復半。ばねとして揺れるのがしなりの
  *  気持ちよさの本体なので、ここだけ振動が要る。回転・スライド・拡大は
  *  リジッドな据わりの動きなので easeOutBack のまま。 */
-const HOVER_CURL_PX = 34;
+// 34 → 26（直接の指示 "イメージの紙っぽい歪みをもう少しだけ抑えめにして"）。
+const HOVER_CURL_PX = 26;
 const HOVER_CURL_DAMP = 4.2;
 const HOVER_CURL_FREQ = 2.2;
 const HOVER_SCALE_START = 0.9;
@@ -203,6 +205,10 @@ uniform float uShift;
 /** 全体の不透明度（premultiplied なので rgba 全チャンネルに掛ける）。
  *  ホバーの登場アニメーション用。それ以外は常に 1。 */
 uniform float uAlpha;
+/** 1 のとき「紙の形どおりのアルファで白だけを出す」マスク描画（紙モード
+ *  専用のカウンター反転 — 本文の uMaskOnly 分岐と JSX のマスクキャンバスの
+ *  doc comment 参照）。 */
+uniform float uMaskOnly;
 
 /** ガラスの縁とみなすビューポート上下の帯（ビューポート高さに対する割合）。 */
 const float BAND = 0.2;
@@ -252,18 +258,33 @@ void main() {
     float nx = clamp(d.x / max(halfW, 1.0), -1.0, 1.0);
     d.y += uCurl * (1.0 - nx * nx);
     vec4 col = tap(c + d * uPxToUv);
+    // 縁の半透明ピクセルを2値化する — per direct follow-up ("イメージの縁が
+    // 0.5pxほど白く見える")。本体（z -5）とマスク（z -4）の二段 difference
+    // は半透明の画素で線形に合成されず、バイリニア補間で生まれる縁 1px の
+    // 中間アルファが「明るい縁」として浮く。縁を binary にすればこの経路
+    // 自体が消える。フェード（uAlpha）はこの後で全面一律に掛かる — 同じ
+    // 非線形は出るが 225ms の遷移中の全面なので知覚されない。
+    if (col.a < 0.5) {
+      gl_FragColor = vec4(0.0);
+      return;
+    }
+    col.rgb /= col.a;
+    col.a = 1.0;
     // たわみに沿う簡易シェーディング（uCurl が 0 に戻ると消える）。
-    // premultiplied なので a には触れない。
     col.rgb *= clamp(1.0 - (uCurl / 40.0) * nx * 0.9, 0.82, 1.18);
     col *= uAlpha;
-    // クアッド全面を不透明にする（黒地に紙を敷く。premultiplied なので
-    // rgb はそのまま、a を 1 に立てるだけ）— 紙モードのキャンバスは一覧の
-    // テキストより背面（負の z）に居て、全面反転レイヤー（z-9997）に一度
-    // 反転される。真上のカウンター反転（counterDiv、白の difference）との
-    // 二重反転で素の色に戻す方式のため、クアッドに透けがあると、そこは
-    // 下のエッグ用白背景が二重反転で「白いまま」見えてしまう。地の黒
-    // （エッグの黒背景と同色）で塞いでおけば、透け＝黒背景として溶ける。
-    col.a = 1.0;
+    // uMaskOnly = 1: マスク用キャンバス（z -4 の difference）としての描画。
+    // 紙が実際に塗ったピクセルとまったく同じアルファの「白」を出す —
+    // 反転レイヤー（z-9997）に一度反転される紙を、紙の形どおりの二重反転で
+    // 素の色に戻すため。かつては矩形の counterDiv + クアッド全面の黒地で
+    // 同じことをしていたが、黒地が背後の3Dロゴを矩形に隠して目立った —
+    // per direct follow-up ("とにかく黒地を目立たせたくない。できれば
+    // 表示したくない")。紙の形そのものをマスクにすれば地の充填が不要になる。
+    if (uMaskOnly > 0.5) {
+      gl_FragColor = vec4(col.a);
+      return;
+    }
+    // uMaskOnly = 0: 紙本体。透明地のまま素の色で描く。
     gl_FragColor = col;
     return;
   }
@@ -394,58 +415,86 @@ type KonamiWarpCanvasProps = {
  */
 export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** マスク用キャンバス（紙の形どおりのカウンター反転）— JSX 側の doc
+   *  comment 参照。 */
+  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const maskCanvas = maskCanvasRef.current;
+    if (!canvas || !maskCanvas) return;
 
-    const gl = canvas.getContext("webgl", {
-      alpha: true,
-      antialias: false,
-      // The texture arrives premultiplied (below) and the shader composites in
-      // premultiplied space, so the drawing buffer has to agree.
-      premultipliedAlpha: true,
-      depth: false,
-      stencil: false,
-    });
-    if (!gl) return;
+    /** 1枚ぶんの GL 一式。本体（素の色で描く）とマスク（紙の形どおりの白 —
+     *  JSX のマスクキャンバスの doc comment 参照）で同じシェーダーを2つの
+     *  キャンバスに張るため、コンテキスト・プログラム・テクスチャをまとめて
+     *  2セット作る。 */
+    const createPipeline = (host: HTMLCanvasElement) => {
+      const gl = host.getContext("webgl", {
+        alpha: true,
+        antialias: false,
+        // The texture arrives premultiplied (below) and the shader composites
+        // in premultiplied space, so the drawing buffer has to agree.
+        premultipliedAlpha: true,
+        depth: false,
+        stencil: false,
+      });
+      if (!gl) return null;
+      const program = createProgram(gl);
+      if (!program) return null;
+      const quad = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      return {
+        canvas: host,
+        gl,
+        program,
+        quad,
+        texture,
+        aPos: gl.getAttribLocation(program, "aPos"),
+        uRect: gl.getUniformLocation(program, "uRect"),
+        uUvQuad: gl.getUniformLocation(program, "uUvQuad"),
+        uStrength: gl.getUniformLocation(program, "uStrength"),
+        uViewport: gl.getUniformLocation(program, "uViewport"),
+        uMode: gl.getUniformLocation(program, "uMode"),
+        uCurl: gl.getUniformLocation(program, "uCurl"),
+        uScale: gl.getUniformLocation(program, "uScale"),
+        uTheta: gl.getUniformLocation(program, "uTheta"),
+        uShift: gl.getUniformLocation(program, "uShift"),
+        uAlpha: gl.getUniformLocation(program, "uAlpha"),
+        uDir: gl.getUniformLocation(program, "uDir"),
+        uPxToUv: gl.getUniformLocation(program, "uPxToUv"),
+        uClamp: gl.getUniformLocation(program, "uClamp"),
+        uUnderline: gl.getUniformLocation(program, "uUnderline"),
+        uTex: gl.getUniformLocation(program, "uTex"),
+        uMaskOnly: gl.getUniformLocation(program, "uMaskOnly"),
+      };
+    };
 
-    const program = createProgram(gl);
-    if (!program) return;
+    const main = createPipeline(canvas);
+    const maskPipe = createPipeline(maskCanvas);
+    // どちらか一方でも作れなければ何もしない — 片方だけで動かすと、紙が
+    // 反転されたまま（マスク欠け）か、何も見えない（本体欠け）になる。
+    if (!main || !maskPipe) return;
+    const pipelines = [main, maskPipe];
 
-    const quad = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+    /** キャプチャ結果を両方のパイプラインのテクスチャへ流し込む。 */
+    const uploadTexture = (source: TexImageSource) => {
+      for (const p of pipelines) {
+        p.gl.bindTexture(p.gl.TEXTURE_2D, p.texture);
+        p.gl.texImage2D(p.gl.TEXTURE_2D, 0, p.gl.RGBA, p.gl.RGBA, p.gl.UNSIGNED_BYTE, source);
+      }
+    };
 
-    const aPos = gl.getAttribLocation(program, "aPos");
-    const uRect = gl.getUniformLocation(program, "uRect");
-    const uUvQuad = gl.getUniformLocation(program, "uUvQuad");
-    const uStrength = gl.getUniformLocation(program, "uStrength");
-    const uViewport = gl.getUniformLocation(program, "uViewport");
-    const uMode = gl.getUniformLocation(program, "uMode");
-    const uCurl = gl.getUniformLocation(program, "uCurl");
-    const uScale = gl.getUniformLocation(program, "uScale");
-    const uTheta = gl.getUniformLocation(program, "uTheta");
-    const uShift = gl.getUniformLocation(program, "uShift");
-    const uAlpha = gl.getUniformLocation(program, "uAlpha");
-    const uDir = gl.getUniformLocation(program, "uDir");
-    const uPxToUv = gl.getUniformLocation(program, "uPxToUv");
-    const uClamp = gl.getUniformLocation(program, "uClamp");
-    const uUnderline = gl.getUniformLocation(program, "uUnderline");
-    const uTex = gl.getUniformLocation(program, "uTex");
-
-    const texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-
-    const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number;
+    const maxTextureSize = main.gl.getParameter(main.gl.MAX_TEXTURE_SIZE) as number;
 
     let disposed = false;
     let frame: number | null = null;
@@ -485,36 +534,6 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
     let hoverShiftAmp = HOVER_SHIFT_PX;
     /** Whether the drawing buffer holds anything that would need clearing. */
     let canvasDirty = false;
-
-    /** カウンター反転レイヤー — 紙モード（Txt のホバー画像）専用。
-     *
-     *  per direct follow-up ("エッグ時のtxtのホバー時のイメージは一覧より
-     *  背面に表示して")。通常時のホバープレビューは DOM 順で本文テキストの
-     *  背面に居るが、エッグ中は canvas が描くため、canvas の z がそのまま
-     *  前後になる。一覧より背面に出すには canvas を負の z（-5 — 3Dロゴの
-     *  -10 より上、本文より下）へ降ろすしかないが、そこは全面反転レイヤー
-     *  （z-9997）の下なので写真が一度色反転されてしまう。
-     *
-     *  そこでクアッドと同一矩形の白い difference（この div、z -4 = canvas の
-     *  上・本文の下）を挟み、反転レイヤーとの二重反転で素の色に戻す。以前の
-     *  「テクスチャを sRGB で事前反転しておく」方式と違い、二つの反転は
-     *  どちらもブラウザの合成段階＝ディスプレイの色空間で行われるので、
-     *  広色域環境での色沈み（"まだ色が沈んでる" の原因だった sRGB→P3 の
-     *  非可逆往復）は起きない。本文のテキストはこの div より上に居るので
-     *  反転レイヤーで白くなるだけ＝白文字が写真の上に乗る。
-     *
-     *  矩形はクアッドと 1px もずれてはいけない（div が小さいとクアッドの
-     *  黒地が単独反転で白く縁取り、大きいと白背景が二重反転で白い縁になる）
-     *  ので、スクリーン座標を整数へスナップした同じ値を GL 側と共有する
-     *  （render ループ参照）。React を経由せず直接 DOM に持つのは、engage /
-     *  disengage（テクスチャ準備完了のタイミング）とフレーム単位で同期
-     *  させるため — 1フレームでもクアッドより先に出ると、その間だけ背景が
-     *  二重反転で白く光る。 */
-    let counterDiv: HTMLDivElement | null = null;
-    const removeCounter = () => {
-      counterDiv?.remove();
-      counterDiv = null;
-    };
 
     /** CORS 済み画像のキャッシュ（URL → 読み込み Promise）。Img/Txt を
      *  何度切り替えても同じ画像を再取得しない。 */
@@ -586,6 +605,14 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       loaded.forEach((image, i) => {
         if (!image) return; // CORS 不許可などで読めなかった画像は抜け
         const b = boxes[i];
+        // 画像の箱いっぱいに白地を敷いてから写真を乗せる — per direct
+        // follow-up ("Dotsの透過pngだけ背面に画像幅分#fffを付けて（エッグ時
+        // だけ）")。透過 png（Dots）は地が無いとエッグの黒背景が透けて
+        // しまう。判定はせず全箱に敷く: 不透明な写真では白地は完全に隠れて
+        // 無害で、透過画像だけに効く。このアトラスはエッグ中の canvas 描画
+        // 専用なので、通常時の DOM 表示（透過のまま）には影響しない。
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(TEXTURE_PAD_X + b.x, TEXTURE_PAD_Y + b.y, b.w, b.h);
         // DOM 側は object-cover — テクスチャでも同じ切り抜きを再現する
         // （そのまま drawImage すると縦横比が箱に合わせて潰れる）。
         const boxRatio = b.w / b.h;
@@ -608,8 +635,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
 
       raster = { canvas: cnv, cssWidth, cssHeight, padX: TEXTURE_PAD_X, padY: TEXTURE_PAD_Y, underlines: [] };
       cards = boxes;
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cnv);
+      uploadTexture(cnv);
     };
 
     const capture = () => {
@@ -647,8 +673,38 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
         const r = li.getBoundingClientRect();
         return { x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height };
       });
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, next.canvas);
+      uploadTexture(next.canvas);
+    };
+
+    /** 残像（現行以外のホバープレビュー）をキャンバスより背面へ沈める/戻す
+     *  — per direct follow-up ("ホバーで選択中の画像が少しだけ薄い（100%に
+     *  なってない）" → 隠す対処をしたら "一つ前のイメージが背面に残らなく
+     *  なってる")。紙モードのキャンバスは一覧より背面（z -5）に居るため、
+     *  DOM のままの残像（z auto）が現行画像の**上**に来てしまい、不透明度
+     *  10% の残像が現行の写真に薄いベールとして乗る — 通常時は DOM 順
+     *  （残像が先、現行が後）で現行が上になるので起きない、背面描画特有の
+     *  前後逆転。初版は残像を隠して対処したが「背面に残る」挙動ごと消えて
+     *  しまったので、隠す代わりに z-index をキャンバスのさらに下（-6）へ
+     *  落とす: 現行のクアッド（不透明）と重なる部分は現行の下に隠れ、
+     *  重なっていない部分は従来どおり背面の残像として見える ＝ 通常時と
+     *  同じ重なり順が復元される。
+     *
+     *  inline style で直接書く — 初版は属性 + globals.css のルールで
+     *  実装したが「選択中のイメージの上にうっすら背面にあるはずのイメージ
+     *  が見えてる」と再報告（スクリーンショット付き）: このプロジェクトで
+     *  繰り返し起きている dev の生成CSS遅延（新規ルールが乗らない）を
+     *  踏んだ可能性が高い。インラインなら CSS パイプラインを一切経由
+     *  しない。React はこの要素の style に zIndex を持っていないので、
+     *  差分適用と衝突しない。 */
+    const setGhostsBelow = (below: boolean) => {
+      document.querySelectorAll<HTMLElement>(".project-hover-preview").forEach((el) => {
+        if (el === target) return;
+        if (below) {
+          if (el.style.zIndex !== "-6") el.style.zIndex = "-6";
+        } else if (el.style.zIndex !== "") {
+          el.style.removeProperty("z-index");
+        }
+      });
     };
 
     const engage = () => {
@@ -663,6 +719,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (!engaged) return;
       engaged = false;
       target?.removeAttribute(HIDDEN_ATTRIBUTE);
+      setGhostsBelow(false);
       // Fresh snapshot while everything is idle (so no one feels the ~10ms),
       // baking in whatever changed since the last one — settled scramble,
       // hover leftovers, late data.
@@ -673,6 +730,10 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (engaged) target?.removeAttribute(HIDDEN_ATTRIBUTE);
       engaged = false;
       hoverRevealStartedAt = 0;
+      // 次のターゲットがホバーでない（Img グリッドへ移った・ホバーが完全に
+      // 終わった）なら残像を戻す。次もホバーなら隠したまま — 一瞬でも
+      // 戻すと、A→B とホバーを移した継ぎ目で A の残像がちらつく。
+      if (!next || !next.hasAttribute(KONAMI_WARP_HOVER_ATTRIBUTE)) setGhostsBelow(false);
       target = next;
       raster = null;
       cards = [];
@@ -719,7 +780,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       }
       const hoverMode = target?.hasAttribute(KONAMI_WARP_HOVER_ATTRIBUTE) ?? false;
 
-      // 紙モード中だけ一覧より背面へ（counterDiv の doc comment 参照）。
+      // 紙モード中だけ一覧より背面へ（JSX のマスクキャンバスの doc comment 参照）。
       // Img グリッドのスクロール歪みは従来どおり反転レイヤーの上（9998）で
       // 素の色を描く。JSX の初期値も 9998。
       const desiredZ = hoverMode ? "-5" : "9998";
@@ -743,15 +804,20 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
           hoverThetaAmp = ((HOVER_THETA_DEG * Math.PI) / 180) * (0.7 + Math.random() * 0.6);
           hoverShiftAmp = HOVER_SHIFT_PX * (0.8 + Math.random() * 0.4);
         }
+        // 現行を描いている間、残像の DOM プレビューを隠し続ける（毎フレーム
+        // なのは、ホバーが移って新しい残像が生まれても即座に対象へ入れる
+        // ため — setGhostsBelow の doc comment 参照）。
+        if (hoverMode && engaged) setGhostsBelow(true);
       } else if (engaged && now - lastMovingAt > REST_HANDOFF_MS) {
         disengage();
       }
 
       if (!engaged || !raster || !target) {
-        removeCounter();
         if (canvasDirty) {
-          gl.clearColor(0, 0, 0, 0);
-          gl.clear(gl.COLOR_BUFFER_BIT);
+          for (const p of pipelines) {
+            p.gl.clearColor(0, 0, 0, 0);
+            p.gl.clear(p.gl.COLOR_BUFFER_BIT);
+          }
           canvasDirty = false;
         }
         return;
@@ -760,22 +826,9 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const width = Math.floor(window.innerWidth * dpr);
       const height = Math.floor(window.innerHeight * dpr);
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-      gl.viewport(0, 0, width, height);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      canvasDirty = true;
 
       const origin = target.getBoundingClientRect();
 
-      gl.useProgram(program);
-      gl.bindBuffer(gl.ARRAY_BUFFER, quad);
-      gl.enableVertexAttribArray(aPos);
-      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-      gl.uniform1f(uStrength, strength);
       // ホバーの登場アニメーション（HOVER_REVEAL_MS の doc comment 参照）。
       // easeOutBack: 1 を少し超えてから戻る = 回転・しなり・スライドが一度
       // 反対側にわずかに行き過ぎてから収まる。紙の弾性の要。
@@ -786,114 +839,108 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       const revealE = 1 + 2.70158 * back * back * back + 1.70158 * back * back;
       const undone = 1 - revealE;
       // しなりは減衰振動（HOVER_CURL_PX の doc comment 参照）。
-      // 振幅・向きは登場ごとの抽選値（hoverSign / hover*Amp）。定数を直接
-      // 使っていた頃から式の形は同じで、係数だけ差し替わっている。
       const curl =
         hoverSign * hoverCurlAmp * Math.exp(-HOVER_CURL_DAMP * revealT) * Math.cos(revealT * Math.PI * HOVER_CURL_FREQ);
-      gl.uniform1f(uMode, hoverMode ? 1 : 0);
-      gl.uniform1f(uCurl, hoverMode ? curl : 0);
-      gl.uniform1f(uTheta, hoverMode ? hoverSign * hoverThetaAmp * undone : 0);
-      gl.uniform1f(uShift, hoverMode ? hoverShiftAmp * undone : 0);
-      gl.uniform1f(uScale, hoverMode ? HOVER_SCALE_START + (1 - HOVER_SCALE_START) * revealE : 1);
-      gl.uniform1f(uAlpha, hoverMode ? Math.min(1, revealT / 0.3) : 1);
-      gl.uniform2f(uViewport, window.innerWidth, window.innerHeight);
-      gl.uniform1f(uDir, directionRef.current || -1);
-      gl.uniform2f(uPxToUv, 1 / raster.cssWidth, 1 / raster.cssHeight);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.uniform1i(uTex, 0);
 
       const { padX, padY, cssWidth, cssHeight } = raster;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
+      // 紙モードのはみ出し余白。黒地の充填は廃止済み — マスクキャンバスが
+      // 紙の形どおりに反転を打ち消すので、余白は単なる描画の余地で、見た目
+      // には何も出ない（per direct follow-up "とにかく黒地を目立たせたく
+      // ない。できれば表示したくない"）。
       const marginX = hoverMode ? HOVER_QUAD_MARGIN_PX : QUAD_MARGIN_X;
       const marginY = hoverMode ? HOVER_QUAD_MARGIN_PX : QUAD_MARGIN_Y;
-      /** 紙モードのクアッドのスクリーン矩形（スナップ済み）。ループの後で
-       *  counterDiv をこれと同一矩形に置く。紙モードのカードは常に1枚。 */
-      let counterBox: { left: number; top: number; width: number; height: number } | null = null;
 
+      /** カードごとのクアッド情報 — ジオメトリは本体とマスクで完全に同一で
+       *  なければならない（1px でもずれると打ち消し損ねの縁が出る）ので、
+       *  一度だけ計算して両方のパイプラインで使い回す。 */
+      const quads: {
+        rect: [number, number, number, number];
+        uv: [number, number, number, number];
+        clamp: [number, number, number, number];
+        underline: [number, number];
+      }[] = [];
       for (const card of cards) {
         // Screen box, expanded so the lean and the trail have room to draw.
-        let sLeft = origin.left + card.x - marginX;
-        let sRight = origin.left + card.x + card.w + marginX;
-        let sTop = origin.top + card.y - marginY;
-        let sBottom = origin.top + card.y + card.h + marginY;
-        if (hoverMode) {
-          // counterDiv と 1px もずれないよう整数へスナップ（doc comment 参照。
-          // CSS px 整数なら整数 dpr の物理ピクセルにも整数で乗る）。
-          sLeft = Math.round(sLeft);
-          sRight = Math.round(sRight);
-          sTop = Math.round(sTop);
-          sBottom = Math.round(sBottom);
-          counterBox = { left: sLeft, top: sTop, width: sRight - sLeft, height: sBottom - sTop };
-        }
+        const sLeft = origin.left + card.x - marginX;
+        const sRight = origin.left + card.x + card.w + marginX;
+        const sTop = origin.top + card.y - marginY;
+        const sBottom = origin.top + card.y + card.h + marginY;
         if (sBottom < 0 || sTop > vh) continue;
-
-        gl.uniform4f(
-          uRect,
-          (sLeft / vw) * 2 - 1,
-          1 - (sBottom / vh) * 2,
-          (sRight / vw) * 2 - 1,
-          1 - (sTop / vh) * 2
-        );
-        // Same box in texture space. The texture's origin sits padX left of
-        // and padY above the target's own top-left corner. スクリーン側を
-        // スナップした場合もここが同じ座標（origin 相対）から出るので、
-        // テクスチャの対応はずれない。
-        gl.uniform4f(
-          uUvQuad,
-          (padX + (sLeft - origin.left)) / cssWidth,
-          (padY + (sBottom - origin.top)) / cssHeight,
-          (padX + (sRight - origin.left)) / cssWidth,
-          (padY + (sTop - origin.top)) / cssHeight
-        );
-        gl.uniform4f(
-          uClamp,
-          (padX + card.x - CLAMP_MARGIN_X) / cssWidth,
-          (padY + card.y - CLAMP_MARGIN_Y) / cssHeight,
-          (padX + card.x + card.w + CLAMP_MARGIN_X) / cssWidth,
-          (padY + card.y + card.h + CLAMP_MARGIN_Y) / cssHeight
-        );
         // This card's underline band, ±1px for antialiasing bleed — see
-        // uUnderline in the fragment shader. (-2, -1) = no underline. The
-        // stored underline coordinates are texture-space (padY included),
-        // the card's are target-relative — hence the padY on the card side.
+        // uUnderline in the fragment shader. (-2, -1) = no underline.
         const underline = raster.underlines.find(
           (u) => u.y >= padY + card.y - 2 && u.y <= padY + card.y + card.h + 2
         );
-        if (underline) {
-          gl.uniform2f(uUnderline, (underline.y - 1) / cssHeight, (underline.y + underline.h + 1) / cssHeight);
-        } else {
-          gl.uniform2f(uUnderline, -2, -1);
-        }
-
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        quads.push({
+          rect: [
+            (sLeft / vw) * 2 - 1,
+            1 - (sBottom / vh) * 2,
+            (sRight / vw) * 2 - 1,
+            1 - (sTop / vh) * 2,
+          ],
+          // Same box in texture space. The texture's origin sits padX left
+          // of and padY above the target's own top-left corner.
+          uv: [
+            (padX + card.x - marginX) / cssWidth,
+            (padY + card.y + card.h + marginY) / cssHeight,
+            (padX + card.x + card.w + marginX) / cssWidth,
+            (padY + card.y - marginY) / cssHeight,
+          ],
+          clamp: [
+            (padX + card.x - CLAMP_MARGIN_X) / cssWidth,
+            (padY + card.y - CLAMP_MARGIN_Y) / cssHeight,
+            (padX + card.x + card.w + CLAMP_MARGIN_X) / cssWidth,
+            (padY + card.y + card.h + CLAMP_MARGIN_Y) / cssHeight,
+          ],
+          underline: underline
+            ? [(underline.y - 1) / cssHeight, (underline.y + underline.h + 1) / cssHeight]
+            : [-2, -1],
+        });
       }
 
-      // カウンター反転レイヤーをクアッドと同一矩形に同期（doc comment 参照）。
-      // innerWidth ガードは canvas 自身の `hidden lg:block` の写し — エッグ中に
-      // ウィンドウを縮めた場合、canvas は消えるのにこの div だけ残ると、
-      // 背景がそこだけ二重反転で白く抜ける。
-      if (counterBox && window.innerWidth >= 1024) {
-        if (!counterDiv) {
-          counterDiv = document.createElement("div");
-          counterDiv.setAttribute("aria-hidden", "true");
-          const s = counterDiv.style;
-          s.position = "fixed";
-          s.zIndex = "-4"; // canvas（紙モードで -5）の上、本文（auto）の下
-          s.background = "#fff";
-          s.mixBlendMode = "difference";
-          s.pointerEvents = "none";
-          document.body.appendChild(counterDiv);
+      for (const p of pipelines) {
+        const isMask = p !== main;
+        const g = p.gl;
+        if (p.canvas.width !== width || p.canvas.height !== height) {
+          p.canvas.width = width;
+          p.canvas.height = height;
         }
-        counterDiv.style.left = `${counterBox.left}px`;
-        counterDiv.style.top = `${counterBox.top}px`;
-        counterDiv.style.width = `${counterBox.width}px`;
-        counterDiv.style.height = `${counterBox.height}px`;
-      } else {
-        removeCounter();
+        g.viewport(0, 0, width, height);
+        g.clearColor(0, 0, 0, 0);
+        g.clear(g.COLOR_BUFFER_BIT);
+        // マスクは紙モード専用 — Img のスクロール歪みは反転レイヤーの上
+        // （z 9998）で素の色を描くので、打ち消しは要らない。クリアだけ。
+        if (isMask && !hoverMode) continue;
+        g.useProgram(p.program);
+        g.bindBuffer(g.ARRAY_BUFFER, p.quad);
+        g.enableVertexAttribArray(p.aPos);
+        g.vertexAttribPointer(p.aPos, 2, g.FLOAT, false, 0, 0);
+        g.uniform1f(p.uStrength, strength);
+        g.uniform1f(p.uMode, hoverMode ? 1 : 0);
+        g.uniform1f(p.uMaskOnly, isMask ? 1 : 0);
+        g.uniform1f(p.uCurl, hoverMode ? curl : 0);
+        g.uniform1f(p.uTheta, hoverMode ? hoverSign * hoverThetaAmp * undone : 0);
+        g.uniform1f(p.uShift, hoverMode ? hoverShiftAmp * undone : 0);
+        g.uniform1f(p.uScale, hoverMode ? HOVER_SCALE_START + (1 - HOVER_SCALE_START) * revealE : 1);
+        g.uniform1f(p.uAlpha, hoverMode ? Math.min(1, revealT / 0.3) : 1);
+        g.uniform2f(p.uViewport, vw, vh);
+        g.uniform1f(p.uDir, directionRef.current || -1);
+        g.uniform2f(p.uPxToUv, 1 / cssWidth, 1 / cssHeight);
+        g.activeTexture(g.TEXTURE0);
+        g.bindTexture(g.TEXTURE_2D, p.texture);
+        g.uniform1i(p.uTex, 0);
+        for (const q of quads) {
+          g.uniform4f(p.uRect, q.rect[0], q.rect[1], q.rect[2], q.rect[3]);
+          g.uniform4f(p.uUvQuad, q.uv[0], q.uv[1], q.uv[2], q.uv[3]);
+          g.uniform4f(p.uClamp, q.clamp[0], q.clamp[1], q.clamp[2], q.clamp[3]);
+          g.uniform2f(p.uUnderline, q.underline[0], q.underline[1]);
+          g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+        }
       }
+      canvasDirty = true;
     };
 
     function handleResize() {
@@ -917,7 +964,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       if (settleTimer !== null) window.clearTimeout(settleTimer);
       window.removeEventListener("resize", handleResize);
-      removeCounter();
+      setGhostsBelow(false);
       if (engaged) target?.removeAttribute(HIDDEN_ATTRIBUTE);
       // The texture is the only large allocation here and is released
       // explicitly; the context itself is deliberately left alone.
@@ -931,38 +978,60 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       // compile a program against it and silently does nothing. Each mount
       // renders a fresh canvas element in production, so the context becomes
       // garbage along with it.
-      gl.deleteTexture(texture);
-      gl.deleteBuffer(quad);
-      gl.deleteProgram(program);
+      for (const p of pipelines) {
+        p.gl.deleteTexture(p.texture);
+        p.gl.deleteBuffer(p.quad);
+        p.gl.deleteProgram(p.program);
+      }
     };
   }, [intensityRef, directionRef]);
 
   return (
-    // zIndex は render ループがモードで切り替える（インラインの 9998 は
-    // 初期値 = Img グリッド用）:
-    //  - Img のスクロール歪み: 9998 — 反転レイヤー（z-9997）の**上**、
-    //    デバッググリッド（9999）の下 — per direct follow-up ("まだ色が
-    //    沈んでる")。以前は 9996（反転の下）で、写真をテクスチャの段階で
-    //    invert しておき difference に戻させる相殺をしていたが、invert は
-    //    sRGB で、difference の合成はディスプレイの色空間（P3 など）で
-    //    行われるため、広色域環境では往復が厳密に元へ戻らず彩度と明度が
-    //    わずかに沈む。反転の上に出して素の色をそのまま描けば、往復自体が
-    //    無くなる。
-    //  - Txt のホバー紙モード: -5 — 一覧のテキストより背面 — per direct
-    //    follow-up ("エッグ時のtxtのホバー時のイメージは一覧より背面に
-    //    表示して")。反転レイヤーの下に入るぶんの色反転は、クアッドと同一
-    //    矩形のカウンター反転（effect 内 counterDiv の doc comment 参照）で
-    //    二重反転して素の色に戻す — 二重とも合成段階の反転なので上記の
-    //    色沈みは起きない。
-    // inline style なのは z-[9998] が新規の arbitrary クラスで、この
-    // プロジェクトで繰り返し起きている生成CSSの遅延に踏まれないため
-    // （scroll-progress-gauge.tsx と同じ理由）。
-    // `pointer-events-none` keeps the real list underneath clickable.
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      className="pointer-events-none fixed inset-0 hidden h-full w-full lg:block"
-      style={{ zIndex: 9998 }}
-    />
+    <>
+      {/* 本体キャンバス。zIndex は render ループがモードで切り替える
+          （インラインの 9998 は初期値 = Img グリッド用）:
+          - Img のスクロール歪み: 9998 — 反転レイヤー（z-9997）の**上**、
+            デバッググリッド（9999）の下 — per direct follow-up ("まだ色が
+            沈んでる")。以前は 9996（反転の下）で、写真をテクスチャの段階で
+            invert しておき difference に戻させる相殺をしていたが、invert は
+            sRGB で、difference の合成はディスプレイの色空間（P3 など）で
+            行われるため、広色域環境では往復が厳密に元へ戻らず彩度と明度が
+            わずかに沈む。反転の上に出して素の色をそのまま描けば、往復自体が
+            無くなる。
+          - Txt のホバー紙モード: -5 — 一覧のテキストより背面 — per direct
+            follow-up ("エッグ時のtxtのホバー時のイメージは一覧より背面に
+            表示して")。反転レイヤーの下に入るぶんの色反転は、下のマスク
+            キャンバスとの二重反転で素の色に戻す。
+          inline style なのは z-[9998] が新規の arbitrary クラスで、この
+          プロジェクトで繰り返し起きている生成CSSの遅延に踏まれないため
+          （scroll-progress-gauge.tsx と同じ理由）。
+          `pointer-events-none` keeps the real list underneath clickable.
+          konami-viewport-fill — エッグ切り替えの板の3D回転中のビューポート
+          固定（konami-wipe.tsx の pinViewportFills 参照）。 */}
+      <canvas
+        ref={canvasRef}
+        aria-hidden
+        className="konami-viewport-fill pointer-events-none fixed inset-0 hidden h-full w-full lg:block"
+        style={{ zIndex: 9998 }}
+      />
+      {/* マスクキャンバス — 紙モード（Txt ホバー）専用の「紙の形どおりの
+          カウンター反転」。本体（紙モードで z -5、素の色）は全面反転レイヤー
+          （z-9997）の下に居るため、そのままでは紙が一度色反転されてしまう。
+          ここに紙とまったく同じアルファの白を difference で重ねると、紙の
+          画素だけが二重反転で素の色に戻る（二重とも合成段階の反転なので
+          色沈みも起きない）。以前は矩形の div（counterDiv）+ クアッド全面の
+          黒地充填で同じことをしていたが、黒地が背後の3Dロゴを矩形に隠して
+          目立った — per direct follow-up ("とにかく黒地を目立たせたくない。
+          できれば表示したくない")。紙の形そのものをマスクにすれば地の充填が
+          不要になり、ロゴの線は紙の真下以外すべて見えたままになる。
+          z -4 = 本体（紙モードで -5）の上、本文（auto）の下。Img の
+          スクロール歪みでは常に空（render ループ参照）。 */}
+      <canvas
+        ref={maskCanvasRef}
+        aria-hidden
+        className="konami-viewport-fill pointer-events-none fixed inset-0 hidden h-full w-full lg:block"
+        style={{ zIndex: -4, mixBlendMode: "difference" }}
+      />
+    </>
   );
 }

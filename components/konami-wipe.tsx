@@ -3,263 +3,228 @@
 import { useEffect, useRef } from "react";
 
 /**
- * エッグ切り替えのトランジション — ブロブ状の反転がランダムに画面を
- * 覆っていき、覆われた場所は**その場で**エッグ（ダークモード）の見た目に
- * なる。全面を覆い切ったら本物のエッグに差し替えて終わり。剥がしの動きは
- * 無い — per direct follow-up（w-wired.com のスクリーンショット付き →
- * "ブロブレイヤーをマスクにするイメージ"）。
+ * エッグ切り替えのトランジション — 表示中の画面が立体的に左上へ倒れて
+ * はけ、右下からダークモードの画面が起き上がってくる — per direct
+ * follow-up（Savee の立方体スクロールのスクリーンショット付き "切り替え
+ * 演出は、表示中のデフォルト時の画面が貼付のように立体的に左上にはけて、
+ * 右下からダークモードの画面が現れるイメージ 立方体の上面にデフォルトの
+ * 画、側面にダークモードの画がある位置関係"）。それまでの中央回転カード
+ * （同動画の平面回転の解釈）はこの指示で差し替え。
  *
- * このキャンバスは「エッグの全面反転レイヤー（konami-glitch.tsx の
- * z-9997 の白 difference div）をブロブの形に切り抜いたもの」そのもの:
- * 白 + mix-blend-difference で、同じ z 9997 に置かれる。親はワイプ開始の
- * 時点で html の konami-glitch クラスまで先に立てる（ON方向は active を
- * 即 true にする）ので、写真の相殺反転（.konami-glitch img { invert }）や
- * アイドルレイヤーの前面化（.konami-glitch-no-blend、z 9998 = この
- * キャンバスより上）も最初から効いている。つまりブロブの内側は本物の
- * エッグと画素単位で同じ構成 — 初版の「z 10000 の黒/白ベタで全部を機械的に
- * 反転する」方式で出た「写真とアイドルレイヤーが一瞬反転して見える」
- * （per direct follow-up "反転表示が一瞬出るの気になるな。アイドルレイヤー
- * も一瞬反転されて出る"）は、アイドルレイヤーがこのキャンバスの上に
- * 居ることで構造的に起きなくなった。
+ * これまでの演出（ブロブ/レンズ/水位線/ノイズ/回転カード）が全て
+ * 「ページは静止したまま、上に difference のマスクを重ねる」方式だったのに
+ * 対し、これは **ページの板そのものを CSS 3D で回す**:
  *
- * mode="off"（エッグ解除）は同じ絵の反対再生ではなく反転マスクの反転:
- * 全面白（＝現行の反転レイヤーと同一）から始めて、ブロブの形に穴を開けて
- * いく。穴の場所はライトモードに戻って見え、全面が穴になったら親が
- * active を落として本当に解除する。
+ *  - 前半: <body> を「立方体の上面になっていく」向き（対角軸の rotate3d）
+ *    に倒しながら、左上へ退けて少し縮める。中身はライトモードのまま。
+ *  - 折り返し: 板が最も倒れた瞬間に onSwitch → 親が active を反転。
+ *    エッグの反転レイヤー・3Dロゴ・グレインは body の中に居るので、
+ *    次のフレームから板の中身は丸ごとダークモードになっている。
+ *  - 後半: 反対側（右下・逆向きの傾き）から同じ板が起き上がって据わる。
  *
- * 写真（サムネイル等）はワイプの反転対象から除外する — per direct
- * follow-up ("img時でエッグ発動させるとサムネが一瞬反転してからブロブ
- * レイヤーがかぶる")。写真はライトモードでもエッグ定常でも原色（定常側は
- * .konami-glitch img { invert } と全面 difference の相殺）なので、遷移中の
- * どの瞬間も原色のままが正しい。だが CSS フィルタは空間的にマスクできない
- * ため、クラスを立てた瞬間に未反転領域の写真だけがネガに見えてしまって
- * いた。対処は二段: ①ワイプ中は konami-wiping クラス（globals.css）で
- * 相殺反転そのものを保留し、②このキャンバスが毎フレーム、可視の
- * img/video の矩形の alpha を 0 に抜いて difference の対象からも外す。
- * ①+② で写真は常に素通し＝常に原色。矩形単位なので、ブロブが写真を
- * またぐフレームでは写真だけ四角く原色が残るが、それは「覆われた場所は
- * ダークモードの見た目（＝写真は原色）」の先取りでもある。
- * 除外の例外（矩形を抜かないもの）:
- *  - .konami-glitch-no-blend 内（アイドルレイヤー）— このキャンバスより
- *    上（z 9998）に居るのでそもそも反転されない。抜くと透過部分の背景に
- *    未反転の四角が空く。
- *  - .project-hover-preview 内（Txt ホバーの残像）— ラッパーが半透明で、
- *    抜くと透けた背景の四角が未反転で残る。残像は不透明度 10% なので
- *    反転されても実質見えない。
- *  - src が .svg の img（フッターのロゴマーク等）— 透過画像なので同じく
- *    四角が空く。こちらは相殺反転側（globals.css）も保留しないので、
- *    定常時と同じ扱いのまま。
+ * 一枚の板の前半/後半で向きと中身が入れ替わるので、「上面（ライト）と
+ * 側面（ダーク）が別の面である立方体の転がり」に見える。両面を同時に
+ * 見せることはできない（ページは一枚しかない）ため、最も倒れた角度での
+ * カットがその近似。
  *
- * トレードオフとして残るもの（許容）: 3Dロゴ背景と warp canvas はワイプ中
- * マウントしない（ロゴは黒線で描かれており、まだ反転が全面でない画面では
- * 未反転領域に黒いワイヤーフレームが素で見えてしまう）ので、切り替えの
- * 瞬間にロゴがポンと出る/消える。また ON ワイプ中の未反転領域は
- * --background が一足先に #fff になるぶん、クリーム（#f6f6f4）よりわずかに
- * 白い。どちらも「反転すべきでないものが反転して見える」よりずっと軽い。
+ * 部分反転の瞬間が存在しない（板の中身は常にどちらかの完全な状態）ので、
+ * これまでのワイプが背負っていた写真の除外機構 — konami-wiping クラスに
+ * よる相殺反転の保留と、可視 img/video の矩形抜き — は丸ごと不要になり、
+ * このコンポーネントは何も描画しない純粋なアニメーターになった。
  *
- * ブロブの形はしきい値ノイズ: 起動のたびに乱数で滑らかな2Dノイズ場を作り、
- * 「ノイズ値 < しきい値」のピクセルだけを対象にする。しきい値を 0→1 に
- * 動かすとノイズの谷から湧いて有機的に繋がりながら広がる(参照画像の
- * 見え方)。解像度は 1/PIXEL_SIZE に落として image-rendering: pixelated で
- * 拡大 — 毎フレーム全ピクセルのしきい値判定をするため軽くする意味と、
- * 参照画像の数px単位で段付いた輪郭の再現を兼ねる。
+ * 既知の割り切り: <body> に transform が付いている間、position: fixed の
+ * 子孫（ヘッダー・MENU ピル等）は body の箱基準に再配置される（transform
+ * を持つ祖先は fixed の containing block になる）。ページ最上部で発動する
+ * 限りビューポートと一致するので完全に正しく写るが、スクロールした状態で
+ * 発動すると、回転中の板からヘッダー等の fixed 要素が一時的に外れる
+ * （transform が外れた瞬間に戻る）。回転の中心は transform-origin を
+ * 「現在のビューポート中心」に合わせてあるので、本文（in-flow の内容）は
+ * スクロール位置に関わらず正しく回る。
  */
 
-/** 覆い切るまでの時間と、覆い切ってから切り替えるまでの保持（ms）。
- *  保持は「全面反転の絵」を確実に1フレーム以上見せてから差し替えるための
- *  マージン。700 → 900 → 800（いずれも直接の指示）。 */
-const COVER_MS = 800;
-const HOLD_MS = 80;
+/** 全体の所要時間（ms）。前半（はけ）と後半（起き上がり）で半分ずつ。 */
+const TOTAL_MS = 1200;
 
-/** ノイズ1ピクセルの表示サイズ（CSS px）。輪郭の段の粗さでもある。 */
-const PIXEL_SIZE = 3;
+/** 最も倒れたときの角度（度）。90 に近いほど完全に寝るが、切り替えの
+ *  カットは深い角度どうしのほうが立方体の稜線らしく繋がる。 */
+const MAX_ANGLE_DEG = 78;
 
-/** ノイズのオクターブ（cell = 格子1マスの低解像度px数、amp = 寄与）。
- *  1つ目がブロブの大きさの主成分（44 × PIXEL_SIZE ≈ 130 CSS px）、
- *  2つ目が輪郭の細かい欠け・飛び地を足す。 */
-const OCTAVES = [
-  { cell: 44, amp: 1 },
-  { cell: 14, amp: 0.45 },
-] as const;
+/** 回転軸 rotate3d(1, AXIS_Y, 0, θ) の Y 成分。0 だと純粋な前後倒れ
+ *  （真上へはける）。負の値を混ぜると板の右側が先に沈む＝左上へはける
+ *  対角の倒れ方になる。 */
+const AXIS_Y = -0.45;
 
-/** smoothstep — 格子の補間に。線形だと格子の菱形が輪郭に透ける。 */
-function smooth(t: number): number {
-  return t * t * (3 - 2 * t);
-}
+/** はけ側の平行移動量（ビューポート比）と、最も倒れたときの縮み。 */
+const SHIFT_X_RATIO = 0.22;
+const SHIFT_Y_RATIO = 0.3;
+const MIN_SCALE = 0.8;
 
-/** 値ノイズ（乱数格子の平滑補間の重ね合わせ）を [0.01, 0.99] に正規化して
- *  返す。上限が 1 未満であることが「しきい値 1 で必ず全画素が対象」の保証。 */
-function makeNoise(w: number, h: number): Float32Array {
-  const field = new Float32Array(w * h);
-  for (const { cell, amp } of OCTAVES) {
-    const gw = Math.ceil(w / cell) + 2;
-    const gh = Math.ceil(h / cell) + 2;
-    const grid = new Float32Array(gw * gh);
-    for (let i = 0; i < grid.length; i++) grid[i] = Math.random();
-    for (let y = 0; y < h; y++) {
-      const gy = y / cell;
-      const y0 = Math.floor(gy);
-      const fy = smooth(gy - y0);
-      for (let x = 0; x < w; x++) {
-        const gx = x / cell;
-        const x0 = Math.floor(gx);
-        const fx = smooth(gx - x0);
-        const top = grid[y0 * gw + x0] + (grid[y0 * gw + x0 + 1] - grid[y0 * gw + x0]) * fx;
-        const bottom =
-          grid[(y0 + 1) * gw + x0] + (grid[(y0 + 1) * gw + x0 + 1] - grid[(y0 + 1) * gw + x0]) * fx;
-        field[y * w + x] += amp * (top + (bottom - top) * fy);
-      }
-    }
-  }
-  let min = Infinity;
-  let max = -Infinity;
-  for (let i = 0; i < field.length; i++) {
-    if (field[i] < min) min = field[i];
-    if (field[i] > max) max = field[i];
-  }
-  const range = max - min || 1;
-  for (let i = 0; i < field.length; i++) {
-    field[i] = 0.01 + (0.98 * (field[i] - min)) / range;
-  }
-  return field;
-}
+/** 遠近感（px）。小さいほどパースが強い。 */
+const PERSPECTIVE_PX = 1600;
+
+/** 板の外に見える舞台の背景色。参照動画のぼんやりした無彩色の余白。
+ *  ライト→ダークどちらの面とも喧嘩しない中間の暗いグレー。 */
+const BACKDROP_BG = "#161616";
 
 export function KonamiWipe({
   mode,
+  onSwitch,
   onComplete,
 }: {
-  /** "on" = 反転ブロブが増えていく（エッグ起動）。"off" = 全面反転から
-   *  ブロブ状に穴が開いていく（エッグ解除）。 */
+  /** "on" = ライトが左上へはけてダークが右下から。"off" = ON の**完全な
+   *  逆再生** — per direct follow-up ("エッグ時に再度コナミコマンドを
+   *  入力したときは、エッグ表示時の逆再生になるようにアニメーションして"):
+   *  ダークが来た道（右下・同じ傾き）へ戻っていき、ライトが左上へはけた
+   *  ときの姿勢から起き上がって戻る。実装はタイムラインを 1-t で逆向きに
+   *  評価するだけ（render 内の T 参照）。 */
   mode: "on" | "off";
-  /** 覆い切って（"off" は開け切って）HOLD_MS 置いたら一度だけ呼ばれる。
-   *  親はここで本物のエッグへの差し替え（"off" なら active を落とす）と、
-   *  このコンポーネントを外すのを**同じハンドラで**行う — 同一コミットに
-   *  入ることで、キャンバスと本物の反転レイヤーが隙間なく入れ替わる。 */
+  /** 板が最も倒れた折り返しで一度だけ呼ばれる。親はここで active を反転
+   *  する — 後半の板の中身がダークモード（"off" ならライト）になる。 */
+  onSwitch: () => void;
+  /** 板が据わり切ったら。親はこれでこのコンポーネントを外す。 */
   onComplete: () => void;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  // コールバックとモードは ref 経由で読む — 親の再レンダリングで参照が
-  // 変わっても走行中のアニメーションを作り直さないため（deps を空に保つ。
-  // mode は走行中に変わらない前提だが、初回値の閉じ込めで十分）。
+  // コールバックとモードは ref 経由で読む — 親の再レンダリング（折り返しの
+  // active 反転で必ず起きる）でアニメーションを作り直さないため。
+  const onSwitchRef = useRef(onSwitch);
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
+    onSwitchRef.current = onSwitch;
     onCompleteRef.current = onComplete;
   });
   const modeRef = useRef(mode);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const html = document.documentElement;
+    const body = document.body;
     const on = modeRef.current === "on";
-    // ノイズはこれまでどおり低解像度（1/PIXEL_SIZE）だが、表示用の
-    // キャンバスはフル解像度にして、低解像度のブロブを smoothing 無しの
-    // drawImage で PIXEL_SIZE 倍に引き伸ばす。以前は低解像度バッファを
-    // CSS で全画面に引き伸ばしていたが、その方式だと ①バッファ幅×3 と
-    // ビューポート幅のわずかな差で拡大率が 3 からずれて座標が画面端ほど
-    // 流れる ②写真の「抜き」も 3px グリッドに丸まる、の合わせ技で、抜きの
-    // 矩形がサムネごとに 2〜3px ずれて見えていた — per direct follow-up
-    // ("img時のサムネ位置が揃ってなくて変")。フル解像度なら抜きは
-    // clearRect で CSS px 精度、ブロブの段付き（3px）は維持される。
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    canvas.width = Math.max(1, Math.floor(vw * dpr));
-    canvas.height = Math.max(1, Math.floor(vh * dpr));
-    const w = Math.max(1, Math.ceil(vw / PIXEL_SIZE));
-    const h = Math.max(1, Math.ceil(vh / PIXEL_SIZE));
-    const ctx = canvas.getContext("2d");
-    const low = document.createElement("canvas");
-    low.width = w;
-    low.height = h;
-    const lowCtx = low.getContext("2d");
-    let frame: number | null = null;
-    if (!ctx || !lowCtx) {
-      // 2D コンテキストが取れない環境ではワイプ無しで即座に切り替える —
-      // 演出は消えるが機能（エッグの反転）は損なわない。
-      frame = requestAnimationFrame(() => onCompleteRef.current());
-      return () => {
-        if (frame !== null) cancelAnimationFrame(frame);
-      };
-    }
+    const shiftX = window.innerWidth * SHIFT_X_RATIO;
+    const shiftY = window.innerHeight * SHIFT_Y_RATIO;
 
-    const noise = makeNoise(w, h);
-    const img = lowCtx.createImageData(w, h);
-    const data = img.data;
-    // 反転レイヤーの白（difference の相手）。rgb を先に全部 255 にして
-    // おき、毎フレームは alpha だけ書き換える。
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = 255;
-      data[i + 1] = 255;
-      data[i + 2] = 255;
-    }
-    ctx.imageSmoothingEnabled = false; // 段付きの輪郭のまま拡大する
+    const prev = {
+      htmlBackground: html.style.background,
+      perspective: html.style.perspective,
+      perspectiveOrigin: html.style.perspectiveOrigin,
+      transform: body.style.transform,
+      transformOrigin: body.style.transformOrigin,
+      willChange: body.style.willChange,
+      clipPath: body.style.clipPath,
+    };
+    html.style.background = BACKDROP_BG;
+    html.style.perspective = `${PERSPECTIVE_PX}px`;
+    html.style.perspectiveOrigin = "50% 50%";
+
+    // 板をビューポートの矩形に切り出す — per direct follow-up ("途中
+    // カクカクして極端にコマ落ちしてうまく動作してない")。clip しないと
+    // 回転する板 = ドキュメント全体（数千px）で、scale/3D回転の毎フレーム
+    // 変化のたびにその全面を再ラスタライズしてコマ落ちしていた。clip すれば
+    // 再ラスタライズは1画面ぶんで済み、見た目も「いま見えている画面が
+    // 有限のカードとしてはける」参照動画の読み味そのものになる。
+    const scrollY = window.scrollY;
+    const docHeight = Math.max(body.scrollHeight, scrollY + window.innerHeight);
+    const clipBottom = Math.max(0, docHeight - scrollY - window.innerHeight);
+    body.style.clipPath = `inset(${scrollY}px 0px ${clipBottom}px 0px)`;
+
+    /** fixed inset-0 の全面レイヤー（.konami-viewport-fill — 3Dロゴ・
+     *  反転レイヤー・warp canvas・グレイン）をビューポート矩形に固定し直す。
+     *  body に transform が付くと fixed の containing block が body
+     *  （＝ドキュメント全体の箱）に変わり、inset-0 がドキュメント全高に
+     *  引き伸ばされる — 3Dロゴはドキュメント中央（画面外）へ行き、
+     *  グレインは縦に伸びる。毎フレーム掛け直すのは、対象の一部（エッグ
+     *  本体）が折り返しの active 反転で**ワイプ中に**マウントされるため。
+     *  CSS ルールではなくインラインなのは、dev の生成CSS遅延で新規ルールが
+     *  効かないことが繰り返しあったため。 */
+    const pinViewportFills = () => {
+      document.querySelectorAll<HTMLElement>(".konami-viewport-fill").forEach((el) => {
+        if (el.style.top === `${scrollY}px`) return;
+        el.style.top = `${scrollY}px`;
+        el.style.bottom = "auto";
+        el.style.height = "100vh";
+      });
+    };
+    const unpinViewportFills = () => {
+      document.querySelectorAll<HTMLElement>(".konami-viewport-fill").forEach((el) => {
+        el.style.removeProperty("top");
+        el.style.removeProperty("bottom");
+        el.style.removeProperty("height");
+      });
+    };
+    // 回転の中心を「現在のビューポートの中心」に固定する — body の
+    // transform-origin は既定では body の箱（＝ドキュメント全体）の中心で、
+    // スクロールしていると画面外を軸に回ってしまう。
+    body.style.transformOrigin = `50% ${window.scrollY + window.innerHeight / 2}px`;
+    body.style.willChange = "transform";
+
+    let switched = false;
+    let frame: number | null = null;
     const start = performance.now();
-    const easeInOut = (t: number) => t * t * (3 - 2 * t);
+    const easeInCubic = (t: number) => t * t * t;
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const restore = () => {
+      html.style.background = prev.htmlBackground;
+      html.style.perspective = prev.perspective;
+      html.style.perspectiveOrigin = prev.perspectiveOrigin;
+      body.style.transform = prev.transform;
+      body.style.transformOrigin = prev.transformOrigin;
+      body.style.willChange = prev.willChange;
+      body.style.clipPath = prev.clipPath;
+      unpinViewportFills();
+    };
 
     const render: FrameRequestCallback = (now) => {
-      const elapsed = now - start;
-      if (elapsed >= COVER_MS + HOLD_MS) {
+      const t = Math.min(1, (now - start) / TOTAL_MS);
+      if (t >= 1) {
+        restore();
         onCompleteRef.current();
         return;
       }
-      const threshold = elapsed < COVER_MS ? easeInOut(elapsed / COVER_MS) : 1;
-      for (let i = 0; i < noise.length; i++) {
-        const inBlob = noise[i] < threshold;
-        // on: ブロブの内側が反転（白）。off: ブロブの内側が穴（透明）。
-        data[i * 4 + 3] = inBlob === on ? 255 : 0;
+      // 中身の切り替え（active 反転）は再生方向に関わらず実時間の折り返しで。
+      if (!switched && t >= 0.5) {
+        switched = true;
+        onSwitchRef.current();
       }
-      lowCtx.putImageData(img, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // 低解像度1ピクセル = 画面の PIXEL_SIZE px、を dpr 込みで正確に。
-      ctx.drawImage(low, 0, 0, w * PIXEL_SIZE * dpr, h * PIXEL_SIZE * dpr);
-
-      // 写真の矩形を反転対象から抜く（コンポーネントの doc comment 参照）。
-      // フル解像度の clearRect なので実測位置にぴったり合う。毎フレーム
-      // 実測するのは、ワイプ中もスクロールできる（Lenis は止めていない）
-      // ため。対象は高々数十枚で、矩形読みは1枚あたりマイクロ秒オーダー。
-      for (const el of document.querySelectorAll<HTMLElement>("img, video")) {
-        if (el.closest(".konami-glitch-no-blend, .project-hover-preview")) continue;
-        if (
-          el instanceof HTMLImageElement &&
-          (el.currentSrc || el.src).split("?")[0].endsWith(".svg")
-        ) {
-          continue;
-        }
-        // 不可視の img は抜かない — per direct follow-up ("右上再生中の曲が
-        // あると、ジャケの四角部分がエッグ時に白の四角で一瞬表示される")。
-        // 再生中ティッカーのジャケ画像は DOM に常在する opacity-0 の img
-        // （ホバーで初めて見える）で、見えていないのに矩形を抜くと、反転
-        // 領域の中にジャケサイズの未反転（明るい）四角だけが空く。毎フレーム
-        // 判定しているので、ワイプ中にホバーして現れれば抜きも追従する。
-        const style = window.getComputedStyle(el);
-        if (Number(style.opacity) < 0.05 || style.visibility !== "visible") continue;
-        const r = el.getBoundingClientRect();
-        if (r.width <= 0 || r.height <= 0) continue;
-        if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) continue;
-        ctx.clearRect(r.left * dpr, r.top * dpr, r.width * dpr, r.height * dpr);
+      // "off" は ON のタイムラインを 1-t で逆向きに評価する＝完全な逆再生
+      // （mode の doc comment 参照）。前半/後半・イージングの向きも自動で
+      // 鏡映になる。
+      const T = on ? t : 1 - t;
+      let angle: number;
+      let tx: number;
+      let ty: number;
+      let scale: number;
+      if (T < 0.5) {
+        // ライト側の面: 倒しながら左上へ。加速していく easeIn — 折り返しで
+        // 速度が乗ったまま面が切り替わるのが立方体の転がりの肝。
+        const p = easeInCubic(T / 0.5);
+        angle = MAX_ANGLE_DEG * p;
+        tx = -shiftX * p;
+        ty = -shiftY * p;
+        scale = 1 - (1 - MIN_SCALE) * p;
+      } else {
+        // ダーク側の面: 右下から起き上がって据わる（OFF ではこの逆向き＝
+        // 据わった状態から右下へ倒れていく）。
+        const p = 1 - easeOutCubic((T - 0.5) / 0.5); // 1 → 0
+        angle = -MAX_ANGLE_DEG * p;
+        tx = shiftX * p;
+        ty = shiftY * p;
+        scale = 1 - (1 - MIN_SCALE) * p;
       }
-
+      body.style.transform =
+        `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) ` +
+        `rotate3d(1, ${AXIS_Y}, 0, ${angle.toFixed(3)}deg) ` +
+        `scale(${scale.toFixed(4)})`;
+      pinViewportFills();
       frame = requestAnimationFrame(render);
     };
     frame = requestAnimationFrame(render);
 
     return () => {
       if (frame !== null) cancelAnimationFrame(frame);
+      // 途中でアンマウントされた場合（ページ遷移での打ち切り等）も舞台を
+      // 必ず元へ戻す。
+      restore();
     };
   }, []);
 
-  return (
-    // zIndex 9997 — 本物の全面反転レイヤー（konami-glitch.tsx）と同じ座。
-    // アイドルレイヤー等の .konami-glitch-no-blend（9998）より下に居ること
-    // が肝心（コンポーネントの doc comment 参照）。inline なのは他の
-    // konami 系と同じ理由（生成CSSの遅延回避）。hidden lg:block も本物の
-    // 反転レイヤーに合わせる。バッファはフル解像度（effect 参照）なので
-    // image-rendering は不要になった。
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      className="pointer-events-none fixed inset-0 hidden h-full w-full lg:block"
-      style={{ zIndex: 9997, mixBlendMode: "difference" }}
-    />
-  );
+  return null;
 }
