@@ -120,6 +120,21 @@ const SPARK_DURATION_MAX_MS = 1700;
  *  「線の上を光が走った」と読めるようにする。 */
 const SPARK_OPACITY = 0.9;
 
+/** 登場アニメーション（線がランダムに頂点から描かれる — per direct
+ *  follow-up "背面ロゴは、線がランダムに頂点から描かれて表示されるように
+ *  して"）のパラメータ。パスごと・エッジ線ごとに delay と duration を
+ *  この範囲で抽選するので、全体としては「あちこちの頂点から線が伸びて
+ *  ロゴが組み上がる」見え方になる。 */
+const DRAW_DELAY_MAX_MS = 450;
+const DRAW_DURATION_MIN_MS = 500;
+const DRAW_DURATION_MAX_MS = 900;
+/** エッジ線（Z方向）は輪郭より少し遅れて伸ばす — 輪郭が先に「描かれて」
+ *  から奥行きが繋がるほうが、組み上がりの順序として読める。 */
+const DRAW_EDGE_EXTRA_DELAY_MS = 150;
+/** 最初の走り線バッチを描き込み完了後まで遅らせる（ms）。描き込み中に
+ *  走り線まで走ると、どれが輪郭でどれが演出か分からなくなる。 */
+const INITIAL_SPARK_DELAY_MS = 1300;
+
 /**
  * SVG パス文字列から頂点（各コマンドの終点）の絶対座標を集める。
  * このロゴが実際に使うコマンドは M/L/H/V/C/Z のみ（全て絶対座標）なので、
@@ -182,6 +197,8 @@ export function KonamiLogo3D() {
     let frame: number | null = null;
     /** fetch 済みのロゴのパス。走り線のスポーンが読む。 */
     let logoPaths: string[] = [];
+    /** 最初の走り線バッチの遅延タイマー（INITIAL_SPARK_DELAY_MS 参照）。 */
+    let initialSparkTimer: number | null = null;
 
     const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -265,6 +282,31 @@ export function KonamiLogo3D() {
           // スライスの z（レンダリング側と同じ式）。正 = 元の前面 = --logo-line-a。
           const z = (i / (SLICE_COUNT - 1) - 0.5) * THICKNESS_PX;
           host.innerHTML = buildSvg(z > 0 ? "--logo-line-a" : "--logo-line-b");
+          // 登場の描き込み（DRAW_* の doc comment 参照）: stroke-dash の
+          // draw-on。pathLength=1000 に正規化し、全長ぶんの dasharray を
+          // 張って dashoffset を ±1000 → 0 へ動かすと、線がパスの始点
+          // （または終点）＝頂点から伸びていく。delay・duration・向きは
+          // パスごと（前面/背面スライスも別々）に抽選。fill: backwards で
+          // delay 中は白紙。終了後はアニメーションが外れ、dashoffset の
+          // 既定値 0 ＝ dasharray の実線部分が全長を覆う状態に静止する。
+          host.querySelectorAll("path").forEach((path) => {
+            path.setAttribute("pathLength", "1000");
+            path.setAttribute("stroke-dasharray", "1000 1000");
+            path.animate(
+              [
+                { strokeDashoffset: Math.random() < 0.5 ? 1000 : -1000 },
+                { strokeDashoffset: 0 },
+              ],
+              {
+                delay: Math.random() * DRAW_DELAY_MAX_MS,
+                duration:
+                  DRAW_DURATION_MIN_MS +
+                  Math.random() * (DRAW_DURATION_MAX_MS - DRAW_DURATION_MIN_MS),
+                easing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
+                fill: "backwards",
+              }
+            );
+          });
         });
 
         // 手前と奥のロゴの頂点同士を繋ぐエッジ線 — per direct follow-up
@@ -291,9 +333,28 @@ export function KonamiLogo3D() {
                 `<div style="position:absolute;left:${((x / LOGO_VIEWBOX.w) * 100).toFixed(3)}%;top:${((y / LOGO_VIEWBOX.h) * 100).toFixed(3)}%;width:${THICKNESS_PX}px;height:0.5px;background:linear-gradient(to right, rgba(0,0,0,var(--logo-line-a)), rgba(0,0,0,var(--logo-line-b)));transform:translate(-50%,-50%) rotateY(90deg);"></div>`
             )
             .join("");
+          // エッジ線の登場: clip-path を右（＝rotateY(90°) 後の奥側）から
+          // 開いて、手前の頂点から奥へ伸ばす。transform は translate +
+          // rotateY を既に持っているので、scaleX ではなく clip で伸ばす
+          // （transform-origin の調整が要らず、位置も傾きも一切触らない）。
+          // 輪郭より少し遅らせて「面が描かれてから奥行きが繋がる」順にする。
+          edgesHost.querySelectorAll("div").forEach((div) => {
+            div.animate(
+              [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }],
+              {
+                delay: DRAW_EDGE_EXTRA_DELAY_MS + Math.random() * DRAW_DELAY_MAX_MS,
+                duration:
+                  DRAW_DURATION_MIN_MS +
+                  Math.random() * (DRAW_DURATION_MAX_MS - DRAW_DURATION_MIN_MS),
+                easing: "ease-out",
+                fill: "backwards",
+              }
+            );
+          });
         }
-        // 最初のバッチはロード直後に。以降は下の interval が3秒おきに放つ。
-        spawnSparks();
+        // 最初のバッチは描き込みが済んでから（INITIAL_SPARK_DELAY_MS の
+        // doc comment 参照）。以降は下の interval が定期的に放つ。
+        initialSparkTimer = window.setTimeout(spawnSparks, INITIAL_SPARK_DELAY_MS);
       } catch {
         // ロゴが読めなければ背景は単に無地のまま — エッグの他の要素は無傷。
       }
@@ -349,6 +410,7 @@ export function KonamiLogo3D() {
       disposed = true;
       if (frame !== null) cancelAnimationFrame(frame);
       window.clearInterval(sparkTimer);
+      if (initialSparkTimer !== null) window.clearTimeout(initialSparkTimer);
       window.removeEventListener("mousemove", handleMouse);
     };
   }, []);

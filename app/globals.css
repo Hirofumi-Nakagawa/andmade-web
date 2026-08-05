@@ -1062,3 +1062,18 @@ html.konami-glitch [data-konami-warp] > li * {
 .konami-glitch video {
   filter: invert(1) !important;
 }
+
+/* ワイプ（konami-wipe.tsx）走行中は、上の相殺反転を保留する — per direct
+ * follow-up ("img時でエッグ発動させるとサムネが一瞬反転してからブロブ
+ * レイヤーがかぶる")。相殺の相手（全面 difference）がまだブロブ形にしか
+ * 存在しない間にフィルタだけ全域へ掛かると、未反転領域の写真がネガに
+ * 見える。ワイプ側は写真の矩形を difference の対象からも抜いている
+ * （konami-wipe.tsx の doc comment 参照）ので、この保留と合わせて写真は
+ * ワイプ中ずっと素通し＝原色になる。konami-wiping クラスは
+ * konami-glitch.tsx がワイプの走行に合わせて <html> に付け外しする。
+ * .svg の img（フッターのロゴマーク等、透過画像）だけは保留しない —
+ * ワイプ側も矩形を抜かないので、定常時と同じ相殺ペアのまま。 */
+html.konami-glitch.konami-wiping img:not([src$=".svg"]),
+html.konami-glitch.konami-wiping video {
+  filter: none !important;
+}

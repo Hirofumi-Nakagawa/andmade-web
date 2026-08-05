@@ -6,6 +6,7 @@ import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
 import { KonamiLogo3D } from "@/components/konami-logo-3d";
 import { KonamiWarpCanvas } from "@/components/konami-warp-canvas";
+import { KonamiWipe } from "@/components/konami-wipe";
 
 /** ↑↑↓↓←→←→BA. Compared against `event.key`, so the letters are matched
  *  case-insensitively below (Shift or Caps Lock shouldn't break it). */
@@ -107,6 +108,20 @@ export function KonamiGlitch() {
   const pathname = usePathname();
   const isTopPage = pathname === "/";
   const [active, setActive] = useState(false);
+  /** 切り替えトランジション（KonamiWipe — ブロブ状の反転マスクが画面を
+   *  覆っていく演出）の走行状態。null = 非走行 — per direct follow-up
+   *  ("黒のレイヤーがランダムに覆いかぶさってきて" → "ブロブレイヤーを
+   *  マスクにするイメージ" → "反転表示が一瞬出るの気になるな")。
+   *
+   *  ワイプ中はエッグの全面反転レイヤーの**代わり**に KonamiWipe の
+   *  キャンバス（同じ z 9997 の白 difference、ただしブロブ形）が立つ。
+   *  ブロブ内を本物のエッグと同じ見た目にするため、"on" ではワイプ開始と
+   *  同時に active も true にして CSS 側（写真の相殺反転・アイドル
+   *  レイヤーの前面化・背景色）を先に効かせる。3Dロゴと warp canvas
+   *  だけはワイプ完了までマウントしない（未反転領域に黒線ロゴが素で
+   *  見えてしまうため）— 描画側のゲートは最下部参照。"off" は active を
+   *  保ったまま反転マスクに穴が開いていき、開け切ったら active を落とす。 */
+  const [wipeMode, setWipeMode] = useState<"on" | "off" | null>(null);
   /** How far into SEQUENCE the current run of keystrokes has matched. */
   const progressRef = useRef(0);
   /** Current glitch intensity, 0..1 — a ref, not state: it updates every
@@ -120,6 +135,10 @@ export function KonamiGlitch() {
   /** Same trick for `isTopPage`, read by the key handler below (which is
    *  bound once on mount and must not be re-bound on every navigation). */
   const isTopPageRef = useRef(isTopPage);
+  /** Same trick for `wipeMode` — ワイプ走行中の再入力（シーケンス2周目や
+   *  Escape）を無視するために key handler が読む。走行中に受け付けると、
+   *  onComplete の反転と二重になって切り替えが食い違う。 */
+  const wipeModeRef = useRef(wipeMode);
   const decayFrameRef = useRef<number | null>(null);
 
   // Both mirrors are written in an effect rather than straight from the
@@ -131,7 +150,8 @@ export function KonamiGlitch() {
   useEffect(() => {
     activeRef.current = active;
     isTopPageRef.current = isTopPage;
-  }, [active, isTopPage]);
+    wipeModeRef.current = wipeMode;
+  }, [active, isTopPage, wipeMode]);
 
   /** Which way the trail currently points, as a Y multiplier: -1 draws it
    *  upward, +1 downward. Held separately from the magnitude so it keeps
@@ -182,6 +202,9 @@ export function KonamiGlitch() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- see above
     if (!isTopPage) setActive(false);
+    // ワイプも打ち切る — 走行中に遷移すると、遷移先で onComplete が発火
+    // してトップページ外でエッグの状態が動いてしまう（エッグは "/" 限定）。
+    if (!isTopPage) setWipeMode(null);
   }, [isTopPage]);
 
   // --- sequence detection -------------------------------------------------
@@ -191,6 +214,9 @@ export function KonamiGlitch() {
       if (window.innerWidth < MIN_VIEWPORT_PX) return;
 
       if (event.key === "Escape") {
+        // ワイプ中は無視（wipeModeRef の doc comment 参照）。Escape 自体は
+        // 従来どおり演出なしの即時オフ — 逃げ道は速いのが正しい。
+        if (wipeModeRef.current) return;
         setActive(false);
         return;
       }
@@ -211,7 +237,18 @@ export function KonamiGlitch() {
         progressRef.current += 1;
         if (progressRef.current === SEQUENCE.length) {
           progressRef.current = 0;
-          setActive((current) => !current);
+          // 直接の即時反転はしない — ワイプを開始する（wipeMode の doc
+          // comment 参照）。ON 方向は CSS 側を先に効かせるため active も
+          // ここで立てる。OFF 方向の active はワイプの onComplete が落とす。
+          // ワイプ走行中の完了入力は無視。
+          if (!wipeModeRef.current) {
+            if (activeRef.current) {
+              setWipeMode("off");
+            } else {
+              setWipeMode("on");
+              setActive(true);
+            }
+          }
         }
         return;
       }
@@ -251,6 +288,16 @@ export function KonamiGlitch() {
       writtenDirectionRef.current = Number.NaN;
     };
   }, [active]);
+
+  // ワイプ走行中だけ <html> に konami-wiping を立てる — 写真の相殺反転
+  // （.konami-glitch img { invert }）の保留用（globals.css の
+  // .konami-wiping ルールと konami-wipe.tsx の doc comment 参照）。
+  useEffect(() => {
+    const root = document.documentElement;
+    if (wipeMode !== null) root.classList.add("konami-wiping");
+    else root.classList.remove("konami-wiping");
+    return () => root.classList.remove("konami-wiping");
+  }, [wipeMode]);
 
   // --- scroll velocity -> glitch intensity --------------------------------
   // Reads Lenis's own velocity rather than differencing scrollY by hand, for
@@ -307,33 +354,56 @@ export function KonamiGlitch() {
     };
   }, [active, writeGlitch]);
 
-  if (!active) return null;
+  if (!active && wipeMode === null) return null;
 
   return (
     <>
-      {/* 3D wireframe の ANDMADE ロゴ背景 — per direct follow-up ("現状の
-          背景は消して、代わりに…3D化して")。旧 KonamiDissolveLogo は退役
-          （ファイルは残置）。negative-z の重なりで背景として読める点は
-          同じ。Mounted only while the egg runs, like everything else here. */}
-      <KonamiLogo3D />
+      {/* 3Dロゴと warp canvas はワイプ完了までマウントしない — ロゴは黒線で
+          描かれていて（反転レイヤー前提）、反転がまだ全面でない画面では
+          未反転領域に黒いワイヤーフレームが素で見えてしまう（wipeMode の
+          doc comment 参照）。 */}
+      {active && wipeMode === null && (
+        <>
+          {/* 3D wireframe の ANDMADE ロゴ背景 — per direct follow-up ("現状の
+              背景は消して、代わりに…3D化して")。旧 KonamiDissolveLogo は退役
+              （ファイルは残置）。negative-z の重なりで背景として読める点は
+              同じ。Mounted only while the egg runs, like everything else here. */}
+          <KonamiLogo3D />
 
-      {/* Warps the project list's text on scroll. Mounted only while the egg
-          runs, and it tears itself down completely on unmount (texture, GL
-          context and the list's own hidden state) — see its doc comment. It
-          reads the same two refs that drive the CSS half, so the two stay in
-          lockstep without a second velocity calculation. */}
-      <KonamiWarpCanvas intensityRef={glitchRef} directionRef={trailDirectionRef} />
+          {/* Warps the project list's text on scroll. Mounted only while the egg
+              runs, and it tears itself down completely on unmount (texture, GL
+              context and the list's own hidden state) — see its doc comment. It
+              reads the same two refs that drive the CSS half, so the two stay in
+              lockstep without a second velocity calculation. */}
+          <KonamiWarpCanvas intensityRef={glitchRef} directionRef={trailDirectionRef} />
 
-      {/* z-[9997] — above the page, above the warp canvas (so the warped text
-          gets inverted along with everything else), but deliberately below
-          grid-overlay.tsx's own z-[9999] debug grid, so that stays readable
-          while this is on. `hidden lg:block` mirrors the MIN_VIEWPORT_PX
-          guard above for the case where the window is resized down while
-          active. */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 z-[9997] hidden bg-white mix-blend-difference lg:block"
-      />
+          {/* z-[9997] — above the page, above the warp canvas (so the warped text
+              gets inverted along with everything else), but deliberately below
+              grid-overlay.tsx's own z-[9999] debug grid, so that stays readable
+              while this is on. `hidden lg:block` mirrors the MIN_VIEWPORT_PX
+              guard above for the case where the window is resized down while
+              active. */}
+          <div
+            aria-hidden
+            className="pointer-events-none fixed inset-0 z-[9997] hidden bg-white mix-blend-difference lg:block"
+          />
+        </>
+      )}
+
+      {/* 切り替えのブロブワイプ（konami-wipe.tsx の doc comment 参照）。
+          上の全面反転レイヤーの代わりに、同じ z 9997 にブロブ形の反転を
+          立てる。完了時の差し替え（"off" の active 落としとワイプ撤去）は
+          同じハンドラ＝同一コミットで行う — 分けると全面反転キャンバスと
+          本物の反転レイヤーの間に素のページが1フレーム挟まる。 */}
+      {wipeMode !== null && (
+        <KonamiWipe
+          mode={wipeMode}
+          onComplete={() => {
+            if (wipeMode === "off") setActive(false);
+            setWipeMode(null);
+          }}
+        />
+      )}
     </>
   );
 }
