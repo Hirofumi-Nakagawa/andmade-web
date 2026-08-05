@@ -1068,6 +1068,21 @@ html.konami-glitch [data-konami-warp] > li * {
   filter: invert(1) !important;
 }
 
+/* エッグ中、Img グリッドのサムネの下に「反転後に白く見える地」を敷く —
+   per direct follow-up ("エッグ時のImgにしたときのDotsのサムネも背面に#fff
+   敷いて")。Dots のような透過 png は地が無いとエッグの黒背景が透ける。
+   敷くのは #000: この要素（img のラッパー、.th-thumbnail-image-reveal）は
+   img と違って invert フィルタの対象外なので、全面反転レイヤー
+   （mix-blend-difference）だけを通り、画面上では #fff に見える。img 自身に
+   background を付けると invert が背景ごと反転してしまい逆効果。
+   不透明な写真では完全に隠れて無害なので、判定はせず全カードに敷く。
+   スクロール中の canvas 描画側（konami-warp-canvas.tsx の captureImages）は
+   同じ意図で白地をアトラスに焼いてあり、静止時＝実DOM表示のこちらと対に
+   なっている。 */
+html.konami-glitch .th-thumbnail-image-reveal {
+  background: #000;
+}
+
 /* （.konami-viewport-fill — エッグの板3D回転中に fixed inset-0 の全面
    レイヤーをビューポート矩形へ固定し直すためのマーカークラス。実際の
    top/height の上書きは CSS ルールではなく konami-wipe.tsx が毎フレーム
