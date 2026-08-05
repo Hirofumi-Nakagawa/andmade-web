@@ -225,6 +225,14 @@ export function KonamiWipe({
         ) {
           continue;
         }
+        // 不可視の img は抜かない — per direct follow-up ("右上再生中の曲が
+        // あると、ジャケの四角部分がエッグ時に白の四角で一瞬表示される")。
+        // 再生中ティッカーのジャケ画像は DOM に常在する opacity-0 の img
+        // （ホバーで初めて見える）で、見えていないのに矩形を抜くと、反転
+        // 領域の中にジャケサイズの未反転（明るい）四角だけが空く。毎フレーム
+        // 判定しているので、ワイプ中にホバーして現れれば抜きも追従する。
+        const style = window.getComputedStyle(el);
+        if (Number(style.opacity) < 0.05 || style.visibility !== "visible") continue;
         const r = el.getBoundingClientRect();
         if (r.width <= 0 || r.height <= 0) continue;
         if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) continue;
