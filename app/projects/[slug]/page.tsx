@@ -207,10 +207,17 @@ const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
  * and the 24px margin. That's a geometric shortfall, not a margin that can
  * be tightened away, so the wrapping fallback stays for the last stretch.
  */
+// タイトル → category の間隔。60px → 80px（直接の指示 "80pxにそろえて"、
+// 下の HERO_META_ITEM_GAP と同値に統一）。傾きも同じ線形補間
+// （(80-30)/416 ≈ 0.1202）。
 const HERO_TITLE_META_GAP =
-  "clamp(30px, calc((100vw - 1024px) * 0.0721 + 30px), calc(60px * var(--scale)))";
+  "clamp(30px, calc((100vw - 1024px) * 0.1202 + 30px), calc(80px * var(--scale)))";
+// category → role → "View Website" の間隔。110px → 80px（直接の指示
+// "pcの実績詳細のFVのcategory、role、リンクのマージンを80pxにして"）。
+// 傾きは 1024px の 30px 下限から 1440px の 80px までの線形補間
+// （(80-30)/416 ≈ 0.1202）— 上の doc comment の設計をそのまま追従させた。
 const HERO_META_ITEM_GAP =
-  "clamp(30px, calc((100vw - 1024px) * 0.1923 + 30px), calc(110px * var(--scale)))";
+  "clamp(30px, calc((100vw - 1024px) * 0.1202 + 30px), calc(80px * var(--scale)))";
 
 /** Trims only the leading/trailing half-leading of a stacked-paragraph
  *  block's first/last line, without touching the natural line-height
