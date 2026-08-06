@@ -74,7 +74,14 @@ const NOT_FOUND_TOP_PX = 201;
  * component in this codebase, which use fixed unscaled pixel values for
  * vertical spacing throughout.
  */
-export function MobileNotFound() {
+/** PC側（not-found-view.tsx）と同文言の複製 — このコードベースの Mobile*
+ *  コンポーネントのコピー複製規約どおり import はしない。タイミングだけは
+ *  親の sorrySwapped prop で共有（PC/SP は CSS 分岐で同時マウントのため、
+ *  タイマーを二重に持たない）。 */
+const SORRY_TEXT = "Sorry, an error has occured.";
+const SORRY_SWAP_TEXT = "But maybe you weren't looking for this.";
+
+export function MobileNotFound({ sorrySwapped = false }: { sorrySwapped?: boolean }) {
   return (
     <div className="contents lg:hidden">
       <Link
@@ -109,7 +116,7 @@ export function MobileNotFound() {
           className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
           style={{ fontFeatureSettings: '"palt" 1' }}
         >
-          <ScrambleText text="Sorry, an error has occured." active />
+          <ScrambleText key={sorrySwapped ? "swap" : "sorry"} text={sorrySwapped ? SORRY_SWAP_TEXT : SORRY_TEXT} active />
         </p>
       </div>
     </div>
