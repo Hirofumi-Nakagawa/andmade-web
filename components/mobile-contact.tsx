@@ -112,6 +112,8 @@ const CONTACT_LINKS_TOP_PX = 454 - 53 + BELOW_HEADER_OFFSET_PX;
  *  gap12 + 16pxリンク ≈11px + gap35 + 7 + 12 + 11 ≈ 96px を四捨五入で
  *  ≈100px）≈ 300px。数px の誤差は「中央」の知覚には影響しない。 */
 const GROUP_HEIGHT_PX = 300;
+/** 中央配置からの微調整 — per direct follow-up ("もう少しだけ下に下げたい")。 */
+const GROUP_NUDGE_Y_PX = 20; // 10 → 20（"さらに10px下げて"）
 /** `font-feature-settings: "ss09" 1` — matches the stylistic set the PC
  *  Contact page (app/contact/page.tsx) applies to this same Japanese copy. */
 const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
@@ -246,7 +248,7 @@ export function MobileContact() {
          GET_IN_TOUCH_TOP_PX を引いた値）で、相互の間隔は従来のまま。 */}
       <div
         className="absolute inset-x-0"
-        style={{ top: `calc(50% - ${GROUP_HEIGHT_PX / 2}px)` }}
+        style={{ top: `calc(50% - ${GROUP_HEIGHT_PX / 2 - GROUP_NUDGE_Y_PX}px)` }}
       >
       <p
         // 40px → 38px → 36px — two direct follow-ups ("「get in touch」の文
