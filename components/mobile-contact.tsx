@@ -99,6 +99,19 @@ const JP_PARAGRAPH_TOP_PX = 376 - 53 + BELOW_HEADER_OFFSET_PX;
 // 日本語2行目のインク下端は行ボックス(24px×2)より約7.5px上に来るため、
 // 見た目のマージン35px = top差 約78px（454 − 376）。
 const CONTACT_LINKS_TOP_PX = 454 - 53 + BELOW_HEADER_OFFSET_PX;
+
+/** 「Get in touch.」以下のコンテンツ群を画面縦中央に置くためのラッパー定数 —
+ *  per direct follow-up ("spのcontactのGet in touch以下の要素を画面に対して
+ *  縦位置中央配置にして")。各要素の絶対 top はそのまま「Get in touch.」の
+ *  ink 上端（GET_IN_TOUCH_TOP_PX）基準の相対値に読み替え、ラッパー自体を
+ *  `top: calc(50% - GROUP_HEIGHT/2)` に置く。
+ *
+ *  GROUP_HEIGHT_PX はグループの見た目の全高の実測近似:
+ *  リンクブロックの相対 top（CONTACT_LINKS_TOP_PX - GET_IN_TOUCH_TOP_PX =
+ *  200px）+ Inquiries/Social ブロック自身の高さ（トリム済みラベル ≈7px +
+ *  gap12 + 16pxリンク ≈11px + gap35 + 7 + 12 + 11 ≈ 96px を四捨五入で
+ *  ≈100px）≈ 300px。数px の誤差は「中央」の知覚には影響しない。 */
+const GROUP_HEIGHT_PX = 300;
 /** `font-feature-settings: "ss09" 1` — matches the stylistic set the PC
  *  Contact page (app/contact/page.tsx) applies to this same Japanese copy. */
 const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
@@ -228,13 +241,20 @@ export function MobileContact() {
          comment in case it comes back — see this file's own version history
          for the exact JSX that was here. */}
 
+      {/* 縦中央配置ラッパー — GROUP_HEIGHT_PX の doc comment 参照。中の
+         各要素はこのラッパー基準の相対 top（元の Figma 由来の top から
+         GET_IN_TOUCH_TOP_PX を引いた値）で、相互の間隔は従来のまま。 */}
+      <div
+        className="absolute inset-x-0"
+        style={{ top: `calc(50% - ${GROUP_HEIGHT_PX / 2}px)` }}
+      >
       <p
         // 40px → 38px → 36px — two direct follow-ups ("「get in touch」の文
         // 字サイズを、現在より2px小さく", then "そこからさらに2px小さく"),
         // each applied on top of the last rather than both measured off the
         // original 40px independently.
         className="absolute text-[34px] leading-[1.75] font-normal whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-        style={{ top: `${GET_IN_TOUCH_TOP_PX}px`, left: TEXT_LEFT }}
+        style={{ top: 0, left: TEXT_LEFT }}
       >
         <ScrambleText text="Get in touch." active />
       </p>
@@ -242,12 +262,12 @@ export function MobileContact() {
       <CurtainRevealLines
         lines={CONTACT_TAGLINE_LINES}
         className="absolute text-[14px] leading-[18px] font-normal text-white"
-        style={{ top: `${BODY_PARAGRAPH_TOP_PX}px`, left: TEXT_LEFT }}
+        style={{ top: `${BODY_PARAGRAPH_TOP_PX - GET_IN_TOUCH_TOP_PX}px`, left: TEXT_LEFT }}
       />
 
       <RevealOnMount
         className="absolute font-(family-name:--font-gen-interface-jp) text-[14px] leading-[24px] font-light whitespace-nowrap text-white tracking-[0.7px]"
-        style={{ top: `${JP_PARAGRAPH_TOP_PX}px`, left: TEXT_LEFT, ...SS09 }}
+        style={{ top: `${JP_PARAGRAPH_TOP_PX - GET_IN_TOUCH_TOP_PX}px`, left: TEXT_LEFT, ...SS09 }}
       >
         <p>プロジェクトのご相談やご質問など、</p>
         <p>まずはお気軽にお問い合わせください。</p>
@@ -255,7 +275,7 @@ export function MobileContact() {
 
       <RevealOnMount
         className="absolute flex flex-col items-start gap-[35px] whitespace-nowrap leading-[1.6]"
-        style={{ top: `${CONTACT_LINKS_TOP_PX}px`, left: TEXT_LEFT }}
+        style={{ top: `${CONTACT_LINKS_TOP_PX - GET_IN_TOUCH_TOP_PX}px`, left: TEXT_LEFT }}
       >
         <div className="flex flex-col items-start gap-[12px]">
           <p className="font-(family-name:--font-courier) text-[12px] text-[#757575] tracking-[-0.6px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
@@ -289,6 +309,7 @@ export function MobileContact() {
           </div>
         </div>
       </RevealOnMount>
+      </div>
     </div>
   );
 }
