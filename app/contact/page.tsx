@@ -127,7 +127,11 @@ export default function Contact() {
       <div className="relative overflow-hidden" style={{ height: PAGE_HEIGHT }}>
         <SiteHeader contact />
 
-        <div className="relative mt-[calc(280px*var(--scale))]">
+        {/* コンテンツ群（見出し行＋リード＋Inquiries/Social）はビューポート
+            縦中央 — per direct follow-up（添付レイアウト "これらの要素を
+            縦位置中央に配置する"）。それまでの mt-280px の固定オフセットを
+            廃止。ヘッダー・フッターは従来どおり上下に固定。 */}
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2">
           {/* Left margin matches the Home page's Tx/Th toggle
               (project-view-toggle.tsx: ml-[calc(24px*var(--grid-scale))]),
               same 12px/medium text — vertically aligned to "Get in touch."'s
@@ -155,28 +159,40 @@ export default function Contact() {
 
             <ContactHero />
 
-            {/* 右端の "( Rooted in purpose , Designed with clarity , Built to
-                last )" キャプションはここにあったが、per direct follow-up
-                ("contactの下記を消して") で削除。SP側(mobile-contact.tsx)は
-                それより前に同じ理由で外されており、これで PC/SP どちらにも
-                出なくなった。同じ3語は site-intro.tsx のピルと
-                idle-overlay.tsx にも出てくるので、そちらは別物として残っている。
-                復活させる場合はこのファイルの版歴から JSX を戻すこと
-                （右端 24px = var(--edge-right-inset) + 24px、ContactHero の
-                 下端揃え、区切りカンマは 5px gap）。 */}
+            {/* 右端の "( Rooted in purpose , Built to last , Designed with
+                clarity )" キャプション — 一度 "contactの下記を消して" で
+                削除したが、添付レイアウトでの再指定（"右端に「Rooted in
+                purpose,~」を掲載"）で復活。右端 24px（var(--edge-right-inset)
+                + 24px）、ContactHero の下端揃え。語順は添付どおり。 */}
+            <RevealOnMount
+              className="absolute bottom-0 whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] font-medium text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+              style={{ right: "calc(var(--edge-right-inset) + 24px)" }}
+            >
+              <p>( Rooted in purpose , Built to last , Designed with clarity )</p>
+            </RevealOnMount>
           </div>
 
-          <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(40px*var(--scale))] flex flex-col items-start gap-[calc(40px*var(--scale))]">
+          {/* ml 546px*grid = ヘッダーのメニューの左面（site-header.tsx:
+              コンテナ 198px + nav left 348px）に揃える（添付レイアウト
+              per direct follow-up）。mt は 40 → 70px（"30px下に移動"）→ 40px
+              （"Get in touch下マージンを40pxに"）→ 35px（"5px詰めて"）。 */}
+          <div className="ml-[calc(546px*var(--grid-scale))] mt-[calc(35px*var(--scale))] flex flex-col items-start gap-[calc(40px*var(--scale))]">
             {/* gap tightened 40px → 35px → 30px (two direct follow-ups, "3行
                 英字の下マージンを5px詰めて" ×2) — the space directly below
                 the 3-line English tagline above (only affects the gap
                 between it and the Japanese paragraph right below it, not the
                 further-down Inquiries/Social block, which sits in the outer
                 flex-col's own separate gap). */}
-            <div className="flex flex-col items-start gap-[calc(30px*var(--scale))] text-[#fff]">
+            {/* gap 30 → 22px — per direct follow-up ("テキストのマージンを35から
+                30pxに" = 英語3行↔日本語の間)。3行目の pb-8px（ディセンダーの
+                マスク見切れ対策、下の lineClassNames 参照）が gap の外側に
+                足されるため、見た目のマージンを 30px にするには指定値は
+                30 - 8 = 22px。 */}
+            <div className="flex flex-col items-start gap-[calc(22px*var(--scale))] text-[#fff]">
               <CurtainRevealLines
                 lines={CONTACT_TAGLINE_LINES}
-                className="text-[length:calc(26px*var(--scale))] leading-[1.2]"
+                // 26px → 20px per direct follow-up ("Every project starts~の文字を20pxに")
+                className="text-[length:calc(20px*var(--scale))] leading-[1.2]"
                 // pb-[8px] on the trimmed last line only (bumped up from an
                 // initial 4px, which still wasn't quite enough clearance) —
                 // per direct follow-up ("contactの3行英字の3行目の下がマスク
@@ -217,7 +233,11 @@ export default function Contact() {
                     — per direct follow-up。見た目のクラスは従来のまま。 */}
                 <CopyEmail inverted className="underline-sweep text-[length:calc(18px*var(--scale))] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]" />
               </div>
-              <div className="flex flex-col items-start gap-[calc(15px*var(--scale))]">
+              {/* mr = 1マス（レイアウトグリッド1列 = 58px*grid-scale、
+                  home-view.tsx の GRID_COLUMN_WIDTH_PX 参照）ぶん左へ —
+                  per direct follow-up ("Socialを1マス左に移動")。親の
+                  justify-between が右端に寄せるのを margin-right で引き戻す。 */}
+              <div className="mr-[calc(58px*var(--grid-scale))] flex flex-col items-start gap-[calc(15px*var(--scale))]">
                 <p className="font-(family-name:--font-courier) text-[length:calc(12px*var(--scale))] text-[#fff]/50 tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                   Social
                 </p>
