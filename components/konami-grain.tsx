@@ -53,11 +53,17 @@ export function KonamiGrain() {
     if (!tileCtx) return;
     const tileImg = tileCtx.createImageData(TILE_PX, TILE_PX);
     for (let i = 0; i < TILE_PX * TILE_PX; i++) {
-      const v = Math.round(Math.random() * GRAIN * 255);
-      tileImg.data[i * 4] = v;
-      tileImg.data[i * 4 + 1] = v;
-      tileImg.data[i * 4 + 2] = v;
-      tileImg.data[i * 4 + 3] = 255;
+      // 白 + 可変アルファ（かつては「黒地に可変の明るさ + screen 合成」）—
+      // per direct follow-up（背面ロゴの線が虫食いになるスクリーンショット）。
+      // 通常合成の白半透明は、黒地の上では screen と同じ結果になる
+      // （screen: 1-(1-a)(1-b) は a=0 で b、通常合成も黒地では b·α で粒だけ
+      // 残る）ので見た目は変わらないが、mix-blend-mode のレイヤーが1枚
+      // 減る。blend レイヤーはブラウザに「背景」の合成を強い、その下の
+      // 3Dロゴがバッファへ低解像度で焼かれて細線が潰れる一因になる。
+      tileImg.data[i * 4] = 255;
+      tileImg.data[i * 4 + 1] = 255;
+      tileImg.data[i * 4 + 2] = 255;
+      tileImg.data[i * 4 + 3] = Math.round(Math.random() * GRAIN * 255);
     }
     tileCtx.putImageData(tileImg, 0, 0);
     const pattern = ctx.createPattern(tile, "repeat");
@@ -110,7 +116,7 @@ export function KonamiGrain() {
       ref={canvasRef}
       aria-hidden
       className="konami-viewport-fill pointer-events-none fixed inset-0 hidden h-full w-full lg:block"
-      style={{ zIndex: 9998, mixBlendMode: "screen" }}
+      style={{ zIndex: 9998 }}
     />
   );
 }
