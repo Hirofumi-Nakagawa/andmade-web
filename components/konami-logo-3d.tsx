@@ -431,13 +431,7 @@ export function KonamiLogo3D() {
           width: `${LOGO_WIDTH_VW}vw`,
           aspectRatio: `${LOGO_VIEWBOX.w} / ${LOGO_VIEWBOX.h}`,
           transformStyle: "preserve-3d",
-          // willChange: "transform" は置かない — per direct follow-up
-          // ("NとMの縦線がかすれて見えない" ほか、線が長さ方向に途切れる
-          // スクリーンショット)。will-change でこの巨大な板（85vw）を GPU
-          // レイヤーに固定すると、Chrome がレイヤーのラスタライズ解像度を
-          // 低く選ぶことがあり、0.6px の線が 1x で焼かれて虫食いになる。
-          // 外すとブラウザが変換後の実解像度で描き直すため細線が保たれる。
-          // 中身は SVG パス14本＋div の頂点線だけで軽い。
+          willChange: "transform",
           // tick() が毎フレーム上書きする。ここは JS 初回実行前の
           // フォールバック（初期姿勢 = 正面向き）。
           ["--logo-line-a" as string]: String(LINE_OPACITY),

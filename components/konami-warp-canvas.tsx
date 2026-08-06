@@ -113,18 +113,6 @@ const HOVER_SCALE_START = 0.9;
  *  mid-gesture doesn't cause a swap-thrash. */
 const REST_HANDOFF_MS = 200;
 
-/** Img グリッドを採用してから最初のキャプチャまでの待ち（ms）— per direct
- *  follow-up ("エッグ時にImgを選択すると、サムネが表示されるときにちゃんと
- *  順に表示されず左上3つめ以降一瞬遅延して表示される挙動がある")。
- *  captureImages は全サムネを CORS で読み直し、1枚のアトラスへ drawImage
- *  してから GL へアップロードする（マスク方式でパイプラインが2本あるため
- *  2回）。この同期処理がメインスレッドを塞ぐと、グリッドの登場カスケード
- *  （project-thumbnail-grid.tsx の per-index setTimeout）がその間だけ
- *  止まり、3枚目以降がまとめて遅れて出る。キャプチャが要るのは
- *  「スクロールして歪みが効き始めるとき」なので、カスケード（可視域の
- *  数枚 ≒ 数百ms + 板回転ワイプ）が終わるまで待って構わない。 */
-const IMAGES_FIRST_CAPTURE_DELAY_MS = 1400;
-
 /** A second capture this long after adopting a target. The list re-runs its
  *  scramble-in reveal whenever it remounts (Img→Txt toggle), so a capture
  *  taken immediately freezes mid-scramble glyphs; this one catches the
@@ -508,9 +496,6 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
 
     const maxTextureSize = main.gl.getParameter(main.gl.MAX_TEXTURE_SIZE) as number;
 
-    // 初期状態では合成に参加させない（setMaskVisible の doc comment 参照）。
-    maskCanvas.style.display = "none";
-
     let disposed = false;
     let frame: number | null = null;
     let resizeTimer: number | null = null;
@@ -691,19 +676,6 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       uploadTexture(next.canvas);
     };
 
-    /** マスクキャンバス（紙の形どおりのカウンター反転）を、紙モード中だけ
-     *  DOM に出す — per direct follow-up ("NとMの縦線がかすれて見えない"、
-     *  線が長さ方向に虫食いになるスクリーンショット)。mix-blend-difference
-     *  の要素が常設されていると、ブラウザはその「背景」を合成するために
-     *  背後のコンテンツを一枚のバッファへ焼く。マスクを常設していたせいで
-     *  背面の3Dロゴ（z -10、85vw）がそのバッファの解像度でラスタライズ
-     *  され、0.6px 級の細線が潰れ得る。使うのはホバー中だけなので、
-     *  それ以外は display:none にして合成そのものから外す。 */
-    const setMaskVisible = (visible: boolean) => {
-      const next = visible ? "" : "none";
-      if (maskCanvas.style.display !== next) maskCanvas.style.display = next;
-    };
-
     /** 残像（現行以外のホバープレビュー）をキャンバスより背面へ沈める/戻す
      *  — per direct follow-up ("ホバーで選択中の画像が少しだけ薄い（100%に
      *  なってない）" → 隠す対処をしたら "一つ前のイメージが背面に残らなく
@@ -770,23 +742,11 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
         settleTimer = null;
       }
       if (next) {
-        if (next.hasAttribute(KONAMI_WARP_IMAGES_ATTRIBUTE)) {
-          // Img グリッドだけは初回キャプチャを遅らせる — 登場カスケードを
-          // 塞がないため（IMAGES_FIRST_CAPTURE_DELAY_MS の doc comment
-          // 参照）。settle 再キャプチャは行わない: あれはテキストの
-          // スクランブルが落ち着くのを待つためのもので、画像アトラスには
-          // 意味がなく、同じ重い処理をもう一度走らせるだけになる。
-          settleTimer = window.setTimeout(() => {
-            settleTimer = null;
-            capture();
-          }, IMAGES_FIRST_CAPTURE_DELAY_MS);
-        } else {
+        capture();
+        settleTimer = window.setTimeout(() => {
+          settleTimer = null;
           capture();
-          settleTimer = window.setTimeout(() => {
-            settleTimer = null;
-            capture();
-          }, SETTLE_RECAPTURE_MS);
-        }
+        }, SETTLE_RECAPTURE_MS);
       }
     };
 
@@ -853,8 +813,6 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       }
 
       if (!engaged || !raster || !target) {
-        // マスクは紙モード中だけ出す（setMaskVisible の doc comment 参照）。
-        setMaskVisible(false);
         if (canvasDirty) {
           for (const p of pipelines) {
             p.gl.clearColor(0, 0, 0, 0);
@@ -955,10 +913,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
         g.clear(g.COLOR_BUFFER_BIT);
         // マスクは紙モード専用 — Img のスクロール歪みは反転レイヤーの上
         // （z 9998）で素の色を描くので、打ち消しは要らない。クリアだけ。
-        if (isMask) {
-          setMaskVisible(hoverMode);
-          if (!hoverMode) continue;
-        }
+        if (isMask && !hoverMode) continue;
         g.useProgram(p.program);
         g.bindBuffer(g.ARRAY_BUFFER, p.quad);
         g.enableVertexAttribArray(p.aPos);
@@ -1009,7 +964,6 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       if (settleTimer !== null) window.clearTimeout(settleTimer);
       window.removeEventListener("resize", handleResize);
-      maskCanvas.style.display = "none";
       setGhostsBelow(false);
       if (engaged) target?.removeAttribute(HIDDEN_ATTRIBUTE);
       // The texture is the only large allocation here and is released
