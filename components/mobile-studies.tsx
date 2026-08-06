@@ -1060,6 +1060,7 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
           expandDurationMs={INTRO_SLIDE_DURATION_MS}
           expandEase={INTRO_SLIDE_EASE}
           revealed={thumbnailShown}
+          videoPlaying={zoomed}
         />
 
         {/* "Tap to return" — per explicit spec ("拡大時は画像右下に「Tap to

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Study } from "@/lib/studies";
 
 /** Eagerly warms the browser's own image cache/decode pipeline for every
@@ -129,6 +129,14 @@ type StudiesCenterImageProps = {
    *  untouched. */
   expandDurationMs?: number;
   expandEase?: string;
+  /** 動画つきスタディを実際に再生するか — per direct follow-up ("studiesに
+   *  動画がある場合は、パラパラ時とzoomしてない時は自動再生せずに、イメージ
+   *  中央に貼付の再生アイコンを配置して…zoomすると自動再生")。呼び出し側の
+   *  zoom 状態がそのまま入る（PC: studies-gallery.tsx / SP: mobile-studies
+   *  .tsx とも `zoomed`）。false の間は静止画（imageSrc）＋中央の再生
+   *  アイコン表示で、動画は pause。既定 false（= 明示されない限り再生
+   *  しない）。画像スタディには無関係。 */
+  videoPlaying?: boolean;
 };
 
 /** "One size smaller, grid-aligned" — per follow-up request ("イントロ中は
@@ -290,8 +298,26 @@ const CENTER_IMAGE_SIZES = "(min-width: 1024px) 928px, 100vw";
  * onCanPlay（最初のフレームが描画可能になった時点）で動画側を出す。
  * 200ms のフェードは切り替わりのポップを消すためだけの最小値。
  */
-function StudyVideo({ study }: { study: Study }) {
+function StudyVideo({ study, playing }: { study: Study; playing: boolean }) {
   const [ready, setReady] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // 再生は `playing`（= zoom 状態）駆動 — videoPlaying prop の doc comment
+  // 参照。autoPlay 属性ではなく effect で play()/pause() するのは、
+  // 「zoom 解除 → 再 zoom」でも毎回確実に再開/停止させるため。play() の
+  // Promise は読み込み途中だと reject しうるので握りつぶす（その場合も
+  // loadeddata 後に `playing` が立っていれば下の effect が再走する）。
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (playing) {
+      video.play()?.catch(() => {});
+    } else {
+      video.pause();
+    }
+  }, [playing, ready]);
+
+  const showVideo = playing && ready;
   return (
     <div className="relative h-full w-full">
       {/* eslint-disable-next-line @next/next/no-img-element -- StudyMedia の img と同じ理由 */}
@@ -303,23 +329,44 @@ function StudyVideo({ study }: { study: Study }) {
         className="absolute inset-0 h-full w-full object-cover"
       />
       <video
+        ref={videoRef}
         src={study.videoSrc}
-        autoPlay
         loop
         muted
         playsInline
         onCanPlay={() => setReady(true)}
         className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
-          ready ? "opacity-100" : "opacity-0"
+          showVideo ? "opacity-100" : "opacity-0"
         }`}
       />
+      {/* 中央の再生アイコン（未 zoom = 静止画表示の間だけ）— 貼付デザイン
+         どおり CSS のみで描く: ●は #000 の透過0.5（per direct follow-up）、
+         ▶は clip-path の三角形。サイズは 60px 固定 — 当初は箱幅の30%
+         （上限124px）だったが「でかいから60pxに」per direct follow-up。
+         三角形は円に対する比率指定（26% → 22%、"三角を少し小さく"）なので円と一緒にスケールする。
+         左右の光学中心合わせで三角形をわずかに右へ寄せている。 */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-200"
+        style={{ opacity: playing ? 0 : 1 }}
+      >
+        <div
+          className="flex aspect-square w-[60px] items-center justify-center rounded-full"
+          style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+        >
+          <div
+            className="aspect-[0.9] w-[22%] translate-x-[8%] bg-[#f5f5f5]"
+            style={{ clipPath: "polygon(0 0, 0 100%, 100% 50%)" }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
 
-function StudyMedia({ study }: { study: Study }) {
+function StudyMedia({ study, videoPlaying }: { study: Study; videoPlaying: boolean }) {
   if (study.mediaType === "video" && study.videoSrc) {
-    return <StudyVideo study={study} />;
+    return <StudyVideo study={study} playing={videoPlaying} />;
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- fluidly-sized box (--scale/--grid-scale calc()), same reasoning as project-hover-preview.tsx's own plain <img>.
@@ -346,6 +393,7 @@ export function StudiesCenterImage({
   expandDurationMs = EXPAND_MASK_DURATION_MS,
   expandEase = EXPAND_MASK_EASE,
   revealed = true,
+  videoPlaying = false,
   revealDurationMs = REVEAL_MASK_DURATION_MS,
   revealEase = REVEAL_MASK_EASE,
 }: StudiesCenterImageProps) {
@@ -457,7 +505,7 @@ export function StudiesCenterImage({
           style={{ backgroundColor: backdropStudy?.color }}
           aria-hidden
         >
-          {backdropStudy && <StudyMedia study={backdropStudy} />}
+          {backdropStudy && <StudyMedia study={backdropStudy} videoPlaying={videoPlaying} />}
         </div>
         <div
           key={`top-${state.topKey}`}
@@ -465,7 +513,7 @@ export function StudiesCenterImage({
           style={{ backgroundColor: topStudy.color }}
           aria-hidden
         >
-          <StudyMedia study={topStudy} />
+          <StudyMedia study={topStudy} videoPlaying={videoPlaying} />
         </div>
       </div>
     </div>

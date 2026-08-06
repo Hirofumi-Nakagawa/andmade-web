@@ -967,6 +967,7 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
           activeIndex={activeIndex}
           expanded={introDone}
           revealed={thumbnailShown}
+          videoPlaying={zoomed}
         />
       </div>
 
