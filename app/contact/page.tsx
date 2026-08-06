@@ -162,11 +162,13 @@ export default function Contact() {
             {/* 右端の "( Rooted in purpose , Built to last , Designed with
                 clarity )" キャプション — 一度 "contactの下記を消して" で
                 削除したが、添付レイアウトでの再指定（"右端に「Rooted in
-                purpose,~」を掲載"）で復活。右端 24px（var(--edge-right-inset)
-                + 24px）、ContactHero の下端揃え。語順は添付どおり。 */}
+                purpose,~」を掲載"）で復活。ContactHero の下端揃え。語順は
+                添付どおり。右端は当初 var(--edge-right-inset) + 24px（グリッド
+                連動）だったが、幅を狭めるとマージンが変わるとの指摘（per
+                direct follow-up "右端に固定にしてほしい"）でビューポート右端
+                から固定 24px に。 */}
             <RevealOnMount
-              className="absolute bottom-0 whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] font-medium text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-              style={{ right: "calc(var(--edge-right-inset) + 24px)" }}
+              className="absolute bottom-0 right-[24px] whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] font-medium text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
             >
               <p>( Rooted in purpose , Built to last , Designed with clarity )</p>
             </RevealOnMount>
@@ -294,10 +296,11 @@ export default function Contact() {
             トップへの導線追加"), same behavior as SiteFooter's own logo
             (components/site-footer.tsx). No longer aria-hidden/decorative
             now that it's an actual navigation link. */}
-        <RevealOnMount
-          className="absolute bottom-[28px] h-[calc(52px*var(--scale))] w-[calc(52px*var(--scale))]"
-          style={{ right: "calc(var(--edge-right-inset) + 24px)" }}
-        >
+        {/* 右端は var(--edge-right-inset) + 24px（グリッド連動）だったが、
+            右端キャプション同様、幅を狭めるとマージンが空くとの指摘（per
+            direct follow-up "右下ロゴも…右下固定にして"）でビューポート
+            右端から固定 24px に。 */}
+        <RevealOnMount className="absolute bottom-[28px] right-[24px] h-[calc(52px*var(--scale))] w-[calc(52px*var(--scale))]">
           <Link href="/" className="block h-full w-full">
             <Image src={withBasePath("/andmade-mark.svg")} alt="ANDMADE" width={52} height={52} className="h-full w-full" />
           </Link>

@@ -85,18 +85,19 @@ export function NextProjectTeaser({
   return (
     <div className="flex w-full items-start justify-between">
       <div className="mt-[calc(96px*var(--scale))] flex-1">
-        {/* items-start (not items-baseline) — per direct follow-up ("Next
-           Projectの文字と右の実績名の上面揃える"): both this caption and the
-           title already carry matching [text-box-edge/trim] trim classes, so
-           aligning their tops via flex directly lines up their real,
-           trimmed top edges instead of their (different-size-font) baselines. */}
-        <div className="flex items-start">
+        {/* items-end — 一度は上面揃え（items-start、per direct follow-up
+           "Next Projectの文字と右の実績名の上面揃える"）だったが、後続の
+           指示（"「Next Project」文字の下面を実績タイトル下面に揃える"）で
+           下面揃えに。キャプション・タイトルとも [text-box-edge/trim] で
+           トリム済みなので、flex の end 揃えがそのまま実インクの下端揃えに
+           なる（フォントサイズ違いのベースライン揃えではなく）。 */}
+        <div className="flex items-end">
           {/* "Next Project" caption — plain Akzidenz-Grotesk Next Regular
              (Figma node 1349:376), duplicated from DetailCaption's own
              font="sans" dark variant rather than importing it from the page
              file. */}
           <p
-            className="shrink-0 pl-[calc(82px*var(--grid-scale))] whitespace-nowrap text-[length:calc(14px*var(--scale))] text-black/50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+            className="shrink-0 pl-[calc(82px*var(--grid-scale))] whitespace-nowrap text-[length:calc(14px*var(--scale))] text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
             style={{ width: CONTENT_ML }}
           >
             Next Project
