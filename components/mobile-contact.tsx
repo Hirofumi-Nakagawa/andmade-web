@@ -17,12 +17,13 @@ import { setLightMenuPill } from "@/lib/menu-theme-store";
  *  にカーテンリビールをつけて"). Line breaks per direct follow-up spec — moved
  *  "shape" back onto line 2's own end (was line 3's start, per a later
  *  follow-up, "spのcontactの3行テキストの改行を、and（改行）shapeにして"),
- *  reverted back to this original break per direct follow-up ("spのcontact
- *  ページの3行英文を下記の改行に戻して"). */
+ *  reverted back to the original break per direct follow-up ("spのcontact
+ *  ページの3行英文を下記の改行に戻して"), then changed again to the current
+ *  "and"（改行）"shape it into..." per the latest direct follow-up. */
 const CONTACT_TAGLINE_LINES = [
   "Every project starts with a conversation.",
-  "Together, we’ll uncover the essence and shape",
-  "it into something clear and lasting.",
+  "Together, we’ll uncover the essence and",
+  "shape it into something clear and lasting.",
 ];
 
 /** Same "margin + 2 columns" idiom every other Mobile* component uses (see
@@ -80,17 +81,24 @@ const BELOW_HEADER_OFFSET_PX = GET_IN_TOUCH_TOP_PX - FIGMA_GET_IN_TOUCH_TOP_PX;
 // English tagline below it, 5px closer. JP_PARAGRAPH_TOP_PX/CONTACT_LINKS_TOP_PX
 // below are unaffected (each of these is its own independent Figma-derived
 // offset, not chained off one another).
-const BODY_PARAGRAPH_TOP_PX = 307 - 53 + BELOW_HEADER_OFFSET_PX;
+// 307 → 302 — per direct follow-up ("英語上マージンを5px詰める")。
+const BODY_PARAGRAPH_TOP_PX = 302 - 53 + BELOW_HEADER_OFFSET_PX;
 // 391 → 381 — per direct follow-up ("SPのcontactの3行テキストの下マージンを
 // 10px詰めて"): tightens just the gap between the 3-line English tagline
 // above and this JP paragraph, 10px closer. CONTACT_LINKS_TOP_PX below is
 // unaffected (each of these three is its own independent Figma-derived
 // offset, not chained off one another), so the Inquiries/Social block keeps
 // its own original position, unchanged.
-const JP_PARAGRAPH_TOP_PX = 381 - 53 + BELOW_HEADER_OFFSET_PX;
+// 381 → 376 — 上の英語ブロックが5px上がったのに追従（英語↔日本語の
+// 間隔は維持）。
+const JP_PARAGRAPH_TOP_PX = 376 - 53 + BELOW_HEADER_OFFSET_PX;
 // 466 → 456 — per direct follow-up ("inquiriesとsocialも合わせて上に10px移
 // 動"), matching the same 10px tightened above.
-const CONTACT_LINKS_TOP_PX = 456 - 53 + BELOW_HEADER_OFFSET_PX;
+// 456 → 446（上の2ブロックの5px上昇に追従 + "日本語文下マージンを5px
+// 詰める"）→ 454 — per direct follow-up ("日本語下マージンは35pxにして")。
+// 日本語2行目のインク下端は行ボックス(24px×2)より約7.5px上に来るため、
+// 見た目のマージン35px = top差 約78px（454 − 376）。
+const CONTACT_LINKS_TOP_PX = 454 - 53 + BELOW_HEADER_OFFSET_PX;
 /** Rotated "We're always open to new ideas." label — shares its own top
  *  with "Get in touch." in Figma (both 254 raw / 201 content-relative), so
  *  this reuses GET_IN_TOUCH_TOP_PX directly rather than re-deriving the same
@@ -236,7 +244,7 @@ export function MobileContact() {
         // 字サイズを、現在より2px小さく", then "そこからさらに2px小さく"),
         // each applied on top of the last rather than both measured off the
         // original 40px independently.
-        className="absolute text-[36px] leading-[1.75] font-normal whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        className="absolute text-[34px] leading-[1.75] font-normal whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
         style={{ top: `${GET_IN_TOUCH_TOP_PX}px`, left: TEXT_LEFT }}
       >
         <ScrambleText text="Get in touch." active />
@@ -249,7 +257,7 @@ export function MobileContact() {
       />
 
       <RevealOnMount
-        className="absolute font-(family-name:--font-gen-interface-jp) text-[14px] leading-[1.75] font-light whitespace-nowrap text-white tracking-[0.7px]"
+        className="absolute font-(family-name:--font-gen-interface-jp) text-[14px] leading-[24px] font-light whitespace-nowrap text-white tracking-[0.7px]"
         style={{ top: `${JP_PARAGRAPH_TOP_PX}px`, left: TEXT_LEFT, ...SS09 }}
       >
         <p>プロジェクトのご相談やご質問など、</p>
@@ -265,13 +273,13 @@ export function MobileContact() {
             Inquiries
           </p>
           {/* mailto → クリックでコピー＋"Copied" 表示（copy-email.tsx）。 */}
-          <CopyEmail inverted belowMenu className="[text-decoration-skip-ink:none] [text-underline-position:from-font] text-[17px] text-white underline decoration-solid decoration-from-font [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]" />
+          <CopyEmail inverted belowMenu className="[text-decoration-skip-ink:none] [text-underline-position:from-font] text-[16px] text-white underline decoration-solid decoration-from-font [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]" />
         </div>
         <div className="flex flex-col items-start gap-[12px]">
           <p className="font-(family-name:--font-courier) text-[12px] text-[#757575] tracking-[-0.6px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
             Social
           </p>
-          <div className="flex items-center gap-[10px] text-[17px] text-white">
+          <div className="flex items-center gap-[8px] text-[16px] text-white">
             <a
               href="https://www.instagram.com/andmade_inc"
               target="_blank"
