@@ -199,6 +199,13 @@ export function KonamiLogo3D() {
     let logoPaths: string[] = [];
     /** 最初の走り線バッチの遅延タイマー（INITIAL_SPARK_DELAY_MS 参照）。 */
     let initialSparkTimer: number | null = null;
+    /** 輪郭 canvas の再描画関数（fetch 完了後にセットされる — 下記
+     *  renderSlices の doc comment 参照）。tick() が描き込み登場を
+     *  駆動し、resize 時の再描画にも使う。 */
+    let renderSlices: ((elapsedMs: number | null) => void) | null = null;
+    let entranceStartAt: number | null = null;
+    let entranceTotalMs = 0;
+    let entranceDone = false;
 
     const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -262,52 +269,113 @@ export function KonamiLogo3D() {
         if (disposed) return;
         const paths = [...text.matchAll(/ d="([^"]+)"/g)].map((m) => m[1]);
         logoPaths = paths;
-        // stroke-opacity は CSS 変数（LINE_OPACITY_BACK の doc comment 参照）
-        // — スクロールで裏返ったとき、tick() が変数の値を入れ替えるだけで
-        // 全パスの濃度が追従する。属性の stroke-opacity は var() を受け
-        // 付けないので、style（CSSプロパティ側）で指定する。
-        // 黒の半透明線は、反転レイヤーを通すと黒地に同じ透過率の白線として
-        // 見える（差の絶対値なので透過率は保たれる）。
-        const buildSvg = (opacityVar: string) => {
-          const inner = paths
-            .map(
-              (d) =>
-                `<path d="${d}" fill="none" stroke="black" stroke-width="0.5" style="stroke-opacity:var(${opacityVar})" vector-effect="non-scaling-stroke"/>`
-            )
-            .join("");
-          return `<svg viewBox="0 0 ${LOGO_VIEWBOX.w} ${LOGO_VIEWBOX.h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;overflow:visible">${inner}</svg>`;
-        };
+        // 輪郭線は SVG ではなく **canvas ビットマップ** として自前で描く —
+        // per direct follow-up（"NとMの縦線がかすれて見えない" ほか、線が
+        // 長さ方向に虫食いになるスクリーンショット複数回。コードが同一の
+        // 昨夜のキャプチャでは綺麗 → Chrome が 3D transform 配下のベクター
+        // （SVG）をレイヤー化する際のラスタライズ解像度が、セッションに
+        // よって 1x に落ちる非決定的な挙動が根因と判断）。canvas なら線は
+        // 最初から dpr 解像度のビットマップで、コンポジタがベクターを
+        // 再ラスタライズする余地がない。最悪レイヤーが 1x に落ちても、
+        // ビットマップのダウンサンプルは「わずかに薄くなる」だけで、
+        // ベクター 1x ラスタライズのような虫食いにはならない。
+        //
+        // スライスの中身は2枚重ね:
+        //  - <canvas>: 輪郭。濃度（従来の stroke-opacity:var(...)）は
+        //    canvas 要素自体の opacity を同じ CSS 変数で駆動 — 単色の
+        //    線しか無いので見た目は等価で、tick() の変数入れ替えにも
+        //    そのまま追従する。
+        //  - <svg>: 走り線（spawnSparks）専用のオーバーレイ。静的な
+        //    パスを持たないので、ラスタライズ解像度の影響を受けるのは
+        //    一瞬で流れる走り線だけ＝実害がない。
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        // 描き込み登場用に各パスの実長を測る（canvas の dash には SVG の
+        // pathLength 正規化が無いので実寸で扱う）。getTotalLength は
+        // detached な path 要素でも機能する。
+        const measurePath = document.createElementNS(SVG_NS, "path") as SVGPathElement;
+        const pathData = paths.map((d) => {
+          measurePath.setAttribute("d", d);
+          let len = 0;
+          try {
+            len = measurePath.getTotalLength();
+          } catch {
+            // 変換に失敗したら描き込みだけ諦めて全長扱いに（下の fallback）
+          }
+          return { path2d: new Path2D(d), len: len > 0 ? len : 4000 };
+        });
+        /** スライスごと・パスごとの描き込み抽選（WAAPI 版と同じレンジ —
+         *  DRAW_* の doc comment 参照）。前面/背面で別々に引く。 */
+        const drawPlans = svgHostRefs.current.map(() =>
+          pathData.map(() => ({
+            delay: Math.random() * DRAW_DELAY_MAX_MS,
+            duration:
+              DRAW_DURATION_MIN_MS +
+              Math.random() * (DRAW_DURATION_MAX_MS - DRAW_DURATION_MIN_MS),
+            fromEnd: Math.random() < 0.5,
+          }))
+        );
+
+        const sliceCanvases: (HTMLCanvasElement | null)[] = [];
         svgHostRefs.current.forEach((host, i) => {
           if (!host) return;
           // スライスの z（レンダリング側と同じ式）。正 = 元の前面 = --logo-line-a。
           const z = (i / (SLICE_COUNT - 1) - 0.5) * THICKNESS_PX;
-          host.innerHTML = buildSvg(z > 0 ? "--logo-line-a" : "--logo-line-b");
-          // 登場の描き込み（DRAW_* の doc comment 参照）: stroke-dash の
-          // draw-on。pathLength=1000 に正規化し、全長ぶんの dasharray を
-          // 張って dashoffset を ±1000 → 0 へ動かすと、線がパスの始点
-          // （または終点）＝頂点から伸びていく。delay・duration・向きは
-          // パスごと（前面/背面スライスも別々）に抽選。fill: backwards で
-          // delay 中は白紙。終了後はアニメーションが外れ、dashoffset の
-          // 既定値 0 ＝ dasharray の実線部分が全長を覆う状態に静止する。
-          host.querySelectorAll("path").forEach((path) => {
-            path.setAttribute("pathLength", "1000");
-            path.setAttribute("stroke-dasharray", "1000 1000");
-            path.animate(
-              [
-                { strokeDashoffset: Math.random() < 0.5 ? 1000 : -1000 },
-                { strokeDashoffset: 0 },
-              ],
-              {
-                delay: Math.random() * DRAW_DELAY_MAX_MS,
-                duration:
-                  DRAW_DURATION_MIN_MS +
-                  Math.random() * (DRAW_DURATION_MAX_MS - DRAW_DURATION_MIN_MS),
-                easing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
-                fill: "backwards",
-              }
-            );
-          });
+          const opacityVar = z > 0 ? "--logo-line-a" : "--logo-line-b";
+          host.innerHTML =
+            `<canvas style="position:absolute;inset:0;width:100%;height:100%;opacity:var(${opacityVar})"></canvas>` +
+            `<svg viewBox="0 0 ${LOGO_VIEWBOX.w} ${LOGO_VIEWBOX.h}" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible"></svg>`;
+          sliceCanvases[i] = host.querySelector("canvas");
         });
+
+        const easeDraw = (t: number) => t * t * (3 - 2 * t);
+        /** 全スライスの輪郭を描く。elapsedMs = 描き込み登場の経過時間、
+         *  null = 全長（登場完了後の静止状態）。黒の半透明線が反転レイヤーを
+         *  通って白線に見える理屈は従来の SVG 版と同じ。 */
+        renderSlices = (elapsedMs) => {
+          sliceCanvases.forEach((cnv, i) => {
+            if (!cnv) return;
+            const ctx = cnv.getContext("2d");
+            if (!ctx) return;
+            const rect = cnv.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+            const w = Math.max(1, Math.round(rect.width * dpr));
+            const h = Math.max(1, Math.round(rect.height * dpr));
+            if (cnv.width !== w || cnv.height !== h) {
+              cnv.width = w;
+              cnv.height = h;
+            }
+            const sx = w / LOGO_VIEWBOX.w;
+            const sy = h / LOGO_VIEWBOX.h;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            ctx.setTransform(sx, 0, 0, sy, 0, 0);
+            ctx.strokeStyle = "#000";
+            // 0.5 CSS px（従来の stroke-width / non-scaling-stroke と同値）を
+            // transform 込みで維持する。
+            ctx.lineWidth = (0.5 * dpr) / sx;
+            pathData.forEach((pd, j) => {
+              if (elapsedMs === null) {
+                ctx.setLineDash([]);
+                ctx.stroke(pd.path2d);
+                return;
+              }
+              const plan = drawPlans[i]?.[j];
+              if (!plan) return;
+              const t = Math.min(1, Math.max(0, (elapsedMs - plan.delay) / plan.duration));
+              if (t <= 0) return;
+              const drawn = pd.len * easeDraw(t);
+              // 実線 drawn + 残り全部が空白。fromEnd は dashOffset を負に
+              // 振って、実線部分をパスの終端側に置く＝終点の頂点から伸びる。
+              ctx.setLineDash([drawn, pd.len + 1]);
+              ctx.lineDashOffset = plan.fromEnd ? drawn - pd.len : 0;
+              ctx.stroke(pd.path2d);
+            });
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+          });
+        };
+        entranceStartAt = performance.now();
+        entranceTotalMs = DRAW_DELAY_MAX_MS + DRAW_DURATION_MAX_MS + 60;
+        renderSlices(0);
 
         // 手前と奥のロゴの頂点同士を繋ぐエッジ線 — per direct follow-up
         // ("手前と奥のロゴの頂点同士を線で繋いで")。SVG は平面にしか描けない
@@ -370,8 +438,27 @@ export function KonamiLogo3D() {
     }
     window.addEventListener("mousemove", handleMouse, { passive: true });
 
+    // リサイズで canvas の実解像度を取り直す（登場中は tick が毎フレーム
+    // 描き直しているので、完了後だけ明示的に）。
+    function handleResize() {
+      if (entranceDone) renderSlices?.(null);
+    }
+    window.addEventListener("resize", handleResize);
+
     function tick() {
       if (disposed) return;
+      // 輪郭の描き込み登場（renderSlices の doc comment 参照）。完了後は
+      // 静止ビットマップのまま毎フレーム触らない — 触らないことが
+      // 「コンポジタに再ラスタライズの口実を与えない」の一部でもある。
+      if (renderSlices && !entranceDone && entranceStartAt !== null) {
+        const elapsed = performance.now() - entranceStartAt;
+        if (elapsed >= entranceTotalMs) {
+          entranceDone = true;
+          renderSlices(null);
+        } else {
+          renderSlices(elapsed);
+        }
+      }
       const cursor = cursorRef.current;
       const target = cursorTargetRef.current;
       cursor.x += (target.x - cursor.x) * CURSOR_EASE;
@@ -412,6 +499,7 @@ export function KonamiLogo3D() {
       window.clearInterval(sparkTimer);
       if (initialSparkTimer !== null) window.clearTimeout(initialSparkTimer);
       window.removeEventListener("mousemove", handleMouse);
+      window.removeEventListener("resize", handleResize);
     };
   }, []);
 
