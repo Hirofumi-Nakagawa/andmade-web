@@ -516,14 +516,23 @@ export function KonamiLogo3D() {
           });
         }
         // 最初のバッチは描き込みが済んでから（INITIAL_SPARK_DELAY_MS の
-        // doc comment 参照）。以降は下の interval が定期的に放つ。
-        initialSparkTimer = window.setTimeout(spawnSparks, INITIAL_SPARK_DELAY_MS);
+        // doc comment 参照）。定期バッチ（SPARK_INTERVAL_MS）は**初回
+        // バッチを起点に**始める — per direct follow-up ("ロゴが表示されて
+        // から最初に線が走ってからすぐにまた線が走る挙動"): 以前は
+        // interval がマウント起点で独立に回っていたため、初回(1.3s)と
+        // 定期1発目(2.0s)が 700ms しか空かず連発していた。
+        initialSparkTimer = window.setTimeout(() => {
+          spawnSparks();
+          sparkTimer = window.setInterval(spawnSparks, SPARK_INTERVAL_MS);
+        }, INITIAL_SPARK_DELAY_MS);
       } catch {
         // ロゴが読めなければ背景は単に無地のまま — エッグの他の要素は無傷。
       }
     })();
 
-    const sparkTimer = window.setInterval(spawnSparks, SPARK_INTERVAL_MS);
+    /** 定期バッチのタイマー。初回バッチの遅延タイマーの中で開始される
+     *  （上記コメント参照）。 */
+    let sparkTimer: number | null = null;
 
     function handleMouse(event: MouseEvent) {
       cursorTargetRef.current = {
@@ -597,7 +606,7 @@ export function KonamiLogo3D() {
     return () => {
       disposed = true;
       if (frame !== null) cancelAnimationFrame(frame);
-      window.clearInterval(sparkTimer);
+      if (sparkTimer !== null) window.clearInterval(sparkTimer);
       if (initialSparkTimer !== null) window.clearTimeout(initialSparkTimer);
       window.removeEventListener("mousemove", handleMouse);
       window.removeEventListener("resize", handleResize);
