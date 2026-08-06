@@ -13,7 +13,7 @@ const TEXT = "Get in touch.";
  */
 export function ContactHero() {
   return (
-    <p className="ml-[calc(198px*var(--grid-scale))] text-[length:calc(52px*var(--scale))] leading-[1.75] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+    <p className="ml-[calc(198px*var(--grid-scale))] text-[length:calc(60px*var(--scale))] leading-[1.75] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
       <ScrambleText text={TEXT} active />
     </p>
   );

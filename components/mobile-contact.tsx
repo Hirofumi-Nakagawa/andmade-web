@@ -99,12 +99,6 @@ const JP_PARAGRAPH_TOP_PX = 376 - 53 + BELOW_HEADER_OFFSET_PX;
 // 日本語2行目のインク下端は行ボックス(24px×2)より約7.5px上に来るため、
 // 見た目のマージン35px = top差 約78px（454 − 376）。
 const CONTACT_LINKS_TOP_PX = 454 - 53 + BELOW_HEADER_OFFSET_PX;
-/** Rotated "We're always open to new ideas." label — shares its own top
- *  with "Get in touch." in Figma (both 254 raw / 201 content-relative), so
- *  this reuses GET_IN_TOUCH_TOP_PX directly rather than re-deriving the same
- *  number a second way. */
-const SIDE_LABEL_TOP_PX = GET_IN_TOUCH_TOP_PX;
-
 /** `font-feature-settings: "ss09" 1` — matches the stylistic set the PC
  *  Contact page (app/contact/page.tsx) applies to this same Japanese copy. */
 const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
@@ -220,14 +214,9 @@ export function MobileContact() {
          Holds "We're always..." — reverted back per direct follow-up
          ("左右のテキストの位置をやっぱり元にもどして"), undoing an earlier
          swap with the right-edge block below. */}
-      <RevealOnMount className="absolute" style={{ left: "var(--sp-grid-margin)", top: `${SIDE_LABEL_TOP_PX}px` }}>
-        <p
-          className="absolute text-[12px] leading-[1.1] font-normal whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-          style={{ left: 0, bottom: 0, transformOrigin: "left bottom", transform: "rotate(90deg)" }}
-        >
-          {`We're always open to new ideas.`}
-        </p>
-      </RevealOnMount>
+      {/* 回転の「We're always open to new ideas.」はここにあったが、
+         貼付レイアウトの指示（"We're always open to new ideas.はpc,spともに
+         トリ"）で削除。 */}
 
       {/* Right-edge rotated parenthetical caption ("( Rooted in purpose,
          Designed with clarity, Built to last )") — temporarily removed from

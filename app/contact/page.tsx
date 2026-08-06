@@ -132,53 +132,22 @@ export default function Contact() {
             縦位置中央に配置する"）。それまでの mt-280px の固定オフセットを
             廃止。ヘッダー・フッターは従来どおり上下に固定。 */}
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2">
-          {/* Left margin matches the Home page's Tx/Th toggle
-              (project-view-toggle.tsx: ml-[calc(24px*var(--grid-scale))]),
-              same 12px/medium text — vertically aligned to "Get in touch."'s
-              own *bottom* edge instead (bottom-0, positioned against the
-              wrapper directly below rather than the outer mt-280-offset
-              origin div — that wrapper is a plain, otherwise-unstyled
-              `relative` box sized to ContactHero's own rendered height, so
-              bottom-0 here lands exactly on ContactHero's own bottom edge
-              regardless of its exact trimmed pixel height, without needing
-              to know that height). Only the first line gets trim-start and
-              only the last gets trim-end (matching app/about/page.tsx's
-              paragraphTrimClass convention for stacked multi-line text) —
-              trimming every line would collapse the natural 1.15 leading
-              *between* them along with the unwanted leading above/below the
-              whole block; this way only the outer edges are trimmed, so the
-              block's bottom still lands exactly on "Get in touch."'s own
-              bottom edge. No mix-blend-exclusion since this page has no
-              photo/light background to blend against (plain #fff on
-              black, like the rest of Contact's own text). */}
+          {/* 「We're always open to new ideas.」はこのラッパー内にあったが、
+              貼付レイアウトの指示（"We're always open to new ideas.はpc,sp
+              ともにトリ"）で PC/SP とも削除。ラッパー自体は右端キャプションの
+              「ContactHero 下端揃え」（bottom-0）の基準として残す。 */}
           <div className="relative">
-            <RevealOnMount className="absolute bottom-0 ml-[calc(24px*var(--grid-scale))] whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.15] font-normal text-[#fff]">
-              <p className="mb-0 [text-box-edge:cap_alphabetic] [text-box-trim:trim-start]">{`We’re always`}</p>
-              <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-end]">open to new ideas.</p>
-            </RevealOnMount>
-
             <ContactHero />
 
-            {/* 右端の "( Rooted in purpose , Built to last , Designed with
-                clarity )" キャプション — 一度 "contactの下記を消して" で
-                削除したが、添付レイアウトでの再指定（"右端に「Rooted in
-                purpose,~」を掲載"）で復活。ContactHero の下端揃え。語順は
-                添付どおり。右端は当初 var(--edge-right-inset) + 24px（グリッド
-                連動）だったが、幅を狭めるとマージンが変わるとの指摘（per
-                direct follow-up "右端に固定にしてほしい"）でビューポート右端
-                から固定 24px に。 */}
-            <RevealOnMount
-              className="absolute bottom-0 right-[24px] whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] font-medium text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-            >
-              <p>( Rooted in purpose , Built to last , Designed with clarity )</p>
-            </RevealOnMount>
+            {/* 右端の "( Rooted in purpose , ~ )" キャプションは削除⇄復活を
+                経て、貼付レイアウト後の "Rooted in~もトリ" で再度削除。 */}
           </div>
 
-          {/* ml 546px*grid = ヘッダーのメニューの左面（site-header.tsx:
-              コンテナ 198px + nav left 348px）に揃える（添付レイアウト
-              per direct follow-up）。mt は 40 → 70px（"30px下に移動"）→ 40px
-              （"Get in touch下マージンを40pxに"）→ 35px（"5px詰めて"）。 */}
-          <div className="ml-[calc(546px*var(--grid-scale))] mt-[calc(35px*var(--scale))] flex flex-col items-start gap-[calc(40px*var(--scale))]">
+          {/* ml 198px*grid = ヘッダーの「ANDMADE Inc.」と左面揃え — 貼付
+              レイアウト per direct follow-up。一時はメニュー左面（546px*grid）
+              揃えだった。mt 35px（40 → 70 → 40 → 35 の変遷、"Get in touch
+              下マージン"）。 */}
+          <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(35px*var(--scale))] flex flex-col items-start gap-[calc(40px*var(--scale))]">
             {/* gap tightened 40px → 35px → 30px (two direct follow-ups, "3行
                 英字の下マージンを5px詰めて" ×2) — the space directly below
                 the 3-line English tagline above (only affects the gap
