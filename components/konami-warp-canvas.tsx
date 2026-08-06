@@ -498,12 +498,37 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
     if (!main || !maskPipe) return;
     const pipelines = [main, maskPipe];
 
-    /** キャプチャ結果を両方のパイプラインのテクスチャへ流し込む。 */
-    const uploadTexture = (source: TexImageSource) => {
+    /** キャプチャ結果をパイプラインのテクスチャへ流し込む。
+     *  includeMask=false で本体のみ — Img グリッドのアトラスはページ全高で
+     *  巨大（数十MP）で、マスク側は紙モード（ホバー）でしか読まれない
+     *  ため、グリッドぶんまで二重転送するとその同期コストがスクロール中の
+     *  カクつきになる（per direct follow-up "サムネが画面上部に触れて
+     *  グラスエフェクトが発動する瞬間、カクついたり一瞬スクロールが
+     *  止まる"）。 */
+    const uploadTexture = (source: TexImageSource, includeMask = true) => {
       for (const p of pipelines) {
+        if (!includeMask && p === maskPipe) continue;
         p.gl.bindTexture(p.gl.TEXTURE_2D, p.texture);
         p.gl.texImage2D(p.gl.TEXTURE_2D, 0, p.gl.RGBA, p.gl.RGBA, p.gl.UNSIGNED_BYTE, source);
       }
+    };
+
+    /** 転送直後に 1px のダミー描画を1回走らせ、ドライバのパイプライン
+     *  初期化（初回描画時に遅延コンパイルされがち）を発動前の暇な時間に
+     *  済ませておく — 発動の最初のフレームでのカクつき対策の片割れ。 */
+    const warmUp = () => {
+      const g = main.gl;
+      g.viewport(0, 0, 1, 1);
+      g.useProgram(main.program);
+      g.bindBuffer(g.ARRAY_BUFFER, main.quad);
+      g.enableVertexAttribArray(main.aPos);
+      g.vertexAttribPointer(main.aPos, 2, g.FLOAT, false, 0, 0);
+      g.activeTexture(g.TEXTURE0);
+      g.bindTexture(g.TEXTURE_2D, main.texture);
+      g.uniform1i(main.uTex, 0);
+      g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+      g.clearColor(0, 0, 0, 0);
+      g.clear(g.COLOR_BUFFER_BIT);
     };
 
     const maxTextureSize = main.gl.getParameter(main.gl.MAX_TEXTURE_SIZE) as number;
@@ -647,7 +672,11 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
 
       raster = { canvas: cnv, cssWidth, cssHeight, padX: TEXTURE_PAD_X, padY: TEXTURE_PAD_Y, underlines: [] };
       cards = boxes;
-      uploadTexture(cnv);
+      // グリッドのアトラスは本体のみへ（uploadTexture の doc comment 参照）。
+      // ホバーの1枚はマスク（紙の形どおりのカウンター反転）にも要る。
+      const isHover = grid.hasAttribute(KONAMI_WARP_HOVER_ATTRIBUTE);
+      uploadTexture(cnv, isHover);
+      if (!isHover) warmUp();
     };
 
     const capture = () => {
@@ -762,7 +791,14 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
           // 意味がなく、同じ重い処理をもう一度走らせるだけになる。
           settleTimer = window.setTimeout(() => {
             settleTimer = null;
-            capture();
+            // さらにアイドルの隙間へ寄せる — 1.4秒の時点でユーザーが既に
+            // スクロールしていると、重いアトラス生成がスクロールの真ん中に
+            // 落ちてカクつくため。requestIdleCallback が無い環境はそのまま。
+            if ("requestIdleCallback" in window) {
+              window.requestIdleCallback(() => capture(), { timeout: 1500 });
+            } else {
+              capture();
+            }
           }, IMAGES_FIRST_CAPTURE_DELAY_MS);
         } else {
           capture();

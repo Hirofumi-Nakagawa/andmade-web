@@ -56,9 +56,9 @@ const LOGO_VIEWBOX = { w: 1410, h: 190 };
 const SLICE_COUNT = 2;
 const THICKNESS_PX = 96;
 
-/** 線の透過。0.5 → 0.4（いずれも直接の指示）。前面のアウトラインと、
+/** 線の透過。0.5 → 0.4 → 0.45（いずれも直接の指示）。前面のアウトラインと、
  *  エッジ線の手前側の端が読む。 */
-const LINE_OPACITY = 0.4;
+const LINE_OPACITY = 0.45;
 /** 奥（背面）側の透過 — per direct follow-up ("奥の線は手前の線よりも少し
  *  薄くして / 頂点を繋いでる線も奥にいくほど薄くして")。
  *
@@ -70,7 +70,8 @@ const LINE_OPACITY = 0.4;
  *  cos から「どちらがどれだけ視点側か」を出して2値を連続的に入れ替える
  *  （tick() 内参照）。エッジ線のグラデーションも同じ変数を両端で読むので、
  *  反転すればフェードの向きも自動で追従する。この2定数はその両極の値。 */
-const LINE_OPACITY_BACK = 0.22;
+// 0.22 → 0.17（直接の指示 "もう少しだけ奥を薄くして"）。
+const LINE_OPACITY_BACK = 0.17;
 
 /** ロゴの表示幅（ビューポート幅に対する割合）。背景の主役なので大きめ。
  *  62 → 74 → 80 → 82 → 84 → 85（いずれも直接の指示）。 */
@@ -104,10 +105,13 @@ const SPIN_MAX_DEG = 6;
  *  現れて走りながら消える。 */
 // 3000 → 2000（直接の指示 "走り線は2秒に一回"）。
 const SPARK_INTERVAL_MS = 2000;
-/** 1回に走らせる本数の範囲。3〜6 → 6〜12 → 8〜15 → 10〜15 → 12〜16
- *  （いずれも直接の指示）。 */
-const SPARK_MIN = 12;
-const SPARK_MAX = 16;
+/** 1バッチでパス（文字）ごとに走らせる本数 — per direct follow-up
+ *  ("ロゴの線が走るアニメーションは、毎回全文字線が走るようにして")。
+ *  以前は総本数だけ決めてパスをランダムに選んでいた（3〜6 → 6〜12 →
+ *  8〜15 → 10〜15 → 12〜16 と増量してきた）ため、回によって線が走らない
+ *  文字が出ていた。全パス×2本 = 14本/バッチで、従来の総本数レンジとも
+ *  揃う。 */
+const SPARKS_PER_PATH = 2;
 /** 実線部分の長さの範囲（pathLength=1000 に対する割合千分率）。 */
 const SPARK_DASH_MIN = 40;
 const SPARK_DASH_MAX = 110;
@@ -203,59 +207,69 @@ export function KonamiLogo3D() {
      *  renderSlices の doc comment 参照）。tick() が描き込み登場を
      *  駆動し、resize 時の再描画にも使う。 */
     let renderSlices: ((elapsedMs: number | null) => void) | null = null;
+    /** スライスの canvas と「元の前面かどうか」。tick() が毎フレーム、
+     *  回転角から出した濃度を style.opacity へ**直接**書く — 初版は
+     *  opacity: var(--logo-line-a/b) で CSS 変数に委ねたが、環境によって
+     *  効かず「奥も同じ濃さ・回転しても入れ替わらない」と報告された
+     *  （per direct follow-up "背景ロゴのルールが変わってる…"）。JS 直書き
+     *  なら継承や変数解決に依存しない。エッジ線のグラデーションは SVG
+     *  時代から実績のある変数方式のまま。 */
+    let sliceCanvasInfo: { el: HTMLCanvasElement; isFront: boolean }[] = [];
+    /** 走り線用の canvas（スライスごと、輪郭 canvas の上・不透明度1）と、
+     *  その毎フレーム描画関数（tick() が呼ぶ）。輪郭側の canvas は要素
+     *  opacity（0.45/0.17）が全体に掛かるため走り線を同居させられない —
+     *  SPARK_OPACITY 0.9 が出せなくなる。 */
+    const sparkCanvases: (HTMLCanvasElement | null)[] = [];
+    let renderSparks: (() => void) | null = null;
+    let sparkDirty = false;
     let entranceStartAt: number | null = null;
     let entranceTotalMs = 0;
     let entranceDone = false;
 
     const SVG_NS = "http://www.w3.org/2000/svg";
 
-    /** 走り線を1バッチ（SPARK_MIN〜SPARK_MAX 本）放つ。1本ごとにパス・
-     *  スライス（前面/背面）・開始位置・向き・長さ・速さを引き直すので、
-     *  毎回違う場所を違う速さで走る。終わった要素は onfinish で自分を
-     *  取り除くため、DOM に溜まらない。 */
+    /** 走り線の状態。WAAPI + SVG ではなく、tick() が毎フレーム
+     *  スパーク用 canvas に自前で描く — per direct follow-up ("線が走る
+     *  アニメーションが止まる瞬間だけ線が少し濃くなる" が fill:forwards・
+     *  素の属性の不可視化・フェード前倒しのいずれでも解消しなかったため)。
+     *  WAAPI はコンポジタ/メインスレッドの適用タイミングに終端の隙間が
+     *  生まれ得るが、自前描画なら「その瞬間の不透明度」を毎フレーム
+     *  こちらが計算して塗るだけなので、終端で明るくなる余地が構造的に
+     *  無い。値のレンジ（SPARK_*）は WAAPI 版と同じ。 */
+    type Spark = {
+      slice: number;
+      path: number;
+      /** 開始位置・実線長・走行距離（いずれもパス全長に対する 0..1）。 */
+      startNorm: number;
+      dashNorm: number;
+      travelNorm: number;
+      born: number;
+      duration: number;
+    };
+    let sparks: Spark[] = [];
+
+    /** 走り線を1バッチ積む。実際の描画は tick() → renderSparks()。
+     *  全パス（＝全文字）に SPARKS_PER_PATH 本ずつ — どの文字にも毎回
+     *  必ず線が走る（per direct follow-up）。位置・向き・速さ・スライスは
+     *  従来どおり1本ごとに抽選。 */
     function spawnSparks() {
       if (disposed || logoPaths.length === 0) return;
-      const svgs = svgHostRefs.current
-        .map((host) => host?.querySelector("svg"))
-        .filter((el): el is SVGSVGElement => el != null);
-      if (svgs.length === 0) return;
-
-      const count = SPARK_MIN + Math.floor(Math.random() * (SPARK_MAX - SPARK_MIN + 1));
-      for (let n = 0; n < count; n++) {
-        const el = document.createElementNS(SVG_NS, "path");
-        el.setAttribute("d", logoPaths[Math.floor(Math.random() * logoPaths.length)]);
-        el.setAttribute("fill", "none");
-        el.setAttribute("stroke", "black");
-        el.setAttribute("stroke-width", "0.5");
-        el.setAttribute("vector-effect", "non-scaling-stroke");
-        // pathLength=1000 — dasharray/dashoffset の単位を実寸から切り離す。
-        // これが無いとパスごとに実長が違い（E と A で3倍近く違う）、同じ
-        // 数値でも走る距離・速さがパス任せになってしまう。
-        el.setAttribute("pathLength", "1000");
-        const dash = SPARK_DASH_MIN + Math.random() * (SPARK_DASH_MAX - SPARK_DASH_MIN);
-        // 実線 + 空白 = ちょうど1周ぶんにして、ライン上に実線が常に1つだけ
-        // 見えるようにする。
-        el.setAttribute("stroke-dasharray", `${dash.toFixed(1)} ${(1000 - dash).toFixed(1)}`);
-        const start = Math.random() * 1000;
-        const travel =
-          (SPARK_TRAVEL_MIN + Math.random() * (SPARK_TRAVEL_MAX - SPARK_TRAVEL_MIN)) *
-          (Math.random() < 0.5 ? -1 : 1);
-        const svg = svgs[Math.floor(Math.random() * svgs.length)];
-        svg.appendChild(el);
-        const animation = el.animate(
-          [
-            { strokeDashoffset: start, opacity: 0 },
-            { opacity: SPARK_OPACITY, offset: 0.2 },
-            { opacity: SPARK_OPACITY, offset: 0.7 },
-            { strokeDashoffset: start + travel, opacity: 0 },
-          ],
-          {
-            duration:
-              SPARK_DURATION_MIN_MS + Math.random() * (SPARK_DURATION_MAX_MS - SPARK_DURATION_MIN_MS),
-            easing: "cubic-bezier(0.33, 0, 0.2, 1)",
-          }
-        );
-        animation.onfinish = () => el.remove();
+      const now = performance.now();
+      for (let pathIndex = 0; pathIndex < logoPaths.length; pathIndex++)
+      for (let n = 0; n < SPARKS_PER_PATH; n++) {
+        sparks.push({
+          slice: Math.floor(Math.random() * SLICE_COUNT),
+          path: pathIndex,
+          startNorm: Math.random(),
+          dashNorm:
+            (SPARK_DASH_MIN + Math.random() * (SPARK_DASH_MAX - SPARK_DASH_MIN)) / 1000,
+          travelNorm:
+            ((SPARK_TRAVEL_MIN + Math.random() * (SPARK_TRAVEL_MAX - SPARK_TRAVEL_MIN)) / 1000) *
+            (Math.random() < 0.5 ? -1 : 1),
+          born: now,
+          duration:
+            SPARK_DURATION_MIN_MS + Math.random() * (SPARK_DURATION_MAX_MS - SPARK_DURATION_MIN_MS),
+        });
       }
     }
 
@@ -316,15 +330,26 @@ export function KonamiLogo3D() {
         );
 
         const sliceCanvases: (HTMLCanvasElement | null)[] = [];
+        sliceCanvasInfo = [];
         svgHostRefs.current.forEach((host, i) => {
           if (!host) return;
-          // スライスの z（レンダリング側と同じ式）。正 = 元の前面 = --logo-line-a。
+          // スライスの z（レンダリング側と同じ式）。正 = 元の前面。
           const z = (i / (SLICE_COUNT - 1) - 0.5) * THICKNESS_PX;
-          const opacityVar = z > 0 ? "--logo-line-a" : "--logo-line-b";
+          // 1枚目 = 輪郭（要素 opacity で濃度制御）、2枚目 = 走り線
+          // （不透明度1のまま。renderSparks が毎フレーム描く）。
           host.innerHTML =
-            `<canvas style="position:absolute;inset:0;width:100%;height:100%;opacity:var(${opacityVar})"></canvas>` +
-            `<svg viewBox="0 0 ${LOGO_VIEWBOX.w} ${LOGO_VIEWBOX.h}" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible"></svg>`;
-          sliceCanvases[i] = host.querySelector("canvas");
+            `<canvas style="position:absolute;inset:0;width:100%;height:100%"></canvas>` +
+            `<canvas style="position:absolute;inset:0;width:100%;height:100%"></canvas>`;
+          const canvases = host.querySelectorAll("canvas");
+          const cnv = canvases[0] as HTMLCanvasElement | undefined;
+          sliceCanvases[i] = cnv ?? null;
+          sparkCanvases[i] = (canvases[1] as HTMLCanvasElement | undefined) ?? null;
+          if (cnv) {
+            const isFront = z > 0;
+            // 初期濃度（tick が最初のフレームで正確な値に上書きする）。
+            cnv.style.opacity = String(isFront ? LINE_OPACITY : LINE_OPACITY_BACK);
+            sliceCanvasInfo.push({ el: cnv, isFront });
+          }
         });
 
         const easeDraw = (t: number) => t * t * (3 - 2 * t);
@@ -373,6 +398,76 @@ export function KonamiLogo3D() {
             ctx.setTransform(1, 0, 0, 1, 0, 0);
           });
         };
+        /** 走り線の毎フレーム描画（spawnSparks / Spark 型の doc comment
+         *  参照）。輪郭と同じ dpr 解像度・同じ座標系で、dash の1区間だけを
+         *  進行に合わせた不透明度で塗る。不透明度はこちらが毎フレーム
+         *  計算した値そのもの — 終端で明るくなる余地は無い。 */
+        renderSparks = () => {
+          const nowMs = performance.now();
+          if (sparks.length) {
+            sparks = sparks.filter((sp) => nowMs - sp.born < sp.duration);
+          }
+          if (sparks.length === 0) {
+            // 全部消えたら一度だけクリアして、以降は触らない。
+            if (sparkDirty) {
+              sparkCanvases.forEach((cnv) => {
+                const ctx = cnv?.getContext("2d");
+                if (cnv && ctx) {
+                  ctx.setTransform(1, 0, 0, 1, 0, 0);
+                  ctx.clearRect(0, 0, cnv.width, cnv.height);
+                }
+              });
+              sparkDirty = false;
+            }
+            return;
+          }
+          sparkDirty = true;
+          sparkCanvases.forEach((cnv, i) => {
+            if (!cnv) return;
+            const ctx = cnv.getContext("2d");
+            if (!ctx) return;
+            const rect = cnv.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+            const w = Math.max(1, Math.round(rect.width * dpr));
+            const h = Math.max(1, Math.round(rect.height * dpr));
+            if (cnv.width !== w || cnv.height !== h) {
+              cnv.width = w;
+              cnv.height = h;
+            }
+            const sx = w / LOGO_VIEWBOX.w;
+            const sy = h / LOGO_VIEWBOX.h;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            ctx.setTransform(sx, 0, 0, sy, 0, 0);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = (0.5 * dpr) / sx;
+            for (const sp of sparks) {
+              if (sp.slice !== i) continue;
+              const t = Math.min(1, (nowMs - sp.born) / sp.duration);
+              // 減速カーブ（WAAPI 版の cubic-bezier(0.33,0,0.2,1) の読み味）。
+              const pe = 1 - Math.pow(1 - t, 2.6);
+              // 不透明度の封筒: 進行 20% までで立ち上げ、55% まで保持、
+              // 80% までに消し切る。ほぼ静止する尻尾（80%〜）は完全に
+              // 不可視 — 「止まる瞬間に濃く見える」対策。
+              let alpha: number;
+              if (pe < 0.2) alpha = (pe / 0.2) * SPARK_OPACITY;
+              else if (pe < 0.55) alpha = SPARK_OPACITY;
+              else if (pe < 0.8) alpha = SPARK_OPACITY * (1 - (pe - 0.55) / 0.25);
+              else alpha = 0;
+              if (alpha <= 0.004) continue;
+              const pd = pathData[sp.path];
+              if (!pd) continue;
+              const dash = Math.max(1, sp.dashNorm * pd.len);
+              ctx.setLineDash([dash, pd.len]);
+              ctx.lineDashOffset = -((sp.startNorm + sp.travelNorm * pe) * pd.len);
+              ctx.globalAlpha = alpha;
+              ctx.stroke(pd.path2d);
+            }
+            ctx.globalAlpha = 1;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+          });
+        };
+
         entranceStartAt = performance.now();
         entranceTotalMs = DRAW_DELAY_MAX_MS + DRAW_DURATION_MAX_MS + 60;
         renderSlices(0);
@@ -459,6 +554,8 @@ export function KonamiLogo3D() {
           renderSlices(elapsed);
         }
       }
+      // 走り線（renderSparks の doc comment 参照）。
+      renderSparks?.();
       const cursor = cursorRef.current;
       const target = cursorTargetRef.current;
       cursor.x += (target.x - cursor.x) * CURSOR_EASE;
@@ -488,6 +585,10 @@ export function KonamiLogo3D() {
         const b = LINE_OPACITY + (LINE_OPACITY_BACK - LINE_OPACITY) * frontness;
         stage.style.setProperty("--logo-line-a", a.toFixed(3));
         stage.style.setProperty("--logo-line-b", b.toFixed(3));
+        // 輪郭 canvas は JS 直書き（sliceCanvasInfo の doc comment 参照）。
+        for (const info of sliceCanvasInfo) {
+          info.el.style.opacity = (info.isFront ? a : b).toFixed(3);
+        }
       }
       frame = requestAnimationFrame(tick);
     }
