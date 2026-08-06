@@ -113,6 +113,18 @@ const HOVER_SCALE_START = 0.9;
  *  mid-gesture doesn't cause a swap-thrash. */
 const REST_HANDOFF_MS = 200;
 
+/** Img グリッドを採用してから最初のキャプチャまでの待ち（ms）— per direct
+ *  follow-up ("エッグ時にImgを選択すると、サムネが表示されるときにちゃんと
+ *  順に表示されず左上3つめ以降一瞬遅延して表示される挙動がある")。
+ *  captureImages は全サムネを CORS で読み直し、1枚のアトラスへ drawImage
+ *  してから GL へアップロードする（マスク方式でパイプラインが2本になって
+ *  からは2回）。この同期処理がメインスレッドを塞ぐと、グリッドの登場
+ *  カスケード（project-thumbnail-grid.tsx の per-index setTimeout）が
+ *  その間だけ止まり、3枚目以降がまとめて遅れて出る。キャプチャが要るのは
+ *  「スクロールして歪みが効き始めるとき」なので、カスケード（可視域の
+ *  数枚 ≒ 数百ms + 800ms のワイプ）が終わるまで待って構わない。 */
+const IMAGES_FIRST_CAPTURE_DELAY_MS = 1400;
+
 /** A second capture this long after adopting a target. The list re-runs its
  *  scramble-in reveal whenever it remounts (Img→Txt toggle), so a capture
  *  taken immediately freezes mid-scramble glyphs; this one catches the
@@ -742,11 +754,23 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
         settleTimer = null;
       }
       if (next) {
-        capture();
-        settleTimer = window.setTimeout(() => {
-          settleTimer = null;
+        if (next.hasAttribute(KONAMI_WARP_IMAGES_ATTRIBUTE)) {
+          // Img グリッドだけは初回キャプチャを遅らせる — 登場カスケードを
+          // 塞がないため（IMAGES_FIRST_CAPTURE_DELAY_MS の doc comment
+          // 参照）。settle 再キャプチャは行わない: あれはテキストの
+          // スクランブルが落ち着くのを待つためのもので、画像アトラスには
+          // 意味がなく、同じ重い処理をもう一度走らせるだけになる。
+          settleTimer = window.setTimeout(() => {
+            settleTimer = null;
+            capture();
+          }, IMAGES_FIRST_CAPTURE_DELAY_MS);
+        } else {
           capture();
-        }, SETTLE_RECAPTURE_MS);
+          settleTimer = window.setTimeout(() => {
+            settleTimer = null;
+            capture();
+          }, SETTLE_RECAPTURE_MS);
+        }
       }
     };
 
