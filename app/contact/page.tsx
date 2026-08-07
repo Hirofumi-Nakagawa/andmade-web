@@ -164,15 +164,11 @@ export default function Contact() {
                 上面揃え）の配置基準。この div の上端＝英語3行の箱の上端。 */}
             <div className="relative flex flex-col items-start gap-[calc(22px*var(--scale))] text-[#fff]">
               {/* Spotify の直近再生ジャケットのパラパラ表示 — 添付レイアウト
-                  per direct follow-up。right は画面右端から 24px だが、この
-                  親は左端 198px*grid から content-width-fluid 幅なので、
-                  はみ出した分を負のオフセットで戻す。 */}
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{ right: "calc(198px * var(--grid-scale) + var(--content-width-fluid) - 100vw)" }}
-              >
-                <RecentlyPlayedFlip />
-              </div>
+                  per direct follow-up。この div（英語3行の箱）の上端が
+                  ジャケットの上端。横位置はコンポーネント側がビューポート
+                  基準で決める（この箱の幅は英文の実測幅で当てにならないため。
+                  recently-played-flip.tsx の PARENT_LEFT 参照）。 */}
+              <RecentlyPlayedFlip />
               <CurtainRevealLines
                 lines={CONTACT_TAGLINE_LINES}
                 // 26px → 20px per direct follow-up ("Every project starts~の文字を20pxに")

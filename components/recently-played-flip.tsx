@@ -28,13 +28,36 @@ const DEV_ENDPOINT = "https://andmade.jp/recently-played.php";
 const ENDPOINT =
   process.env.NODE_ENV === "development" ? DEV_ENDPOINT : withBasePath("/recently-played.php");
 
-/** コマ送りの間隔 — 直接の指示（"0.5秒間隔"）。 */
-const FLIP_INTERVAL_MS = 500;
+/** コマ送りの間隔 — 直接の指示（"0.5秒間隔" → "0.3に変更"）。 */
+const FLIP_INTERVAL_MS = 300;
 
 /** ジャケットの一辺 — ヘッダー右上の再生中ホバーで出るジャケットと同じ
  *  110px*scale（header-summon.tsx の同じ値。直接の指示 "ヘッダー右上再生中の
  *  曲にホバーしたときに表示するジャケと同じサイズで"）。 */
 const ART_SIZE = "calc(110px*var(--scale))";
+
+/** 置き場所の基準となる、親（Contact の英語3行ブロック）の左端。
+ *  このコンポーネントは Contact 専用で、その親は必ず
+ *  ml-[calc(198px*var(--grid-scale))] のコンテンツ左端に揃っている。
+ *
+ *  `right: 24px` で済ませないのは、親が flex-col + items-start の子で
+ *  「内容幅」しか持たない（3行英文の実測幅で、ページのコンテンツ幅ではない）
+ *  ため — right は親の右端＝テキストの右端からの距離になってしまい、画面
+ *  右端 24px に来なかった（per direct follow-up "ジャケットの表示位置が画面
+ *  右マージン24pxの位置に表示されてない"）。親の幅に一切依存しないよう、
+ *  ビューポート幅から逆算した left で置く。 */
+const PARENT_LEFT = "198px * var(--grid-scale)";
+/** 画面右端からのマージン — 直接の指示（"画面右端24px"）。 */
+const RIGHT_INSET = "24px";
+
+/** ジャケット下のキャプション — 直接の指示（"ジャケット下12pxの位置に
+ *  「Recently Played」をAkzidenz-Grotesk Nextのmediumで中央揃えで配置"）。
+ *  書体はサイト既定の --font-sans がそのまま Akzidenz Grotesk Next なので
+ *  指定不要（globals.css）。サイズはヘッダーの Playing 表示と同じ 12px。
+ *  12px は trim 済みの文字下端からの距離にしたいので、キャプション側に
+ *  text-box-trim を効かせたうえで mt で開ける。 */
+const CAPTION_TEXT = "Recently Played";
+const CAPTION_GAP_PX = 12;
 
 export function RecentlyPlayedFlip() {
   const [images, setImages] = useState<string[]>([]);
@@ -100,8 +123,12 @@ export function RecentlyPlayedFlip() {
   return (
     <div
       aria-hidden
-      className="absolute"
-      style={{ right: "24px", top: 0, width: ART_SIZE, height: ART_SIZE }}
+      className="pointer-events-none absolute top-0"
+      style={{
+        left: `calc(100vw - ${PARENT_LEFT} - ${RIGHT_INSET} - ${ART_SIZE})`,
+        width: ART_SIZE,
+        height: ART_SIZE,
+      }}
     >
       {/* パラパラは transition を持たない素の差し替え（Studies のコマ送りと
          同じ読み味）。全コマを重ねて置き、現在のコマだけ表示する — src を
@@ -117,6 +144,15 @@ export function RecentlyPlayedFlip() {
           style={{ visibility: i === index ? "visible" : "hidden" }}
         />
       ))}
+      {/* キャプション（CAPTION_TEXT の doc comment 参照）。top-full +
+         mt でジャケット下端から 12px、w-full + text-center でジャケット幅に
+         対して中央揃え。 */}
+      <p
+        className="absolute top-full left-0 w-full text-center text-[length:calc(12px*var(--scale))] leading-[1.2] font-medium whitespace-nowrap text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        style={{ marginTop: `calc(${CAPTION_GAP_PX}px * var(--scale))` }}
+      >
+        {CAPTION_TEXT}
+      </p>
     </div>
   );
 }
