@@ -92,7 +92,8 @@ const STAGGER_MAX_MS = 2000;
 /**
  * Standalone Th-mode grid, originally matching the Figma design at node
  * 1400:1546 (a fixed 4-column grid; now 5, see COLUMNS' own doc comment),
- * 10px column gap / 80px row gap (both scaled by --grid-scale, matching
+ * 10px column gap / 90px row gap（行間は 80 → 90px、per direct follow-up
+ * "一覧内のサムネの上下間マージンを10px増やしたい"）(both scaled by --grid-scale, matching
  * every other spacing value on this page), each card
  * a real previewRatio-aspect image + 10px gap + underlined 14px title below
  * — no category/role/date shown here. Per explicit scoping with the user,
@@ -284,7 +285,7 @@ export function ProjectThumbnailGrid({ projects }: ProjectThumbnailGridProps) {
             // from GAP_PX so this can never drift out of sync with the width
             // math above again.
             columnGap: `calc(${GAP_PX}px * var(--grid-scale))`,
-            rowGap: "calc(80px * var(--grid-scale))",
+            rowGap: "calc(90px * var(--grid-scale))",
           }}
         >
           {projects.map((project, index) => (
