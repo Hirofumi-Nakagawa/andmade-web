@@ -38,7 +38,8 @@ const FLIP_INTERVAL_MS = 300;
 const ART_SIZE = "calc(110px*var(--scale))";
 
 /** ジャケット下のキャプション — 直接の指示（"ジャケット下12pxの位置に
- *  「Recently Played」をAkzidenz-Grotesk Nextのmediumで中央揃えで配置"）。
+ *  「Recently Played」をAkzidenz-Grotesk Nextのmediumで中央揃えで配置"
+ *  → その後 "regularにして"）。
  *  書体はサイト既定の --font-sans がそのまま Akzidenz Grotesk Next なので
  *  指定不要（globals.css）。サイズはヘッダーの Playing 表示と同じ 12px。
  *  12px は trim 済みの文字下端からの距離にしたいので、キャプション側に
@@ -131,7 +132,7 @@ export function RecentlyPlayedFlip() {
          12px、ジャケット幅に対して中央揃え。色は About の明るい背景に合わせて
          黒（Contact 時代は #fff だった）。 */}
       <p
-        className="w-full text-center text-[length:calc(12px*var(--scale))] leading-[1.2] font-medium whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        className="w-full text-center text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
         style={{ marginTop: `calc(${CAPTION_GAP_PX}px * var(--scale))` }}
       >
         {CAPTION_TEXT}
