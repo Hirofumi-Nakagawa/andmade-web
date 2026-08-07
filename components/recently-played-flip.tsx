@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { withBasePath } from "@/lib/base-path";
 
 /**
- * Contact ページ（PC）右端の「直近再生した曲のジャケット」パラパラ表示 —
- * per direct follow-up（添付レイアウト "pcのcontactページの右端24pxの位置で、
- * 英語3行の上面にそろえて直近の曲ジャケットを50枚順に0.5秒間隔でパラパラと
- * アニメーションで切り替えて表示して"）。
+ * 「直近再生した曲のジャケット」パラパラ表示（最大50枚、新しい順）— 初出は
+ * Contact ページ（PC）右端だったが、per direct follow-up（"contactから直近
+ * 再生はトリで、Aboutの一番下に横位置中央に配置して"）で About 最下部
+ * （フッターの上）へ移設。位置は呼び出し側が決める（このコンポーネント自体は
+ * 素の in-flow ブロック）。
  *
  * データ取得は public/recently-played.php（Spotify の
  * /v1/me/player/recently-played をサーバー側で叩くだけのエンドポイント。
@@ -35,20 +36,6 @@ const FLIP_INTERVAL_MS = 300;
  *  110px*scale（header-summon.tsx の同じ値。直接の指示 "ヘッダー右上再生中の
  *  曲にホバーしたときに表示するジャケと同じサイズで"）。 */
 const ART_SIZE = "calc(110px*var(--scale))";
-
-/** 置き場所の基準となる、親（Contact の英語3行ブロック）の左端。
- *  このコンポーネントは Contact 専用で、その親は必ず
- *  ml-[calc(198px*var(--grid-scale))] のコンテンツ左端に揃っている。
- *
- *  `right: 24px` で済ませないのは、親が flex-col + items-start の子で
- *  「内容幅」しか持たない（3行英文の実測幅で、ページのコンテンツ幅ではない）
- *  ため — right は親の右端＝テキストの右端からの距離になってしまい、画面
- *  右端 24px に来なかった（per direct follow-up "ジャケットの表示位置が画面
- *  右マージン24pxの位置に表示されてない"）。親の幅に一切依存しないよう、
- *  ビューポート幅から逆算した left で置く。 */
-const PARENT_LEFT = "198px * var(--grid-scale)";
-/** 画面右端からのマージン — 直接の指示（"画面右端24px"）。 */
-const RIGHT_INSET = "24px";
 
 /** ジャケット下のキャプション — 直接の指示（"ジャケット下12pxの位置に
  *  「Recently Played」をAkzidenz-Grotesk Nextのmediumで中央揃えで配置"）。
@@ -118,18 +105,13 @@ export function RecentlyPlayedFlip() {
     return () => clearInterval(timer);
   }, [images.length]);
 
+  // 取得できるまで（および取得できなかったとき）は高さゼロ — About の
+  // 本文とフッターの間に空の箱が残らないよう、枠自体を描かない。
   if (images.length === 0) return null;
 
   return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute top-0"
-      style={{
-        left: `calc(100vw - ${PARENT_LEFT} - ${RIGHT_INSET} - ${ART_SIZE})`,
-        width: ART_SIZE,
-        height: ART_SIZE,
-      }}
-    >
+    <div aria-hidden className="pointer-events-none" style={{ width: ART_SIZE }}>
+      <div className="relative" style={{ width: ART_SIZE, height: ART_SIZE }}>
       {/* パラパラは transition を持たない素の差し替え（Studies のコマ送りと
          同じ読み味）。全コマを重ねて置き、現在のコマだけ表示する — src を
          書き換える方式だと、プリロード済みでもブラウザによっては差し替えの
@@ -144,11 +126,12 @@ export function RecentlyPlayedFlip() {
           style={{ visibility: i === index ? "visible" : "hidden" }}
         />
       ))}
-      {/* キャプション（CAPTION_TEXT の doc comment 参照）。top-full +
-         mt でジャケット下端から 12px、w-full + text-center でジャケット幅に
-         対して中央揃え。 */}
+      </div>
+      {/* キャプション（CAPTION_TEXT の doc comment 参照）。ジャケット下端から
+         12px、ジャケット幅に対して中央揃え。色は About の明るい背景に合わせて
+         黒（Contact 時代は #fff だった）。 */}
       <p
-        className="absolute top-full left-0 w-full text-center text-[length:calc(12px*var(--scale))] leading-[1.2] font-medium whitespace-nowrap text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        className="w-full text-center text-[length:calc(12px*var(--scale))] leading-[1.2] font-medium whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
         style={{ marginTop: `calc(${CAPTION_GAP_PX}px * var(--scale))` }}
       >
         {CAPTION_TEXT}

@@ -10,7 +10,6 @@ import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
 import { StatusBarMaskColor } from "@/components/status-bar-mask";
 import { HeaderSummon } from "@/components/header-summon";
 import { MobileContact } from "@/components/mobile-contact";
-import { RecentlyPlayedFlip } from "@/components/recently-played-flip";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { SiteHeader } from "@/components/site-header";
 import { withBasePath } from "@/lib/base-path";
@@ -163,12 +162,9 @@ export default function Contact() {
             {/* relative — すぐ下の RecentlyPlayedFlip（画面右端24px、英語3行の
                 上面揃え）の配置基準。この div の上端＝英語3行の箱の上端。 */}
             <div className="relative flex flex-col items-start gap-[calc(22px*var(--scale))] text-[#fff]">
-              {/* Spotify の直近再生ジャケットのパラパラ表示 — 添付レイアウト
-                  per direct follow-up。この div（英語3行の箱）の上端が
-                  ジャケットの上端。横位置はコンポーネント側がビューポート
-                  基準で決める（この箱の幅は英文の実測幅で当てにならないため。
-                  recently-played-flip.tsx の PARENT_LEFT 参照）。 */}
-              <RecentlyPlayedFlip />
+              {/* Spotify の直近再生ジャケットのパラパラ表示はここにあったが、
+                  per direct follow-up ("contactから直近再生はトリで、Aboutの
+                  一番下に横位置中央に配置して") で About へ移設。 */}
               <CurtainRevealLines
                 lines={CONTACT_TAGLINE_LINES}
                 // 26px → 20px per direct follow-up ("Every project starts~の文字を20pxに")

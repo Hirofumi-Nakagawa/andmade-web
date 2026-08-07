@@ -9,6 +9,7 @@ import { MobileAbout } from "@/components/mobile-about";
 import { PageBodyBackground } from "@/components/page-body-background";
 import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
 import { RevealOnMount } from "@/components/reveal-on-mount";
+import { RecentlyPlayedFlip } from "@/components/recently-played-flip";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import {
@@ -579,6 +580,16 @@ export default function About() {
                 Gen Interface JP
               </a>
             </p>
+          </div>
+
+          {/* Spotify の直近再生ジャケットのパラパラ表示 — per direct
+              follow-up（"contactから直近再生はトリで、Aboutの一番下に横位置
+              中央に配置して 上マージンは300px、フッターとのマージンは現状と
+              同じに"）。Contact 右端から移設。mx-auto で画面（＝この列）の
+              横中央。取得できないときはコンポーネント自身が何も描かないので、
+              下のフッターの mt がそのまま本文からのマージンになる。 */}
+          <div className="mt-[calc(300px*var(--scale))] flex justify-center">
+            <RecentlyPlayedFlip />
           </div>
 
           {/* mt — 330 → 350 → 400 → 360（いずれも直接の指示）。トップ
