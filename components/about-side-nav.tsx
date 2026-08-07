@@ -146,10 +146,12 @@ export function AboutSideNav() {
    * どのセクションの上端もまだ線に届いていない状態（= FV を見ている
    * ページ最上部）では、どれも current にしない。
    *
-   * Outline is excluded from that rule and only becomes current once the
-   * footer has scrolled into view — Outline is short enough that its own top
-   * often never reaches the line at all on a tall window, which would leave
-   * the last nav item permanently unreachable.
+   * Outline additionally becomes current once the footer has scrolled into
+   * view — Outline is short enough that its own top may never reach the line
+   * at all on a tall window, which would otherwise leave the last nav item
+   * unreachable. （かつては Outline をこのルールから完全に除外していたが、
+   * それだと逆にフッター条件が満たされないケースで点かなくなるため、今は
+   * 両方の条件のどちらかで点く。）
    *
    * Reads documentTop() rather than getBoundingClientRect() for the same
    * reason handleNavClick does: unrevealed sections are transformed, and only
@@ -174,8 +176,17 @@ export function AboutSideNav() {
     // Vision の上端がまだ線に届いていないページ最上部でも Vision が
     // current になり、一度スクロールしてから戻っても点いたままだった
     // — per direct follow-up（SP と同じ指摘、"pcも同様に修正して"）。
+    //
+    // Outline も含めて全項目を回す（以前は slice(0, -1) で除外し、Outline は
+    // 上のフッター条件だけに任せていた）— per direct follow-up
+    // （"aboutの左ナビのOutlineがcurrentにならない"）。ページ末尾の余白や
+    // ウィンドウ高さ次第では「フッター上端が画面内」の条件を満たす前に
+    // スクロールが底に着いてしまい、Outline がどうにも点かない状態が
+    // 起こりうる。Outline 自身の上端が線に到達した時点でも点くようにして
+    // おけば、フッター条件はあくまで「短いウィンドウ向けの保険」として
+    // 従来どおり働く。
     let current = "";
-    for (const item of ABOUT_NAV_ITEMS.slice(0, -1)) {
+    for (const item of ABOUT_NAV_ITEMS) {
       const el = document.getElementById(item.id);
       if (!el) continue;
       if (documentTop(el) - STICKY_TOP_PX <= scrollY + 1) current = item.id;
