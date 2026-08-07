@@ -1541,6 +1541,13 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
   );
 }
 
+/** 選択中タイトルの基準文字サイズ。これより大きくはならず、画面幅に
+ *  収まらないときだけ縮む（SelectedProjectText 内の計測 effect 参照）。 */
+const SELECTED_TITLE_FONT_PX = 30;
+/** 縮小判定で確保する左右の余白（片側）。画面ぴったりだと窮屈なので、
+ *  グリッドの左右マージン（--sp-grid-margin, 20px）と同値を空ける。 */
+const SELECTED_TITLE_SIDE_INSET_PX = 20;
+
 type SelectedProjectTextProps = {
   project: Project;
   /** Same meaning as ProjectPreviewStack's own `!released` — see MobileHome's
@@ -1572,10 +1579,44 @@ function SelectedProjectText({ project, shown }: SelectedProjectTextProps) {
   const router = useRouter();
   const href = `/projects/${slugify(project.title)}`;
   const [entered, setEntered] = useState(false);
+  // タイトルが画面幅に収まらないときだけ自動で縮小する — per direct
+  // follow-up（"画面幅に収まらない場合は、幅に収まるようにその文字サイズを
+  // 自動で縮小して表示する仕様にして"）。折り返しは不可（whitespace-nowrap
+  // のまま＝デザイン上1行）なので、実測した文字幅と使える幅の比を font-size
+  // に掛ける。縮小のみで、短いタイトルが 30px より大きくなることはない。
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  const [titleFontPx, setTitleFontPx] = useState(SELECTED_TITLE_FONT_PX);
   useEffect(() => {
     const frame = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(frame);
   }, []);
+
+  // 実測 → 収まらなければ縮小（SELECTED_TITLE_FONT_PX の doc comment 参照）。
+  // 常に基準サイズで一度描いてから測るのではなく、scrollWidth（＝折り返し
+  // なしの本来の文字幅）と clientWidth の比で一発で求める。回転や
+  // タイトル切替でも測り直す。
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      // いま適用中のサイズを基準に「本来の幅」を戻し、使える幅に対する比で
+      // 決め直す（縮小後の実測から再計算しても同じ答えに収束する）。
+      const available = Math.min(
+        window.innerWidth - SELECTED_TITLE_SIDE_INSET_PX * 2,
+        el.parentElement?.parentElement?.clientWidth ?? Infinity
+      );
+      const current = parseFloat(window.getComputedStyle(el).fontSize) || SELECTED_TITLE_FONT_PX;
+      const naturalAtBase = (el.scrollWidth / current) * SELECTED_TITLE_FONT_PX;
+      if (naturalAtBase <= 0 || available <= 0) return;
+      const next = Math.min(SELECTED_TITLE_FONT_PX, (available / naturalAtBase) * SELECTED_TITLE_FONT_PX);
+      setTitleFontPx((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [project.title]);
 
   const opacity = entered && shown ? 1 : 0;
   const fadeDurationMs = shown ? PREVIEW_FADE_IN_MS : PREVIEW_FADE_OUT_MS;
@@ -1665,7 +1706,11 @@ function SelectedProjectText({ project, shown }: SelectedProjectTextProps) {
         className="inline-block cursor-pointer"
         style={{ pointerEvents: interactive && entered ? "auto" : "none" }}
       >
-        <p className="whitespace-nowrap text-[30px] leading-[1.2] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+        <p
+          ref={titleRef}
+          className="whitespace-nowrap leading-[1.2] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+          style={{ fontSize: `${titleFontPx}px` }}
+        >
           {project.title}
         </p>
         <p className="mt-[8px] whitespace-nowrap text-[12px] leading-[1.25] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
