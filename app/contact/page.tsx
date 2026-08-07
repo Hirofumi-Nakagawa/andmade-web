@@ -10,6 +10,7 @@ import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
 import { StatusBarMaskColor } from "@/components/status-bar-mask";
 import { HeaderSummon } from "@/components/header-summon";
 import { MobileContact } from "@/components/mobile-contact";
+import { RecentlyPlayedFlip } from "@/components/recently-played-flip";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { SiteHeader } from "@/components/site-header";
 import { withBasePath } from "@/lib/base-path";
@@ -159,7 +160,19 @@ export default function Contact() {
                 マスク見切れ対策、下の lineClassNames 参照）が gap の外側に
                 足されるため、見た目のマージンを 30px にするには指定値は
                 30 - 8 = 22px。 */}
-            <div className="flex flex-col items-start gap-[calc(22px*var(--scale))] text-[#fff]">
+            {/* relative — すぐ下の RecentlyPlayedFlip（画面右端24px、英語3行の
+                上面揃え）の配置基準。この div の上端＝英語3行の箱の上端。 */}
+            <div className="relative flex flex-col items-start gap-[calc(22px*var(--scale))] text-[#fff]">
+              {/* Spotify の直近再生ジャケットのパラパラ表示 — 添付レイアウト
+                  per direct follow-up。right は画面右端から 24px だが、この
+                  親は左端 198px*grid から content-width-fluid 幅なので、
+                  はみ出した分を負のオフセットで戻す。 */}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ right: "calc(198px * var(--grid-scale) + var(--content-width-fluid) - 100vw)" }}
+              >
+                <RecentlyPlayedFlip />
+              </div>
               <CurtainRevealLines
                 lines={CONTACT_TAGLINE_LINES}
                 // 26px → 20px per direct follow-up ("Every project starts~の文字を20pxに")

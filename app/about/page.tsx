@@ -247,7 +247,26 @@ export default function About() {
             リード文が画面外に切れていた。grid-scale を直接掛ければ箱も左
             マージンと同率で縮み、右端が常に画面内に収まる（AboutSection の
             横線が同じ理由で同じ式を使っている）。1440px 以上では両者は同値。 */}
-        <div className="ml-[calc(198px*var(--grid-scale))] mt-[calc(280px*var(--scale))] w-[calc(var(--content-width)*var(--grid-scale))]">
+        {/* mt 280 → 270 — per direct follow-up ("PCのAboutのFVの英字コピー
+            以下を10px上に詰める")。relative はすぐ下の左端ルール（線）の
+            配置基準。 */}
+        <div className="relative ml-[calc(198px*var(--grid-scale))] mt-[calc(270px*var(--scale))] w-[calc(var(--content-width)*var(--grid-scale))]">
+          {/* 画面左 24px に置く 10×2px の黒い線 — per direct follow-up
+              ("英字コピー上面に合わせて幅10px太さ2px、#000の線を画面左24px
+              の位置に配置")。left はこのラッパー（左端 198px*grid）から
+              画面左 24px まで戻す負のオフセット。top は英字コピーの cap
+              上端: 行ボックス 56px 内の half-leading 3px + フォント 50px の
+              ascender と cap の差（Akzidenz Grotesk Next で約0.2em = 10px）
+              ≒ 13px → 行間を54pxに詰めたぶん11px（"2px上に移動"）。ずれる場合は
+              この定数だけを触ればよい。 */}
+          <div
+            aria-hidden
+            className="absolute h-[2px] w-[10px] bg-black"
+            style={{
+              left: "calc(24px - 198px * var(--grid-scale))",
+              top: "calc(11px * var(--scale))",
+            }}
+          />
           {/* 見出しはカーテンリビール（直接の指示 "3行コピーをカーテンリビール
               で表示して"）— Contact の3行英文と同じ扱いで、下からのスライド＋
               フェード（RevealOnMount）ではなく1行ずつマスクからせり上がる。
@@ -260,7 +279,7 @@ export default function About() {
 
               font-normal は直接の指示（"ウェイトregularで表示"）。サイズは
               添付デザインからの実測 40px → 50px、行間は 1.2（実測）→ 58px →
-              56px（いずれも直接の指示）。行間は倍率ではなく px 指定なので、
+              56px → 54px（いずれも直接の指示）。行間は倍率ではなく px 指定なので、
               他と同じく --scale だけ掛けて追従させる。
 
               文字詰め（直接の指示 "自然な形で文字詰めして"）は2つに分かれる:
@@ -273,13 +292,14 @@ export default function About() {
                   だけを触ればよい。 */}
           <CurtainRevealLines
             lines={HERO_LINES}
-            className="text-[length:calc(50px*var(--scale))] leading-[calc(56px*var(--scale))] font-normal tracking-[calc(-1px*var(--scale))] [font-kerning:normal] text-black"
+            className="text-[length:calc(50px*var(--scale))] leading-[calc(54px*var(--scale))] font-normal tracking-[calc(-1px*var(--scale))] [font-kerning:normal] text-black"
           />
 
-          {/* 見出しからの 20px（直接の指示）。左のインデント 580px は
+          {/* 見出しからの 20px → 15px（いずれも直接の指示、"その下マージンを
+              5px詰める"）。左のインデント 580px は
               グリッド10マス分（58px × 10）で、添付デザインのリード文の
               左面と一致する。 */}
-          <RevealOnMount fadeOnly className="mt-[calc(20px*var(--scale))] pl-[calc(580px*var(--grid-scale))]">
+          <RevealOnMount fadeOnly className="mt-[calc(15px*var(--scale))] pl-[calc(580px*var(--grid-scale))]">
             {/* 日本語・英語とも Vision 以下の本文（BilingualBody）と同じ
                 書体・色。違うのは、こちらは改行位置を原稿どおりに固定して
                 いて両端揃えにしない点と、日本語だけ 16px → 18px（直接の
