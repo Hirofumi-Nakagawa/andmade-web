@@ -346,7 +346,11 @@ export default function About() {
              the Services/Awards/Media/Outline column pairs, etc.) rather than
              inheriting 100% of this wrapper — so narrowing this wrapper only
              ever shrinks unused trailing space, never the body copy itself. */}
-          <div className="relative ml-[calc(198px*var(--grid-scale))] flex w-[calc(var(--content-width)*var(--grid-scale))] flex-col items-start gap-[calc(130px*var(--scale))] border-b border-black/15 pb-[calc(80px*var(--scale))]">
+          {/* pb 80 → 130px — per direct follow-up ("outlineの下線までの
+             マージンを他のmediaなどと同じにして")。他セクションの「本文下端 →
+             次セクションの区切り線」は上の gap（130px）なので、Outline 本文
+             下端 → この wrapper の border-b も同じ値に揃える。 */}
+          <div className="relative ml-[calc(198px*var(--grid-scale))] flex w-[calc(var(--content-width)*var(--grid-scale))] flex-col items-start gap-[calc(130px*var(--scale))] border-b border-black/15 pb-[calc(130px*var(--scale))]">
             <AboutSection id={ABOUT_NAV_ITEMS[0].id} label="Vision" index="01">
               <BilingualBody ja={VISION_JA} en={VISION_EN} />
             </AboutSection>
