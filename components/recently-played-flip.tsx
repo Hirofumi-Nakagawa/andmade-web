@@ -10,17 +10,23 @@ import { withBasePath } from "@/lib/base-path";
  * （フッターの上）へ移設。位置は呼び出し側が決める（このコンポーネント自体は
  * 素の in-flow ブロック）。
  *
+ * 構成は「Recently Played（見出し）／ジャケット／アーティスト名」の3段 —
+ * per direct follow-up（"Recently Playedをジャケの上に移動して、ジャケ下には
+ * アーティスト名を入れて"）。アーティスト名はコマ送りに合わせて切り替わる。
+ *
  * データ取得は public/recently-played.php（Spotify の
  * /v1/me/player/recently-played をサーバー側で叩くだけのエンドポイント。
  * 認証情報は now-playing.php と共用。詳細はそのファイルの冒頭コメント）。
- * 取得できなければ何も描かない（枠も出さない）ので、スコープ不足やネット
- * ワーク不調でもレイアウトが崩れることはない。
+ * 取得できなければ中身を出さない（枠の高さだけは保つ。下記 hasTracks 参照）
+ * ので、スコープ不足やネットワーク不調でもレイアウトが崩れることはない。
  *
  * 画像は全部プリロードしてから回し始める — パラパラの途中で未読み込みの
  * コマに当たると「一瞬空白 → 遅れて出る」になり、Studies のパラパラで
  * 過去に同じ問題を潰したのと同じ理由（studies-center-image.tsx の
  * usePreloadStudyImages 参照）。
  */
+
+type Track = { image: string; artist: string };
 
 /** 開発時だけサーバー上の本物の PHP を見に行く — now-playing-provider.tsx と
  *  同じ理由（Next の dev サーバーは PHP を実行できない）。NODE_ENV は
@@ -37,18 +43,18 @@ const FLIP_INTERVAL_MS = 300;
  *  曲にホバーしたときに表示するジャケと同じサイズで"）。 */
 const ART_SIZE = "calc(110px*var(--scale))";
 
-/** ジャケット下のキャプション — 直接の指示（"ジャケット下12pxの位置に
- *  「Recently Played」をAkzidenz-Grotesk Nextのmediumで中央揃えで配置"
- *  → その後 "regularにして"）。
+/** 見出し（ジャケット上）とアーティスト名（ジャケット下）の共通スタイル。
  *  書体はサイト既定の --font-sans がそのまま Akzidenz Grotesk Next なので
- *  指定不要（globals.css）。サイズはヘッダーの Playing 表示と同じ 12px。
- *  12px は trim 済みの文字下端からの距離にしたいので、キャプション側に
- *  text-box-trim を効かせたうえで mt で開ける。 */
-const CAPTION_TEXT = "Recently Played";
-const CAPTION_GAP_PX = 12;
+ *  指定不要（globals.css）。12px / regular（いずれも直接の指示）。 */
+const LABEL_CLASS =
+  "w-full text-center text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]";
+const LABEL_TEXT = "Recently Played";
+/** ジャケットと上下のテキストの間隔 — 直接の指示（"ジャケット下12px"）を
+ *  上側にも同値で適用。 */
+const LABEL_GAP_PX = 12;
 
 export function RecentlyPlayedFlip() {
-  const [images, setImages] = useState<string[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
 
@@ -60,10 +66,16 @@ export function RecentlyPlayedFlip() {
         const res = await fetch(ENDPOINT, { cache: "no-store" });
         if (!res.ok) return;
         const data: unknown = await res.json();
-        const list =
-          typeof data === "object" && data !== null && Array.isArray((data as { images?: unknown }).images)
-            ? ((data as { images: unknown[] }).images.filter((u) => typeof u === "string") as string[])
+        const raw =
+          typeof data === "object" && data !== null && Array.isArray((data as { tracks?: unknown }).tracks)
+            ? (data as { tracks: unknown[] }).tracks
             : [];
+        const list: Track[] = raw.flatMap((entry) => {
+          if (typeof entry !== "object" || entry === null) return [];
+          const { image, artist } = entry as { image?: unknown; artist?: unknown };
+          if (typeof image !== "string" || image === "") return [];
+          return [{ image, artist: typeof artist === "string" ? artist : "" }];
+        });
         if (cancelled || list.length === 0) return;
 
         // 全コマをプリロードしてから回し始める（このファイルの doc comment
@@ -72,7 +84,7 @@ export function RecentlyPlayedFlip() {
         // （その1枚だけ空になるより、開始が遅れないほうが実害が小さい）。
         await Promise.all(
           list.map(
-            (src) =>
+            (track) =>
               new Promise<void>((resolve) => {
                 const img = new Image();
                 img.onload = () => {
@@ -80,12 +92,12 @@ export function RecentlyPlayedFlip() {
                   resolve();
                 };
                 img.onerror = () => resolve();
-                img.src = src;
+                img.src = track.image;
               })
           )
         );
         if (cancelled) return;
-        setImages(list);
+        setTracks(list);
       } catch {
         // 取得失敗＝非表示のまま。
       }
@@ -98,13 +110,13 @@ export function RecentlyPlayedFlip() {
   }, []);
 
   useEffect(() => {
-    if (images.length === 0) return;
+    if (tracks.length === 0) return;
     const timer = setInterval(() => {
-      indexRef.current = (indexRef.current + 1) % images.length;
+      indexRef.current = (indexRef.current + 1) % tracks.length;
       setIndex(indexRef.current);
     }, FLIP_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [images.length]);
+  }, [tracks.length]);
 
   // 取得の成否にかかわらず**箱の高さは常に確保する** — per direct follow-up
   // （"aboutページでフッターまで表示されない"）。以前は取得できるまで null を
@@ -113,40 +125,42 @@ export function RecentlyPlayedFlip() {
   // 初期化後に document の高さが変わると内部のスクロール上限が古いままに
   // なることがあり、ページ末尾（＝フッター）まで到達できなくなっていた。
   // 箱を最初から実寸で置いておけば高さは一切変化しないので、この問題自体が
-  // 起きない。中身（画像とキャプション）だけを出し入れする。
-  const hasImages = images.length > 0;
+  // 起きない。中身（画像とテキスト）だけを出し入れする。
+  const hasTracks = tracks.length > 0;
+  const gap = `calc(${LABEL_GAP_PX}px * var(--scale))`;
 
   return (
     <div aria-hidden className="pointer-events-none" style={{ width: ART_SIZE }}>
+      <p className={LABEL_CLASS} style={{ marginBottom: gap, visibility: hasTracks ? "visible" : "hidden" }}>
+        {LABEL_TEXT}
+      </p>
+
       <div className="relative" style={{ width: ART_SIZE, height: ART_SIZE }}>
-      {/* パラパラは transition を持たない素の差し替え（Studies のコマ送りと
-         同じ読み味）。全コマを重ねて置き、現在のコマだけ表示する — src を
-         書き換える方式だと、プリロード済みでもブラウザによっては差し替えの
-         瞬間に一度空になることがある。 */}
-      {images.map((src, i) => (
-        // eslint-disable-next-line @next/next/no-img-element -- external, dynamic Spotify CDN URL（header-summon.tsx と同じ理由）
-        <img
-          key={src + i}
-          src={src}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ visibility: i === index ? "visible" : "hidden" }}
-        />
-      ))}
+        {/* パラパラは transition を持たない素の差し替え（Studies のコマ送りと
+           同じ読み味）。全コマを重ねて置き、現在のコマだけ表示する — src を
+           書き換える方式だと、プリロード済みでもブラウザによっては差し替えの
+           瞬間に一度空になることがある。 */}
+        {tracks.map((track, i) => (
+          // eslint-disable-next-line @next/next/no-img-element -- external, dynamic Spotify CDN URL（header-summon.tsx と同じ理由）
+          <img
+            key={track.image + i}
+            src={track.image}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{ visibility: i === index ? "visible" : "hidden" }}
+          />
+        ))}
       </div>
-      {/* キャプション（CAPTION_TEXT の doc comment 参照）。ジャケット下端から
-         12px、ジャケット幅に対して中央揃え。色は About の明るい背景に合わせて
-         黒（Contact 時代は #fff だった）。 */}
+
+      {/* アーティスト名はコマに追従。長い名前でも**1行に固定**して省略する
+         （truncate = overflow hidden + ellipsis）— 折り返すと曲が変わる
+         たびに行数＝ページ高さが変わり、Lenis のスクロール上限がずれる
+         （上の hasTracks のコメントと同じ問題）。 */}
       <p
-        className="w-full text-center text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-        style={{
-          marginTop: `calc(${CAPTION_GAP_PX}px * var(--scale))`,
-          // visibility（display ではなく）— 高さを保ったまま隠す（上の
-          // hasImages のコメント参照）。
-          visibility: hasImages ? "visible" : "hidden",
-        }}
+        className={`${LABEL_CLASS} truncate`}
+        style={{ marginTop: gap, visibility: hasTracks ? "visible" : "hidden" }}
       >
-        {CAPTION_TEXT}
+        {tracks[index]?.artist || " "}
       </p>
     </div>
   );

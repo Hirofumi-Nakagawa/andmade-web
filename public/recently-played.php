@@ -9,10 +9,14 @@
  * now-playing.php の冒頭コメント参照）。
  *
  * 返す JSON:
- *   {"images":["https://i.scdn.co/image/...", ...]}   直近再生順（新しい順）
- *   {"images":[]}                                      取得できなかった場合
+ *   {"tracks":[{"image":"https://i.scdn.co/image/...","artist":"..."}, ...]}
+ *   直近再生順（新しい順）。取得できなかった場合は {"tracks":[]}。
  * 失敗時も常に 200 + 空配列（呼び出し側は「何も表示しない」だけで済む。
- * components/recently-played-provider.tsx 参照）。
+ * components/recently-played-flip.tsx 参照）。
+ *
+ * artist はジャケット下に出すため（per direct follow-up "ジャケ下には
+ * アーティスト名を入れて"）。複数アーティストはカンマ区切りで連結
+ * （now-playing.php と同じ扱い）。
  *
  * ── セットアップ ───────────────────────────────────────────────
  * 認証情報は now-playing.php とまったく同じ /home/<アカウント>/spotify-config.php
@@ -82,7 +86,7 @@ function respond(array $payload): void
 /** 取得できなかったときの共通の返し方（呼び出し側は非表示になるだけ）。 */
 function empty_result(): void
 {
-    respond(['images' => []]);
+    respond(['tracks' => []]);
 }
 
 /** 認証情報を読む。now-playing.php とまったく同じ設定ファイルを共用する。 */
@@ -209,26 +213,39 @@ if (!is_array($data) || empty($data['items'])) {
     empty_result();
 }
 
-// ジャケット画像のURLだけを新しい順（APIの返却順そのまま）に取り出す。
-// Spotify は画像を大きい順（640/300/64px）に返すので、2番目が表示サイズに
-// ちょうどよい（now-playing.php と同じ選び方）。
+// ジャケット画像のURLとアーティスト名を新しい順（APIの返却順そのまま）に
+// 取り出す。Spotify は画像を大きい順（640/300/64px）に返すので、2番目が
+// 表示サイズにちょうどよい（now-playing.php と同じ選び方）。
 //
 // 同じ曲を繰り返し聴いていると同じジャケットが並ぶが、パラパラ表示としては
 // 「同じ画が続いて止まって見える」だけなので、連続する重複のみ間引く
 // （離れた位置での再登場は時系列として意味があるので残す）。
-$images = [];
+$tracks = [];
 $previous = null;
 foreach ($data['items'] as $entry) {
-    $candidates = $entry['track']['album']['images'] ?? [];
+    $track = $entry['track'] ?? null;
+    if (!is_array($track)) {
+        continue;
+    }
+    $candidates = $track['album']['images'] ?? [];
     $url = $candidates[1]['url'] ?? ($candidates[0]['url'] ?? null);
     if ($url === null || $url === $previous) {
         continue;
     }
-    $images[] = $url;
+    $artists = [];
+    foreach (($track['artists'] ?? []) as $artist) {
+        if (!empty($artist['name'])) {
+            $artists[] = $artist['name'];
+        }
+    }
+    $tracks[] = [
+        'image' => $url,
+        'artist' => implode(', ', $artists),
+    ];
     $previous = $url;
 }
 
-$payload = ['images' => $images];
+$payload = ['tracks' => $tracks];
 
 // 5. キャッシュに書いてから返す（書けなくても致命的ではないので無視）。
 @file_put_contents($cacheFile, json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
