@@ -106,9 +106,15 @@ export function RecentlyPlayedFlip() {
     return () => clearInterval(timer);
   }, [images.length]);
 
-  // 取得できるまで（および取得できなかったとき）は高さゼロ — About の
-  // 本文とフッターの間に空の箱が残らないよう、枠自体を描かない。
-  if (images.length === 0) return null;
+  // 取得の成否にかかわらず**箱の高さは常に確保する** — per direct follow-up
+  // （"aboutページでフッターまで表示されない"）。以前は取得できるまで null を
+  // 返して高さゼロにしていたが、そうすると読み込み完了の瞬間にページ全体が
+  // 130px ほど伸びる。このサイトのスクロールは Lenis（仮想スクロール）で、
+  // 初期化後に document の高さが変わると内部のスクロール上限が古いままに
+  // なることがあり、ページ末尾（＝フッター）まで到達できなくなっていた。
+  // 箱を最初から実寸で置いておけば高さは一切変化しないので、この問題自体が
+  // 起きない。中身（画像とキャプション）だけを出し入れする。
+  const hasImages = images.length > 0;
 
   return (
     <div aria-hidden className="pointer-events-none" style={{ width: ART_SIZE }}>
@@ -133,7 +139,12 @@ export function RecentlyPlayedFlip() {
          黒（Contact 時代は #fff だった）。 */}
       <p
         className="w-full text-center text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-        style={{ marginTop: `calc(${CAPTION_GAP_PX}px * var(--scale))` }}
+        style={{
+          marginTop: `calc(${CAPTION_GAP_PX}px * var(--scale))`,
+          // visibility（display ではなく）— 高さを保ったまま隠す（上の
+          // hasImages のコメント参照）。
+          visibility: hasImages ? "visible" : "hidden",
+        }}
       >
         {CAPTION_TEXT}
       </p>
