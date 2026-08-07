@@ -252,22 +252,12 @@ export default function About() {
             以下を10px上に詰める")。relative はすぐ下の左端ルール（線）の
             配置基準。 */}
         <div className="relative ml-[calc(198px*var(--grid-scale))] mt-[calc(270px*var(--scale))] w-[calc(var(--content-width)*var(--grid-scale))]">
-          {/* 画面左 24px に置く 10×2px の黒い線 — per direct follow-up
-              ("英字コピー上面に合わせて幅10px太さ2px、#000の線を画面左24px
-              の位置に配置")。left はこのラッパー（左端 198px*grid）から
-              画面左 24px まで戻す負のオフセット。top は英字コピーの cap
-              上端: 行ボックス 56px 内の half-leading 3px + フォント 50px の
-              ascender と cap の差（Akzidenz Grotesk Next で約0.2em = 10px）
-              ≒ 13px → 行間を54pxに詰めたぶん11px（"2px上に移動"）。ずれる場合は
-              この定数だけを触ればよい。 */}
-          <div
-            aria-hidden
-            className="absolute h-[2px] w-[10px] bg-black"
-            style={{
-              left: "calc(24px - 198px * var(--grid-scale))",
-              top: "calc(11px * var(--scale))",
-            }}
-          />
+          {/* 画面左右 24px に置いていた 10×2px の黒い線は、per direct
+              follow-up（"やっぱり線消して"）で削除。復活させる場合はこの
+              ファイルの版歴から（left は
+              calc(24px - 198px*var(--grid-scale))、right は
+              calc(24px + 198px*var(--grid-scale) + var(--content-width)*var(--grid-scale) - 100vw)、
+              top はどちらも calc(11px*var(--scale))）。 */}
           {/* 見出しはカーテンリビール（直接の指示 "3行コピーをカーテンリビール
               で表示して"）— Contact の3行英文と同じ扱いで、下からのスライド＋
               フェード（RevealOnMount）ではなく1行ずつマスクからせり上がる。
