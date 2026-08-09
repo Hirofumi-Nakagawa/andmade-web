@@ -136,6 +136,14 @@ const SETTLE_RECAPTURE_MS = 1800;
  *  gesture to settle. */
 const RESIZE_DEBOUNCE_MS = 250;
 
+/** スクロール歪み（Img グリッド）の描画バッファの devicePixelRatio 上限。
+ *  2 のままだと Retina でフルビューポート×2枚のフラグメント処理が毎フレーム
+ *  走り、シェーダーのタップ数が増えた分だけスクロール中の重さに直結する
+ *  （per direct follow-up "もっと軽くして"）。歪み・グリッチは動いている
+ *  瞬間にしか出ないので 1.5 でも見分けはつかない。紙モード（ホバー）は
+ *  静止して見る写真なので従来どおり 2 を使う。 */
+const SCROLL_DPR_CAP = 1.5;
+
 const VERTEX_SHADER = `
 attribute vec2 aPos;
 uniform vec4 uRect;
@@ -230,8 +238,27 @@ const float BAND = 0.2;
  *  引く」程度に落とした。速いフリックでだけ大きく伸びる。 */
 const float STRETCH = 0.45;
 /** 液状の揺らぎ — 横方向の波の振幅（CSS px）と、画面横方向の波の本数。
- *  22px は文字が横に泳ぎすぎたので、係数を落として周期も緩くした。 */
-const float RIPPLE_PX = 8.0;
+ *  22px は文字が横に泳ぎすぎたので 8px に落としていたが、per direct
+ *  follow-up（"湾曲（左右の広がり）をもう少し強くして"）で 14px へ。 */
+const float RIPPLE_PX = 14.0;
+/** レンズの横方向の広がり — 帯に入った内容を画面中央線から外側へ押し出す
+ *  係数（画面半幅に対する割合 × 深さ×速度）。sin の揺らぎ（RIPPLE）は
+ *  左右どちらにも動くため「狭まって見える」瞬間があり（per direct
+ *  follow-up "狭まってない？"）、常に外向きのこの項を追加した。 */
+const float SPREAD = 0.05;
+/** 端の際のグリッチ（per direct follow-up "上下エフェクト箇所にグリッチも
+ *  加えて" → "鏡面っぽくグリッチしてるように見える"）。参照スクショの
+ *  正体は**鏡面折り返し**: 帯の外側半分が、折り線（帯の中点）より内側の
+ *  内容を上下反転で映す。折り線上で変位 0 なので継ぎ目は出ず、端に
+ *  近づくほど反転した像が深く映る。そこへ短冊のゆらぎと RGB の割れを
+ *  薄く重ねてガラスの乱反射感を出す。ピクセルの引き伸ばしは一切しない。 */
+const float GLITCH_STRIP_PX = 5.0;
+const float GLITCH_PX = 22.0;
+const float GLITCH_CA_PX = 10.0;
+/** 鏡面が始まる帯内の深さ（0=帯の入り口、1=画面の真端）。0.5（帯の
+ *  外側半分）は映り込みの範囲が広すぎた（per direct follow-up "鏡面の
+ *  映り込んでる方の範囲が広いのでもう少し狭めて"）ので外側30%へ。 */
+const float GLITCH_START = 0.7;
 const float RIPPLE_FREQ = 9.0;
 /** 虹色の分散の強さ（0でオフ）。伸びた部分のグリフにだけ薄く色が乗る。 */
 const float DISPERSION = 0.3;
@@ -325,7 +352,41 @@ void main() {
   // 筋にならず水面越しのように揺れる。振幅も k に乗るので静止中は 0。
   float ripple = sin(vScreen.x * RIPPLE_FREQ + t * 5.0) * RIPPLE_PX * k;
 
-  vec2 offsetPx = vec2(ripple, pull);
+  // 常に外向きの広がり（SPREAD の doc comment 参照）: サンプル位置を中央線
+  // 側へ引き戻す = 内容が外側へ膨らんで見える。ガラスの樽型湾曲。
+  float spread = -(vScreen.x - 0.5) * uViewport.x * SPREAD * k;
+
+  vec2 offsetPx = vec2(ripple + spread, pull);
+
+  // 端の際のグリッチ（GLITCH_* の doc comment 参照）。帯の外側半分でのみ
+  // 3タップになる — それ以外は従来どおり1タップで、コスト増は画面の
+  // ごく一部に限られる。
+  float gt = clamp((t - GLITCH_START) / (1.0 - GLITCH_START), 0.0, 1.0);
+  float g = gt * gt * uStrength;
+  if (g > 0.002) {
+    float strip = floor(vScreen.x * uViewport.x / GLITCH_STRIP_PX);
+    float h = fract(sin(strip * 127.1) * 43758.5453);
+    // 鏡面折り返し（GLITCH_* の doc comment 参照）: 折り線 = 鏡面の開始位置
+    // （t=GLITCH_START）。mirrorAmt はスクロール速度で 0→1 に立ち上がり、
+    // 折り線上では変位 0 なので、どの速度でも継ぎ目は出ない。
+    float foldY = boundary < 0.5 ? BAND * (1.0 - GLITCH_START) : 1.0 - BAND * (1.0 - GLITCH_START);
+    float mirrorAmt = clamp(g * 2.5, 0.0, 1.0);
+    float mirror = 2.0 * (foldY - vScreen.y) * uViewport.y * mirrorAmt;
+    // 短冊のゆらぎで鏡面を少し乱す（実内容のずれのみ）。
+    vec2 gOffset = offsetPx + vec2(0.0, mirror + (h - 0.5) * GLITCH_PX * g);
+    // RGB を上下に割ってサンプル。アルファは3タップの最大値。
+    float split = GLITCH_CA_PX * g * (0.4 + 0.6 * h);
+    vec4 cR = tap(vUv + (gOffset + vec2(0.0, split)) * uPxToUv);
+    vec4 cG = tap(vUv + gOffset * uPxToUv);
+    vec4 cB = tap(vUv + (gOffset - vec2(0.0, split)) * uPxToUv);
+    vec4 gcol = vec4(cR.r, cG.g, cB.b, max(cG.a, max(cR.a, cB.a)));
+    vec3 grainbow = 0.5 + 0.5 * cos(t * 6.2832 + vec3(0.0, 2.094, 4.189));
+    gcol.rgb += grainbow * gcol.a * DISPERSION * k;
+    gcol *= uAlpha;
+    gl_FragColor = gcol;
+    return;
+  }
+
   vec4 col = tap(vUv + offsetPx * uPxToUv);
 
   // 分散: 伸びている部分のグリフに、深さで色相が回る薄い虹色を乗せる。
@@ -552,6 +613,9 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
      *  React の style 書き込みと一切干渉しない。 */
     const HIDDEN_ATTRIBUTE = "data-konami-warp-hidden";
     let raster: TextRaster | null = null;
+    /** アトラスに全画像を描き切れたか。true なら中身は以後変わらないので、
+     *  disengage 時の撮り直しを丸ごと省ける（disengage の doc comment 参照）。 */
+    let rasterComplete = false;
     /** Card boxes measured at the same instant as the texture. */
     let cards: CardRect[] = [];
     /** True while the canvas owns the list (DOM hidden, quads drawing). */
@@ -615,6 +679,15 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (!(scale > 0)) return;
 
       const imgs = Array.from(grid.querySelectorAll("img"));
+      // 各 img を自前の合成レイヤーへ昇格させておく。engage/disengage の
+      // 隠し替え（HIDDEN_ATTRIBUTE → opacity:0 !important）は、素のままだと
+      // 見えている写真全部のリペイントになり、それがスクロールの開始・停止の
+      // たびに走って「初動が一瞬止まる」の残りの原因だった。レイヤー化して
+      // おけば opacity の切り替えはコンポジタだけで済む。エッグ終了時に
+      // クリアする（adopt / cleanup の clearImageLayers 参照）。
+      for (const img of imgs) {
+        if (img.style.willChange !== "opacity") img.style.willChange = "opacity";
+      }
       const boxes = imgs.map((img) => {
         const r = img.getBoundingClientRect();
         return { x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height };
@@ -671,6 +744,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (!loaded.some((image) => image !== null)) return;
 
       raster = { canvas: cnv, cssWidth, cssHeight, padX: TEXTURE_PAD_X, padY: TEXTURE_PAD_Y, underlines: [] };
+      rasterComplete = loaded.every((image) => image !== null);
       cards = boxes;
       // グリッドのアトラスは本体のみへ（uploadTexture の doc comment 参照）。
       // ホバーの1枚はマスク（紙の形どおりのカウンター反転）にも要る。
@@ -761,13 +835,34 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       engaged = false;
       target?.removeAttribute(HIDDEN_ATTRIBUTE);
       setGhostsBelow(false);
-      // Fresh snapshot while everything is idle (so no one feels the ~10ms),
-      // baking in whatever changed since the last one — settled scramble,
-      // hover leftovers, late data.
-      capture();
+      // 撮り直しは「アトラスが不完全なとき」だけ — Img グリッドの中身は
+      // エッグ中に変わらないので、全画像を描き切れていれば同じアトラスを
+      // 使い続けられる。以前はここで毎回撮り直していたが、全高アトラスの
+      // drawImage + texImage2D は同期で数十ms かかり、スクロールを
+      // 止めるたびに走る＝**次のスクロール初動と衝突して「一瞬止まる」**
+      // 原因そのものだった（per direct follow-up "まだスクロール初動が
+      // カクつくし一瞬止まる"）。読めていない画像が残っている場合だけ、
+      // アイドルの隙間で撮り直して取りこぼしを回収する。
+      if (rasterComplete) return;
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(() => {
+          if (!disposed && !engaged) capture();
+        });
+      } else {
+        capture();
+      }
+    };
+
+    /** captureImages が付けた will-change を外す（レイヤーを持ち続けると
+     *  GPU メモリを占有し続けるため。エッグ中の対象だけが持てばよい）。 */
+    const clearImageLayers = (el: HTMLElement | null) => {
+      el?.querySelectorAll<HTMLElement>("img").forEach((img) => {
+        img.style.removeProperty("will-change");
+      });
     };
 
     const adopt = (next: HTMLElement | null) => {
+      if (target !== next) clearImageLayers(target);
       if (engaged) target?.removeAttribute(HIDDEN_ATTRIBUTE);
       engaged = false;
       hoverRevealStartedAt = 0;
@@ -777,6 +872,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (!next || !next.hasAttribute(KONAMI_WARP_HOVER_ATTRIBUTE)) setGhostsBelow(false);
       target = next;
       raster = null;
+      rasterComplete = false;
       cards = [];
       if (settleTimer !== null) {
         window.clearTimeout(settleTimer);
@@ -846,6 +942,16 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       const desiredZ = hoverMode ? "-5" : "9998";
       if (canvas.style.zIndex !== desiredZ) canvas.style.zIndex = desiredZ;
 
+      // マスクキャンバスは紙モード（ホバー）専用。Img のスクロール歪み中は
+      // 中身が空でも「全面 difference の合成レイヤー」として毎フレームの
+      // 合成に参加してしまうので、非表示にして合成から丸ごと外す —
+      // スクロール中の定常コスト削減（per direct follow-up "鏡面時の
+      // スクロールがカクつく"）。
+      const desiredMaskVisibility = hoverMode ? "visible" : "hidden";
+      if (maskCanvas.style.visibility !== desiredMaskVisibility) {
+        maskCanvas.style.visibility = desiredMaskVisibility;
+      }
+
       const strength = Math.max(0, Math.min(1, intensityRef.current));
       if (hoverMode || strength > 0) {
         // ホバーモードは強度に関係なく常時ウォープ（見えている間ずっと
@@ -883,7 +989,9 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
         return;
       }
 
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // 紙モードだけフル解像度（静止して見る写真）。スクロール歪みは
+      // SCROLL_DPR_CAP（doc comment 参照）。
+      const dpr = Math.min(window.devicePixelRatio || 1, hoverMode ? 2 : SCROLL_DPR_CAP);
       const width = Math.floor(window.innerWidth * dpr);
       const height = Math.floor(window.innerHeight * dpr);
 
@@ -1005,13 +1113,34 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
 
     function handleResize() {
       if (resizeTimer !== null) window.clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(capture, RESIZE_DEBOUNCE_MS);
+      resizeTimer = window.setTimeout(() => {
+        presizeBuffers();
+        capture();
+      }, RESIZE_DEBOUNCE_MS);
     }
 
     // Rasterising before the real faces have swapped in would bake the
     // fallback font into the texture — the same hazard project-grid-section.tsx
     // already re-measures for. (Adoption happens inside the loop's own first
     // frame.)
+    /** 描画バッファをスクロール歪みの実寸で先に確保しておく。以前は発動の
+     *  最初のフレームで canvas.width/height を初めて実寸にしていたため、
+     *  フルビューポート×2枚のバッファ確保がスクロール初動のフレームに
+     *  落ちていた（初動カクつきのもう片方の原因）。リサイズ時も同様に
+     *  スクロール前の暇な時間に済ませる。 */
+    const presizeBuffers = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, SCROLL_DPR_CAP);
+      const width = Math.floor(window.innerWidth * dpr);
+      const height = Math.floor(window.innerHeight * dpr);
+      for (const p of pipelines) {
+        if (p.canvas.width !== width || p.canvas.height !== height) {
+          p.canvas.width = width;
+          p.canvas.height = height;
+        }
+      }
+    };
+    presizeBuffers();
+
     document.fonts.ready.then(() => {
       if (disposed) return;
       frame = requestAnimationFrame(render);
@@ -1025,6 +1154,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
       if (settleTimer !== null) window.clearTimeout(settleTimer);
       window.removeEventListener("resize", handleResize);
       setGhostsBelow(false);
+      clearImageLayers(target);
       if (engaged) target?.removeAttribute(HIDDEN_ATTRIBUTE);
       // The texture is the only large allocation here and is released
       // explicitly; the context itself is deliberately left alone.
@@ -1090,7 +1220,7 @@ export function KonamiWarpCanvas({ intensityRef, directionRef }: KonamiWarpCanva
         ref={maskCanvasRef}
         aria-hidden
         className="konami-viewport-fill pointer-events-none fixed inset-0 hidden h-full w-full lg:block"
-        style={{ zIndex: -4, mixBlendMode: "difference" }}
+        style={{ zIndex: -4, mixBlendMode: "difference", visibility: "hidden" }}
       />
     </>
   );

@@ -55,21 +55,6 @@ const GLITCH_ATTACK = 0.16;
  *  keeping it alive at an invisible fraction of a pixel forever. */
 const GLITCH_EPSILON = 0.02;
 
-/** The intensity is rounded to 1/this before being written to the DOM, and a
- *  write that lands on the same step as the previous one is skipped entirely.
- *
- *  Every write invalidates a text-shadow that the whole document inherits, so
- *  it costs a full-page repaint — with blurred shadows in that list (see
- *  .konami-glitch in globals.css) those repaints are expensive enough that
- *  doing one per animation frame made scrolling feel heavy. Quantising drops
- *  most of them: while the glitch decays, successive frames differ by
- *  fractions of a step and collapse into a single write, and a scroll held at
- *  a steady speed stops writing altogether.
- *
- *  16 steps is fine enough that the quantisation isn't visible — one step is
- *  ~1px of trail at the far end and well under a pixel everywhere else. */
-const GLITCH_QUANTIZE_STEPS = 16;
-
 /**
  * Konami-code easter egg — PC, top page only: type ↑↑↓↓←→←→BA and the page
  * inverts (photography excepted — see .konami-glitch img in globals.css)。
@@ -162,31 +147,20 @@ export function KonamiGlitch() {
   /** Previous scroll offset, for deriving the direction below. */
   const prevScrollRef = useRef(0);
 
-  /** Last values actually written to the DOM — see GLITCH_QUANTIZE_STEPS.
-   *  NaN so the very first write can never be skipped as a no-op. */
-  const writtenGlitchRef = useRef(Number.NaN);
-  const writtenDirectionRef = useRef(Number.NaN);
-
   const writeGlitch = useCallback((value: number, trailDirection?: number) => {
     const clamped = value < GLITCH_EPSILON ? 0 : Math.min(1, value);
-    // The *unrounded* value stays in glitchRef: it's what the decay below
-    // multiplies each frame, and feeding the rounded one back would make the
-    // decay stair-step (and stall outright once a step maps to itself).
     glitchRef.current = clamped;
     if (trailDirection) trailDirectionRef.current = trailDirection;
-
-    const quantized =
-      Math.round(clamped * GLITCH_QUANTIZE_STEPS) / GLITCH_QUANTIZE_STEPS;
-    const direction = trailDirectionRef.current;
-    if (quantized === writtenGlitchRef.current && direction === writtenDirectionRef.current) {
-      return;
-    }
-    writtenGlitchRef.current = quantized;
-    writtenDirectionRef.current = direction;
-
-    const root = document.documentElement;
-    root.style.setProperty("--konami-glitch", String(quantized));
-    root.style.setProperty("--konami-glitch-dir", String(direction));
+    // かつてはここで --konami-glitch / --konami-glitch-dir を <html> の
+    // inline style に書いていたが、丸ごと撤去した。CSS 側の読み手
+    // （text-shadow のグリッチ）はリキッドグラス化の際に無くなっており、
+    // 今の読み手は konami-warp-canvas.tsx が直接読む上の2つの ref だけ。
+    // ルート要素のカスタムプロパティ書き換えは（継承されるため）**文書
+    // 全体のスタイル再計算**を毎回誘発し、スクロールの立ち上がり・減衰の
+    // 間じゅう繰り返し走って「スクロール初動が一瞬止まる」「速いスクロール
+    // 中のカクつき」の残りの主因になっていた（per direct follow-up）。
+    // 量子化（GLITCH_QUANTIZE_STEPS）も DOM 書き込みの間引きが目的
+    // だったので一緒に退役。
   }, []);
 
   // Leaving the top page turns it off outright — see this component's own
@@ -266,11 +240,11 @@ export function KonamiGlitch() {
     // from the previous run and be skipped, leaving the variables unset.
     if (!active) {
       root.classList.remove("konami-glitch");
+      // 旧実装が書いていたカスタムプロパティの掃除だけ残す（過去の
+      // セッションの残骸が付いていても無害だが、確実に消しておく）。
       root.style.removeProperty("--konami-glitch");
       root.style.removeProperty("--konami-glitch-dir");
       glitchRef.current = 0;
-      writtenGlitchRef.current = Number.NaN;
-      writtenDirectionRef.current = Number.NaN;
       return;
     }
     root.classList.add("konami-glitch");
@@ -278,8 +252,6 @@ export function KonamiGlitch() {
       root.classList.remove("konami-glitch");
       root.style.removeProperty("--konami-glitch");
       root.style.removeProperty("--konami-glitch-dir");
-      writtenGlitchRef.current = Number.NaN;
-      writtenDirectionRef.current = Number.NaN;
     };
   }, [active]);
 
