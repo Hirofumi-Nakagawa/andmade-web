@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useLenis } from "lenis/react";
 import { IdleDateTime } from "@/components/idle-datetime";
 import { IdleNowPlaying } from "@/components/idle-now-playing";
 import { VerticalLabel } from "@/components/vertical-label";
@@ -745,6 +746,54 @@ export function IdleOverlay() {
   // stays gated on `showOverlay`.
   const showOverlay = visible && isKnownRoute;
 
+  // SP では表示中ページのスクロールをロックする — per direct follow-up
+  // ("spのstudiesとcontactでアイドルレイヤーが表示中に画面固定が効かなくて
+  // スクロールできる状態になってる")。SP トップは仮想スクロール（transform
+  // ベース）で素通しでも動かなかったが、Studies / Contact は文書そのものが
+  // スクロールするため、fixed のこのレイヤー越しに背面が普通に流れていた。
+  // 手法は mobile-menu.tsx のパネル開時と同じ実証済みの3層
+  // （lenis.stop / html+body の overflow:hidden / capturing touchmove の
+  // preventDefault — 各層単独では不十分だった経緯はそちらの doc comment
+  // 参照）。PC には適用しない: PC は「スクロールしたら消える」仕様
+  // （dismissingEvents の "scroll"）で、ロックすると消す手段そのものを
+  // 塞いでしまう。SP の消し方はタップ（onClick の dismiss）のまま。
+  // wheel はブロックしない — SP 想定の分岐であり、万一のマウス接続時も
+  // wheel は上の dismissingEvents で overlay が消える方向に働くだけ。
+  // touchmove は、丈の低い画面でレイヤー自身が持つ内部スクロール
+  // （overflow-y-auto — SP_OVERLAY_HEIGHT が 100dvh を超えるとき）だけは
+  // 通す: 対象がレイヤー内で、かつ実際にはみ出している場合は既定動作の
+  // まま。それ以外（背面ページへ抜ける動き）だけを止める。
+  const lenis = useLenis();
+  useEffect(() => {
+    if (!showOverlay) return;
+    // lg 未満 = SP/タブレット。効果の実行時点で一度だけ判定する（表示中に
+    // 境界をまたぐリサイズは、次の表示から正しくなれば十分）。
+    if (window.innerWidth >= 1024) return;
+
+    lenis?.stop();
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    function blockTouchScroll(event: TouchEvent) {
+      const target = event.target;
+      if (target instanceof Element) {
+        const layer = target.closest<HTMLElement>("[data-idle-overlay-sp-layer]");
+        if (layer && layer.scrollHeight > layer.clientHeight) return;
+      }
+      event.preventDefault();
+    }
+    window.addEventListener("touchmove", blockTouchScroll, { passive: false });
+
+    return () => {
+      lenis?.start();
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      window.removeEventListener("touchmove", blockTouchScroll);
+    };
+  }, [showOverlay, lenis]);
+
   // konami-glitch-no-blend — エッグ実行中はブレンドを外す（globals.css）
   // per direct follow-up ("エッグ時に30秒後に表示されるレイヤーはブレンド
   // モードは無しにして")。エッグの全面反転（difference）の上に multiply が
@@ -1183,7 +1232,7 @@ export function IdleOverlay() {
           も、他のページと同様に背景の白透過をなくして...白背景自体を消す対
           応で") — Top no longer gets any special-cased panel/blend
           treatment; every route (bar Contact) now shares this one path. */}
-      <div className={`lg:hidden ${layerClassName} ${blend}`} style={layerStyle} onClick={dismiss} role="presentation">
+      <div data-idle-overlay-sp-layer className={`lg:hidden ${layerClassName} ${blend}`} style={layerStyle} onClick={dismiss} role="presentation">
         <div className="relative w-full" style={{ height: SP_OVERLAY_HEIGHT }}>
           {/* No panel/fill of any kind here anymore (see this file's own
               top-level history just above) — `blend` on the fixed layer
@@ -1376,7 +1425,7 @@ export function IdleOverlay() {
           as the PC one above), simply centered within the panel per Figma
           (no measured-midpoint logic needed here — Figma just centers it,
           unlike PC's own "midpoint between the two other groups" spec). */}
-      <div className={`lg:hidden ${layerClassName}`} style={layerStyle} onClick={dismiss} role="presentation">
+      <div data-idle-overlay-sp-layer className={`lg:hidden ${layerClassName}`} style={layerStyle} onClick={dismiss} role="presentation">
         <div className="relative w-full" style={{ height: SP_OVERLAY_HEIGHT }}>
           <div
             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-opacity ease-out"
