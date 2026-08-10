@@ -80,13 +80,35 @@ type Slide = {
   dy: number;
 };
 
-function pickNextSlide(current: Slide | null): Slide {
-  let locationIndex = Math.floor(Math.random() * SCENIC_LOCATIONS.length);
-  if (current && SCENIC_LOCATIONS.length > 1) {
-    while (locationIndex === current.locationIndex) {
-      locationIndex = Math.floor(Math.random() * SCENIC_LOCATIONS.length);
-    }
+/** 全ロケーションのインデックスを Fisher–Yates でシャッフルした「山札」を
+ *  作る。表示順は完全ランダムだが、山札を上から順に引くので**一巡するまで
+ *  同じ場所は二度出ない** — per direct follow-up ("毎回表示時にランダムに
+ *  並んだ30個を順に表示したい。なので、30個全部表示されるまでは重複
+ *  しない")。以前は毎回の独立抽選（直前との重複だけ回避）で、数枚で同じ
+ *  場所が再登場し得た。 */
+function shuffledLocationIndices(): number[] {
+  const deck = SCENIC_LOCATIONS.map((_, i) => i);
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
   }
+  return deck;
+}
+
+/** 山札（deck）から1枚引いてスライドにする。山札が尽きたら（＝30箇所を
+ *  出し切ったら）シャッフルし直す。継ぎ目で「前の山の最後 = 新しい山の
+ *  最初」になったときだけ入れ替えて、連続表示の重複を避ける。deck は
+ *  呼び出し側が useRef で持つ配列で、この関数が直接消費する（shift）。 */
+function drawNextSlide(deck: number[], current: Slide | null): Slide {
+  if (deck.length === 0) {
+    const fresh = shuffledLocationIndices();
+    if (current && fresh.length > 1 && fresh[0] === current.locationIndex) {
+      const j = 1 + Math.floor(Math.random() * (fresh.length - 1));
+      [fresh[0], fresh[j]] = [fresh[j], fresh[0]];
+    }
+    deck.push(...fresh);
+  }
+  const locationIndex = deck.shift()!;
   const { dx, dy } = PAN_DIRECTIONS[Math.floor(Math.random() * PAN_DIRECTIONS.length)];
   return { locationIndex, dx, dy };
 }
@@ -412,6 +434,14 @@ export function ScenicMapBackground() {
   const [current, setCurrent] = useState<Slide | null>(null);
   const [previous, setPrevious] = useState<Slide | null>(null);
   const cleanupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** シャッフル済みの残り山札（drawNextSlide の doc comment 参照）。マウント
+   *  ごとに空から始まる＝ページを開くたびに並びを引き直す。 */
+  const deckRef = useRef<number[]>([]);
+  /** interval から前回のスライドを読むためのミラー。以前は setCurrent の
+   *  updater 内で次を抽選していたが、山札の消費（shift）は副作用なので
+   *  updater の中に置けない（StrictMode の二重実行で1枚余計に引いて
+   *  しまう）。抽選を interval 本体へ出すため、現在値は ref で追う。 */
+  const currentSlideRef = useRef<Slide | null>(null);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -422,13 +452,15 @@ export function ScenicMapBackground() {
     // set-state-in-effect rule, which flags a *direct, synchronous* setState
     // call in an effect body but not one deferred into a callback like this.
     const frame = requestAnimationFrame(() => {
-      setCurrent(pickNextSlide(null));
+      const first = drawNextSlide(deckRef.current, null);
+      currentSlideRef.current = first;
+      setCurrent(first);
     });
     const interval = setInterval(() => {
-      setCurrent((prevCurrent) => {
-        setPrevious(prevCurrent);
-        return pickNextSlide(prevCurrent);
-      });
+      const next = drawNextSlide(deckRef.current, currentSlideRef.current);
+      setPrevious(currentSlideRef.current);
+      currentSlideRef.current = next;
+      setCurrent(next);
     }, CYCLE_MS);
     return () => {
       cancelAnimationFrame(frame);
