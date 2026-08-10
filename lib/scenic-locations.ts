@@ -41,7 +41,6 @@ export const SCENIC_LOCATIONS: ScenicLocation[] = [
   { name: "Eixample District, Barcelona", lat: 41.3958, lng: 2.1642, zoom: 15 },
 
   // Greenery & water
-  { name: "Amazon River meander, Peru", lat: -3.4653, lng: -62.2159, zoom: 11 },
   { name: "Iguazu Falls, Argentina/Brazil", lat: -25.6953, lng: -54.4367, zoom: 14 },
   { name: "Ha Long Bay, Vietnam", lat: 20.9101, lng: 107.1839, zoom: 12 },
   { name: "Milford Sound, New Zealand", lat: -44.6714, lng: 167.925, zoom: 12 },
@@ -60,4 +59,5 @@ export const SCENIC_LOCATIONS: ScenicLocation[] = [
   { name: "Palouse farmland patchwork, USA", lat: 46.6, lng: -117.6, zoom: 12 },
   { name: "Dead Sea, Israel/Jordan", lat: 31.5, lng: 35.4795, zoom: 11 },
   { name: "Tulip fields of Lisse, Netherlands", lat: 52.2705, lng: 4.5466, zoom: 14 },
+  { name: "Cappadocia, Turkey", lat: 38.6431, lng: 34.8289, zoom: 14 },
 ];
