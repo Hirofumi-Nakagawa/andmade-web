@@ -45,7 +45,8 @@ export const SCENIC_LOCATIONS: ScenicLocation[] = [
   { name: "Iguazu Falls, Argentina/Brazil", lat: -25.6953, lng: -54.4367, zoom: 14 },
   { name: "Ha Long Bay, Vietnam", lat: 20.9101, lng: 107.1839, zoom: 12 },
   { name: "Milford Sound, New Zealand", lat: -44.6714, lng: 167.925, zoom: 12 },
-  { name: "Great Barrier Reef, Australia", lat: -20.167, lng: 149.942, zoom: 15 },
+  // Great Barrier Reef は削除 — per direct follow-up ("404ページの
+  // great barrier~は無しにして")。
   { name: "Maldives atolls", lat: 4.1755, lng: 73.5093, zoom: 12 },
   { name: "Bora Bora, French Polynesia", lat: -16.5004, lng: -151.7415, zoom: 13 },
 
@@ -58,4 +59,5 @@ export const SCENIC_LOCATIONS: ScenicLocation[] = [
   { name: "Sossusvlei dunes, Namibia", lat: -24.7333, lng: 15.3, zoom: 13 },
   { name: "Palouse farmland patchwork, USA", lat: 46.6, lng: -117.6, zoom: 12 },
   { name: "Dead Sea, Israel/Jordan", lat: 31.5, lng: 35.4795, zoom: 11 },
+  { name: "Tulip fields of Lisse, Netherlands", lat: 52.2705, lng: 4.5466, zoom: 14 },
 ];
