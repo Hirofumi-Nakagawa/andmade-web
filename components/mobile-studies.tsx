@@ -989,14 +989,15 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
 
       <Link
         href="/"
-        className="absolute block text-[16px] leading-[1.5] font-medium whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        className="absolute block text-[15px] leading-[1.5] font-medium whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
         style={{ top: "50px", left: TEXT_LEFT }}
       >
         ANDMADE Inc.
       </Link>
 
+      {/* text-[14px] → 13px — per direct follow-up ("リード文を13pxに")。 */}
       <div
-        className="absolute text-[14px] leading-[17px] font-normal whitespace-nowrap text-black"
+        className="absolute text-[13px] leading-[17px] font-normal whitespace-nowrap text-black"
         style={{ top: GROUP_TOP, left: TEXT_LEFT }}
       >
         {/* Manual line breaks per explicit spec, replacing an earlier
@@ -1209,7 +1210,9 @@ export function MobileStudies({ studies }: { studies: Study[] }) {
               active={settled}
             />
           </p>
-          <p className="text-[14px] leading-[1.5] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+          {/* 14px → 13px — per direct follow-up ("study01下の各見出しを
+              13pxに")。 */}
+          <p className="text-[13px] leading-[1.5] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
             <ScrambleText text={displayed.title} active={settled} />
           </p>
         </div>

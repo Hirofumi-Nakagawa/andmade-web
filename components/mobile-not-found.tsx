@@ -86,7 +86,7 @@ export function MobileNotFound({ sorrySwapped = false }: { sorrySwapped?: boolea
     <div className="contents lg:hidden">
       <Link
         href="/"
-        className="absolute block text-[16px] leading-[1.5] font-medium whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        className="absolute block text-[15px] leading-[1.5] font-medium whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
         style={{ top: "50px", left: TEXT_LEFT }}
       >
         ANDMADE Inc.

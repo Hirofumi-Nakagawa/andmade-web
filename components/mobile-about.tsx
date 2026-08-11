@@ -4,6 +4,7 @@ import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useLenis } from "lenis/react";
 import { MobileAboutSection } from "@/components/mobile-about-section";
+import { RecentlyPlayedFlip } from "@/components/recently-played-flip";
 import { MobileAboutSideNav } from "@/components/mobile-about-side-nav";
 import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
 import { RevealOnMount } from "@/components/reveal-on-mount";
@@ -41,6 +42,22 @@ const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
  *  viewport width instead of a hardcoded px value that only matches Figma's
  *  own 400px reference). */
 const CONTENT_INDENT = "calc(var(--sp-grid-column-width) * 2)";
+
+/** SP の FV リードは「〜デザインにつながると」で改行して4行にする — per
+ *  direct follow-up ("デザインにつながると（改行")。原稿
+ *  （lib/about-content.ts の HERO_LEAD_JA）は PC と共有の3行のままなので、
+ *  3行目だけ末尾の「考えています。」を切り離して2行に分ける。原稿側の
+ *  文言が変わって末尾が一致しなくなったときは、分割せずそのまま出す
+ *  （改行位置の指定より文言の正しさを優先）。 */
+const SP_HERO_LEAD_TAIL = "考えています。";
+const SP_HERO_LEAD_JA = HERO_LEAD_JA[2].endsWith(SP_HERO_LEAD_TAIL)
+  ? [
+      HERO_LEAD_JA[0],
+      HERO_LEAD_JA[1],
+      HERO_LEAD_JA[2].slice(0, -SP_HERO_LEAD_TAIL.length),
+      SP_HERO_LEAD_TAIL,
+    ]
+  : HERO_LEAD_JA;
 
 /** Distance-from-bottom (px) that flips MobileMenu into footer mode — mirrors
  *  mobile-home.tsx's own SELECTED_TEXT_BOTTOM_PX-driven bottom check, minus
@@ -90,7 +107,7 @@ function MobileBilingualBody({ ja, en }: { ja: string[]; en: string[] }) {
   return (
     <div className="flex w-full flex-col items-start gap-[30px]">
       <div
-        className="w-full text-justify font-(family-name:--font-gen-interface-jp) text-[15px] leading-[1.6] tracking-[0.3px] text-black"
+        className="w-full text-justify font-(family-name:--font-gen-interface-jp) text-[14px] leading-[1.6] tracking-[0.3px] text-black"
         style={SS09}
       >
         {ja.map((paragraph, i) => (
@@ -99,7 +116,7 @@ function MobileBilingualBody({ ja, en }: { ja: string[]; en: string[] }) {
           </p>
         ))}
       </div>
-      <div className="w-full text-[14px] leading-[1.2] text-black/50">
+      <div className="w-full text-[13px] leading-[1.2] text-black/50">
         {en.map((paragraph, i) => (
           <p key={paragraph} className={`mb-0 last:mb-0 ${paragraphTrimClass(i, en.length)}`}>
             {paragraph}
@@ -196,7 +213,7 @@ export function MobileAbout() {
             anywhere but here. */}
         <Link
           href="/"
-          className="block text-[16px] leading-[1.5] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+          className="block text-[15px] leading-[1.5] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
           style={{ paddingLeft: CONTENT_INDENT, paddingTop: "calc(50px + env(safe-area-inset-top))" }}
         >
           ANDMADE Inc.
@@ -247,8 +264,10 @@ export function MobileAbout() {
                 レイアウトが崩れる。そこで min(36px, 8.5vw) とし、
                 大きめの端末では指示どおり 36px、狭い端末ではその端末で
                 1行に収まる上限まで自動で縮む形にしてある。
-                （34px → 36px。8.5vw は "Designed with clarity." の字幅
-                 約9.2em が 10マスに収まる限界から逆算した値。）
+                （34px → 36px → 32px。最後は per direct follow-up
+                 ("sp、aboutとcontactの34px文字→32pxに")。8.5vw は
+                 "Designed with clarity." の字幅約9.2em が 10マスに収まる
+                 限界から逆算した値。）
                 行間 1.12 と字間 -0.02em は PC 版（50px / 56px / -1px）と
                 同じ比率。PC 側を触るときは合わせて見直すこと。 */}
             <CurtainRevealLines
@@ -259,7 +278,7 @@ export function MobileAbout() {
               // 打ち消し。マージンではなく relative なので、下のリード文の
               // 位置は動かない。
               className="relative top-[-3px] font-normal [font-kerning:normal] text-black"
-              style={{ fontSize: "min(36px, 8.5vw)", lineHeight: 1.12, letterSpacing: "-0.02em" }}
+              style={{ fontSize: "min(32px, 8.5vw)", lineHeight: 1.12, letterSpacing: "-0.02em" }}
             />
 
             {/* 見出しからの 35px、日本語↔英語の 30px（いずれも直接の指示。
@@ -273,24 +292,29 @@ export function MobileAbout() {
                 日本語↔英語の 30px のほうは両側とも text-box-trim が効いて
                 いるので、指定値がそのまま見た目の間隔になる。 */}
             <RevealOnMount fadeOnly>
+              {/* tracking 0.3px → -0.4px — per direct follow-up ("リード
+                  「〜その積み重ねが、」までが一行で入るように文字間を調整
+                  して")。2段落目の頭24文字が 14px 全角のままだと狭い端末で
+                  コンテンツ幅を超えるため、字間を詰めて1行に収める。 */}
               <div
-                className="mt-[35px] w-full font-(family-name:--font-gen-interface-jp) text-[15px] leading-[1.7] font-light tracking-[0.3px] text-black"
+                className="mt-[35px] w-full font-(family-name:--font-gen-interface-jp) text-[14px] leading-[1.7] font-light tracking-[-0.4px] text-black"
                 style={SS09}
               >
                 {/* 16px → 15px（直接の指示）。Vision 以下の本文と同じサイズ。
 
-                    2段落に組み直している — PC は原稿どおり3行で固定改行する
-                    デザインだが、SP の幅ではその3行が自然に折り返すので、
-                    文としての切れ目（1文目 / 2文目）で分けたほうが読みやすい。
-                    原稿そのものは lib/about-content.ts の1か所のままなので、
-                    文言を直せば PC/SP 両方に効く。 */}
-                {[HERO_LEAD_JA[0], HERO_LEAD_JA.slice(1).join("")].map((line, i, all) => (
+                    一時は2段落（1文目 / 2文目）に組み直していたが、per direct
+                    follow-up ("積み重ねが、で改行して") で原稿どおりの固定
+                    改行に戻し、さらに SP だけ4行に分割（SP_HERO_LEAD_JA の
+                    doc comment 参照）。 */}
+                {SP_HERO_LEAD_JA.map((line, i, all) => (
                   <p key={line} className={paragraphTrimClass(i, all.length)}>
                     {line}
                   </p>
                 ))}
               </div>
-              <div className="mt-[30px] w-full text-[14px] leading-[1.2] text-black/50">
+              {/* mt 30 → 25 — per direct follow-up ("SPのaboutのFV「本質を〜」
+                  の日本語リード下のマージンを5px詰めて")。 */}
+              <div className="mt-[25px] w-full text-[13px] leading-[1.2] text-black/50">
                 {/* 英語は1段落に連結。理由は上の日本語と同じ。 */}
                 <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                   {HERO_LEAD_EN.join(" ")}
@@ -332,7 +356,7 @@ export function MobileAbout() {
 
                 <div className="flex w-full flex-col items-start gap-[50px]">
                   <p
-                    className="text-justify text-[15px] leading-[1.2] font-medium whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                    className="text-justify text-[14px] leading-[1.2] font-medium whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
                     style={{ marginBottom: -5 }}
                   >
                     Guiding Principles
@@ -344,18 +368,22 @@ export function MobileAbout() {
                       className="flex w-full flex-col items-start gap-[30px]"
                       style={index > 0 ? { marginTop: -5 } : undefined}
                     >
-                      <div className="flex w-full flex-col items-start gap-[12px]">
-                        <div className="flex items-center gap-[6px] whitespace-nowrap text-[15px] leading-[1.7] text-black">
+                      {/* gap 12 → 14 — per direct follow-up ("Guiding Principlesの1~4の
+                          各見出し下のマージンを2px増やす")。英語側（下の
+                          pl-[18px] 付きラッパー）は 12px のまま — per direct
+                          follow-up ("英語は2px増やさないで")。 */}
+                      <div className="flex w-full flex-col items-start gap-[14px]">
+                        <div className="flex items-center gap-[6px] whitespace-nowrap text-[14px] leading-[1.7] text-black">
                           <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">{index + 1}.</p>
                           <p
-                            className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both] font-(family-name:--font-gen-interface-jp) font-light text-[15px] tracking-[0.75px]"
+                            className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both] font-(family-name:--font-gen-interface-jp) font-light text-[14px] tracking-[0.75px]"
                             style={SS09}
                           >
                             {principle.titleJa}
                           </p>
                         </div>
                         <div
-                          className="w-full pl-[18px] text-justify font-(family-name:--font-gen-interface-jp) text-[14px] leading-[1.7] font-light tracking-[0.7px] text-black/70"
+                          className="w-full pl-[17px] text-justify font-(family-name:--font-gen-interface-jp) text-[13px] leading-[1.7] font-light tracking-[0.7px] text-black/70"
                           style={SS09}
                         >
                           {(principle.bodyJaSp ?? principle.bodyJa).map((paragraph, i) => (
@@ -368,14 +396,16 @@ export function MobileAbout() {
                           ))}
                         </div>
                       </div>
-                      <div className="flex w-full flex-col items-start gap-[12px] pl-[18px]">
+                      {/* pl 18 → 17 — per direct follow-up ("Guiding Principlesの各タイトル
+                          下要素の左マージンを1px詰めて")。上の日本語本文の pl も同時に 17。 */}
+                      <div className="flex w-full flex-col items-start gap-[12px] pl-[17px]">
                         <p
-                          className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both] text-justify text-[15px] leading-[1.7] whitespace-nowrap text-black/70"
+                          className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both] text-justify text-[14px] leading-[1.7] whitespace-nowrap text-black/70"
                           style={{ marginTop: -5 }}
                         >
                           {principle.titleEn}
                         </p>
-                        <div className="w-full text-[14px] leading-[1.2] text-black/50">
+                        <div className="w-full text-[13px] leading-[1.2] text-black/50">
                           {(principle.bodyEnSp ?? principle.bodyEn).map((paragraph, i) => (
                             <p
                               key={paragraph}
@@ -393,15 +423,19 @@ export function MobileAbout() {
             </MobileAboutSection>
 
             <MobileAboutSection id={spSectionId(ABOUT_NAV_ITEMS[2].id)} label="Services" index="03">
-              <div className="flex w-full items-start gap-[35px] text-justify text-[15px] leading-[1.8] whitespace-nowrap text-black">
-                <div className="flex flex-col items-start gap-[20px]">
+              {/* 各行の間隔（flex gap）20 → 18px — per direct follow-up
+                  ("spのservices、media、awardsの行間を2px詰めて")。各行は
+                  text-box-trim 済みの単行 <p> なので、行間の実体は leading
+                  ではなくこの gap。Awards / Media も同時に 18px。 */}
+              <div className="flex w-full items-start gap-[35px] text-justify text-[14px] leading-[1.8] whitespace-nowrap text-black">
+                <div className="flex flex-col items-start gap-[18px]">
                   {SERVICES_COL_1.map((item) => (
                     <p key={item} className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                       {item}
                     </p>
                   ))}
                 </div>
-                <div className="flex flex-col items-start gap-[20px]">
+                <div className="flex flex-col items-start gap-[18px]">
                   {SERVICES_COL_2.map((item) => (
                     <p key={item} className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                       {item}
@@ -417,7 +451,7 @@ export function MobileAbout() {
                 own entries, then COL_2's, in that same order) rather than
                 two side-by-side columns. */}
             <MobileAboutSection id={spSectionId(ABOUT_NAV_ITEMS[3].id)} label="Awards" index="04">
-              <div className="flex w-full flex-col items-start gap-[20px] text-justify text-[15px] leading-[1.8] whitespace-nowrap text-black">
+              <div className="flex w-full flex-col items-start gap-[18px] text-justify text-[14px] leading-[1.8] whitespace-nowrap text-black">
                 {[...AWARDS_COL_1, ...AWARDS_COL_2].map((item) => (
                   <p key={item} className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                     {item}
@@ -427,7 +461,7 @@ export function MobileAbout() {
             </MobileAboutSection>
 
             <MobileAboutSection id={spSectionId(ABOUT_NAV_ITEMS[4].id)} label="Media" index="05">
-              <div className="flex w-full flex-col items-start gap-[20px] text-justify text-[15px] leading-[1.8] whitespace-nowrap text-black">
+              <div className="flex w-full flex-col items-start gap-[18px] text-justify text-[14px] leading-[1.8] whitespace-nowrap text-black">
                 {[...MEDIA_COL_1, ...MEDIA_COL_2].map((item) =>
                   item.linked ? (
                     <a
@@ -464,12 +498,12 @@ export function MobileAbout() {
                         href={entry.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="underline-sweep text-[15px] text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                        className="underline-sweep text-[14px] text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
                       >
                         {entry.value}
                       </a>
                     ) : (
-                      <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both] text-[15px] text-black">
+                      <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both] text-[14px] text-black">
                         {entry.value}
                       </p>
                     )}
@@ -535,6 +569,16 @@ export function MobileAbout() {
             line for MobileAboutSideNav's sticky release. See that wrapper's
             own doc comment above. */}
         <div aria-hidden className="h-[20px]" />
+
+        {/* 直近再生のパラパラ — per direct follow-up ("sp、aboutのページ下
+            にもPC同様に直近再生したジャケとアーティスト名を表示して ジャケ
+            の上マージンは150pxで下マージンは現状のマージンと同じに")。
+            上 150px、下は既存のトレーリングスペーサー（footerGapPx）が
+            そのまま働くので現状どおり。SP では --scale = 1 なので
+            RecentlyPlayedFlip の 110px/12px 指定はそのままの実寸で出る。 */}
+        <div className="mt-[150px] flex w-full justify-center">
+          <RecentlyPlayedFlip />
+        </div>
 
         {/* Trailing spacer — see CONTENT_FOOTER_GAP_PX's own doc comment. */}
         <div style={{ height: footerGapPx }} />

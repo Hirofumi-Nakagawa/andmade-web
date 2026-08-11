@@ -560,7 +560,7 @@ export function MobileProjectDetail({
           <StatusBarMaskColor color={backgroundColor} />
           <Link
             href="/"
-            className={`block text-[16px] leading-[1.5] font-medium whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+            className={`block text-[15px] leading-[1.5] font-medium whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
             style={{ paddingLeft: HEADER_ML, paddingTop: "calc(50px + env(safe-area-inset-top))" }}
           >
             ANDMADE Inc.
@@ -582,7 +582,7 @@ export function MobileProjectDetail({
          screen. */}
       <div className="mt-[140px] flex flex-col items-start" style={{ paddingLeft: HEADER_ML, paddingRight: SIDE_ML }}>
         <div className="flex w-full flex-col items-start gap-[15px]">
-          <p className={`text-[18px] font-medium leading-[1.5] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
+          <p className={`text-[17px] font-medium leading-[1.5] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
             <ScrambleText text={project.title} active={titleActive} />
           </p>
           {/* All three lines in one <p> on a single `leading-[1.25]`, with no
@@ -610,7 +610,7 @@ export function MobileProjectDetail({
              only the date keeps nowrap, since "Aug.2025" should never break
              across lines. Wrapped lines fall on the same leading as the rest,
              so the block still matches the top page's own rhythm. */}
-          <div className={`flex w-full flex-col items-start text-[14px] ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
+          <div className={`flex w-full flex-col items-start text-[13px] ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
             <p className="leading-[1.25] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
               <span className="block">{project.category}</span>
               <span className="block">{project.role}</span>
@@ -629,7 +629,7 @@ export function MobileProjectDetail({
               href={detail.websiteUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className={`underline-sweep mt-[25px] text-[14px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+              className={`underline-sweep mt-[25px] text-[13px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
             >
               View Website
             </a>
@@ -637,7 +637,7 @@ export function MobileProjectDetail({
             // URL でない値（"Archived" など）はリンクにせず、書かれた文字を
             // そのまま出す — isLinkableWebsiteUrl の doc comment 参照。
             <p
-              className={`mt-[25px] text-[14px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+              className={`mt-[25px] text-[13px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
             >
               {detail.websiteUrl}
             </p>
@@ -701,7 +701,7 @@ export function MobileProjectDetail({
              の左面は左から8個目のグリッドに合わせる"), replacing the earlier
              CSS-grid `1fr` auto-split (which only approximated Figma's own
              literal offsets) with that literal grid position. */}
-          <div className={`relative mt-[70px] text-[14px] whitespace-nowrap ${headerText}`}>
+          <div className={`relative mt-[70px] text-[13px] whitespace-nowrap ${headerText}`}>
             <div className="flex flex-col items-start gap-[40px]" style={{ paddingLeft: SIDE_ML }}>
               <div className="flex flex-col items-start gap-[12px]">
                 <p
@@ -824,9 +824,11 @@ export function MobileProjectDetail({
              Client:のマージンは30pxに", replacing the earlier 40px) — a
              single shared flex `gap` can't hold two different values, hence
              the extra nesting. */}
-          <div className={`mt-[80px] text-[14px] ${headerText}`} style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>
+          <div className={`mt-[80px] text-[13px] ${headerText}`} style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>
+            {/* text-[12px] — per direct follow-up ("SPの(Credit)の文字は
+                12pxに")。親ブロックの 13px より一段小さく。 */}
             <p
-              className={`font-(family-name:--font-courier) tracking-[-0.7px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+              className={`font-(family-name:--font-courier) text-[12px] tracking-[-0.7px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
                 headerDark ? "text-black/50" : "text-white/50"
               }`}
             >
@@ -896,16 +898,16 @@ export function MobileProjectDetail({
              flex gap too (10px own + 10px flex → 20px total, unchanged from
              before). */}
           <div className="flex flex-col items-start" style={{ paddingLeft: SIDE_ML, paddingRight: SIDE_ML }}>
-            <p className="text-[14px] leading-[1.25] whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+            <p className="text-[13px] leading-[1.25] whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
               Next Project
             </p>
             <Link
               href={`/projects/${slugify(next.title)}`}
-              className="underline-sweep mt-[30px] text-[18px] leading-[1.25] font-medium whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+              className="underline-sweep mt-[30px] text-[17px] leading-[1.25] font-medium whitespace-nowrap text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
             >
               {next.title}
             </Link>
-            <div className="mt-[20px] flex flex-col items-start gap-[10px] text-[14px] whitespace-nowrap text-black/50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+            <div className="mt-[20px] flex flex-col items-start gap-[10px] text-[13px] whitespace-nowrap text-black/50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
               <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                 {next.category}
                 <br />

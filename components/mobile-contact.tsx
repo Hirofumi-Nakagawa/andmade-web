@@ -22,8 +22,8 @@ import { setLightMenuPill } from "@/lib/menu-theme-store";
  *  "and"（改行）"shape it into..." per the latest direct follow-up. */
 const CONTACT_TAGLINE_LINES = [
   "Every project starts with a conversation.",
-  "Together, we’ll uncover the essence and",
-  "shape it into something clear and lasting.",
+  "Together, we’ll uncover the essence and shape",
+  "it into something clear and lasting.",
 ];
 
 /** Same "margin + 2 columns" idiom every other Mobile* component uses (see
@@ -202,7 +202,7 @@ export function MobileContact() {
          sibling above, has always rendered instantly). */}
       <Link
         href="/"
-        className="absolute block text-[16px] leading-[1.5] font-medium whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        className="absolute block text-[15px] leading-[1.5] font-medium whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
         style={{ top: `${ANDMADE_INC_TOP_PX}px`, left: TEXT_LEFT }}
       >
         ANDMADE Inc.
@@ -255,7 +255,7 @@ export function MobileContact() {
         // 字サイズを、現在より2px小さく", then "そこからさらに2px小さく"),
         // each applied on top of the last rather than both measured off the
         // original 40px independently.
-        className="absolute text-[34px] leading-[1.75] font-normal whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        className="absolute text-[32px] leading-[1.75] font-normal whitespace-nowrap text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
         style={{ top: 0, left: TEXT_LEFT }}
       >
         <ScrambleText text="Get in touch." active />
@@ -263,7 +263,8 @@ export function MobileContact() {
 
       <CurtainRevealLines
         lines={CONTACT_TAGLINE_LINES}
-        className="absolute text-[14px] leading-[18px] font-normal text-white"
+        // 14px → 13px — per direct follow-up ("sp、contactの英語3行を13pxに")。
+        className="absolute text-[13px] leading-[18px] font-normal text-white"
         style={{ top: `${BODY_PARAGRAPH_TOP_PX - GET_IN_TOUCH_TOP_PX}px`, left: TEXT_LEFT }}
       />
 
@@ -284,13 +285,13 @@ export function MobileContact() {
             Inquiries
           </p>
           {/* mailto → クリックでコピー＋"Copied" 表示（copy-email.tsx）。 */}
-          <CopyEmail inverted belowMenu className="[text-decoration-skip-ink:none] [text-underline-position:from-font] text-[16px] text-white underline decoration-solid decoration-from-font [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]" />
+          <CopyEmail inverted belowMenu className="[text-decoration-skip-ink:none] [text-underline-position:from-font] text-[15px] text-white underline decoration-solid decoration-from-font [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]" />
         </div>
         <div className="flex flex-col items-start gap-[12px]">
           <p className="font-(family-name:--font-courier) text-[12px] text-[#757575] tracking-[-0.6px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
             Social
           </p>
-          <div className="flex items-center gap-[8px] text-[16px] text-white">
+          <div className="flex items-center gap-[8px] text-[15px] text-white">
             <a
               href="https://www.instagram.com/andmade_inc"
               target="_blank"

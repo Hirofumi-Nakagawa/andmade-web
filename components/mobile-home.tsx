@@ -970,11 +970,12 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
             --sp-grid-column-width both derive from globals.css's
             --sp-grid-margin, so the two stay in sync automatically). pt-[50px] — header top margin, per direct
             follow-up ("SPのヘッダーANDMADE Inc,の上マージンも50pxに", was
-            14px). text-[16px] (was 18px) per direct follow-up ("文字サイ
-            ズ：18pxは16pxに"). */}
+            14px). 18px → 16px（"文字サイズ：18pxは16pxに"）→ 14px
+            （"ヘッダーのANDMADE Inc.を14pxに"）→ 15px — per direct
+            follow-up ("14pxにした箇所を15pxにして")。 */}
         <Link
           href="/"
-          className="block pt-[50px] mix-blend-exclusion text-[16px] leading-[1.5] font-medium text-white transition-opacity ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+          className="block pt-[50px] mix-blend-exclusion text-[15px] leading-[1.5] font-medium text-white transition-opacity ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
           style={{
             paddingLeft: CONTENT_INDENT,
             opacity: headerRevealed ? 1 : 0,
@@ -1120,7 +1121,10 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                     glyphs' own true center; nudging it corrects for that
                     residual gap directly rather than chasing the underlying
                     measurement further. */}
-                <div className="flex flex-col items-center gap-[10px] text-[14px] font-medium text-white">
+                {/* text-[14px] → 12px（"txt-img、26 cases、Contactを12pxに"）
+                    → 13px — per direct follow-up ("12pxにした箇所を13pxに")。
+                    下の "Cases" と Contact の VerticalLabel も同時に 13px。 */}
+                <div className="flex flex-col items-center gap-[10px] text-[13px] font-medium text-white">
                   {/* Tx/Th — now real toggle buttons (see showImages above),
                       previously plain static labels. Dim/bright convention
                       matches PC's own ProjectViewToggle exactly: the
@@ -1218,7 +1222,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                     SlotDigits — same odometer/slot-machine digit roll as
                     PC's counter (slot-digits.tsx), counting up to the real
                     project count. */}
-                <VerticalLabel className="text-[14px] font-normal text-white">
+                <VerticalLabel className="text-[13px] font-normal text-white">
                   <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                     {/* 数字だけ medium、"Cases" は regular — 直接の指示
                         ("SPのcasesの数字はmediumでcasesの文字はregularにして")。
@@ -1243,7 +1247,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                     そちらのコメント参照）ので、リンクにだけ復活させる。
                     touchAction: manipulation も Tx/Th と同じ、実機のタップ
                     遅延・誤爆対策。 */}
-                <VerticalLabel className="text-[14px] font-medium text-white">
+                <VerticalLabel className="text-[13px] font-medium text-white">
                   <Link
                     href="/contact"
                     className="pointer-events-auto [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
@@ -1491,6 +1495,7 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
   const fadeDurationMs = released ? PREVIEW_FADE_OUT_MS : PREVIEW_FADE_IN_MS;
 
   return (
+    <>
     <div
       // No z-index (was z-10, paired with a z-20 on the list section) — per a
       // direct follow-up reporting that pairing had silently broken the
@@ -1538,6 +1543,31 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
         onLoad={() => setEntered(true)}
       />
     </div>
+      {/* 画像タップで詳細へ — per direct follow-up ("SPでTx時に選択中に
+          背面に表示されるイメージもタップして詳細ページに飛べるようにして"
+          → "まだなってない")。画像の箱自体は一覧より DOM 順で前（＝背面）
+          にあり、一覧の各行が全幅のブロックなので、画像上のタップは行側に
+          吸われて背面のリンクには届かない。そこで**透明のタップ用リンク**を
+          同じ矩形で z-20 に重ねる。何も描画しないので、一覧テキストの
+          mix-blend-exclusion には影響しない（ブレンドが壊れるのは list 側を
+          stacking context で包んだ場合 — 上の div の doc comment 参照）。
+          現行の1枚が表示中のときだけ出す。href は選択中タイトル
+          （SelectedProjectText）と同じ slugify(entry.title)。 */}
+      {isCurrent && !released && entered && (
+        <Link
+          href={`/projects/${slugify(entry.title)}`}
+          aria-label={entry.title}
+          className="fixed z-20 block"
+          style={{
+            top: entry.rect.top,
+            left: entry.rect.left,
+            width: entry.rect.width,
+            height: entry.rect.height,
+            touchAction: "manipulation",
+          }}
+        />
+      )}
+    </>
   );
 }
 

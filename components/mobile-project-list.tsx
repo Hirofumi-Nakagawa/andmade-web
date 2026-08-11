@@ -540,6 +540,8 @@ function MobileProjectItem({
           // jumping/reflowing. Titles now always render on one line (can
           // overflow the column visually for a very long title, but never
           // reflows other rows while revealing).
+          // text-[15px] → 14px（"一覧タイトルを14pxに"）→ 15px — per direct
+          // follow-up ("14pxにした箇所を15pxにして")。
           className="relative inline-block text-[15px] leading-[1.3] font-medium text-black whitespace-nowrap"
         >
           <SelectedPlate active={isSelected} inset={TITLE_PLATE_INSET} />
@@ -609,11 +611,10 @@ function MobileProjectItem({
             style={{ marginTop: "calc(-0.1em - 2px)" }}
           />
         </span>
-        {/* text-[14px] (was 16px) per direct follow-up ("文字サイズ：...16px
-            は14pxに"). Briefly tried at 10px, then 12px, across two further
-            direct follow-ups — reverted back to this original 14px per a
-            further direct follow-up asking to undo that whole round of
-            adjustment ("10px→12pxの変更を元に戻してください"). */}
+        {/* 16px → 14px（"文字サイズ：...16pxは14pxに"）→ 一度 10px/12px を
+            試して 14px へ戻した経緯（"10px→12pxの変更を元に戻してください"）
+            の後、12px（"カテゴリーと日付を12pxに"）→ 13px — per direct
+            follow-up ("12pxにした箇所を13pxに")。 */}
         {/* Each line is its own `block w-fit` span so its plate hugs that
             line's real width, exactly as on PC (project-card.tsx).
 
@@ -626,7 +627,7 @@ function MobileProjectItem({
             between them, so the plates now meet exactly. The date keeps its
             own font/tracking overrides on the same span that carries its
             plate, the same way PC handles it. */}
-        <div className="flex flex-col items-start text-[14px] text-black/50">
+        <div className="flex flex-col items-start text-[13px] text-black/50">
           <p className="font-normal leading-[1.25] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
             <span className="relative block w-fit">
               <SelectedPlate active={isSelected} inset={META_PLATE_INSET} delayMs={PLATE_META_DELAY_MS} />
