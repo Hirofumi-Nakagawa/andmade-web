@@ -404,7 +404,7 @@ function MobileProjectThumbnailCard({
           // earlier attempt at that was reverted per direct follow-up,
           // "1行固定とタイトルのマスクはなしで") — this stays plain normal
           // wrapping throughout, same as everywhere else on this site.
-          className={`block underline decoration-1 underline-offset-2 text-[12px] leading-[1.4] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+          className={`block underline decoration-1 underline-offset-2 text-[10px] leading-[1.4] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
             revealed ? "opacity-100" : "opacity-0"
           }`}
           // minHeight — see titleMinHeight's own doc comment above.
@@ -424,7 +424,7 @@ function MobileProjectThumbnailCard({
         <span
           ref={titleMeasureRef}
           aria-hidden
-          className="pointer-events-none invisible absolute left-0 top-0 block text-[12px] leading-[1.4] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+          className="pointer-events-none invisible absolute left-0 top-0 block text-[10px] leading-[1.4] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
           style={{ width: "100%" }}
         >
           {project.title}
