@@ -156,9 +156,10 @@ export function MobileProjectThumbnailGrid({ projects }: MobileProjectThumbnailG
         gridTemplateColumns: `repeat(${COLUMNS}, 1fr)`,
         // 4px → 2px — per direct follow-up ("マージンを4→2pxに変更して").
         columnGap: "2px",
-        // 35px → 40px — per direct follow-up ("一覧の列の上下マージンをさら
-        // に5px広げて").
-        rowGap: "40px",
+        // 35px → 40px（"一覧の列の上下マージンをさらに5px広げて"）→ 50px
+        // — per direct follow-up ("spのimg時の一覧の列上下マージンを10px
+        // 空けて")。
+        rowGap: "50px",
       }}
     >
       {projects.map((project, index) => (
