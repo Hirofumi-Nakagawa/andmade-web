@@ -56,7 +56,10 @@ const FOOTER_HIDE_MARGIN_PX = 0;
  * max; it's naturally bounded by viewport height. The aspect ratio itself
  * (width / height) comes from the shared PREVIEW_RATIO_ASPECT in lib/projects.ts.
  */
-const PREVIEW_RATIO_SIZE: Record<PreviewRatio, { minColumns: number; maxColumns?: number }> = {
+const PREVIEW_RATIO_SIZE: Record<
+  PreviewRatio,
+  { minColumns: number; maxColumns?: number; ignoreViewportHeightCap?: boolean }
+> = {
   "portrait-3-2": { minColumns: 9 },
   "landscape-3-2": { minColumns: 14, maxColumns: 18 },
   "portrait-3-4": { minColumns: 9 },
@@ -67,7 +70,11 @@ const PREVIEW_RATIO_SIZE: Record<PreviewRatio, { minColumns: number; maxColumns?
   // landscape minimum (14) it becomes as tall as it is wide and starts
   // fighting the viewport-height clamp. Capped like the landscapes are,
   // since — unlike portrait — its height grows just as fast as its width.
-  "square-1-1": { minColumns: 11, maxColumns: 15 },
+  // ignoreViewportHeightCap — per direct follow-up ("squareは③のルールは
+  // 無しにして"): square だけはビューポート高さから逆算した幅上限を適用
+  // しない。低い画面では 11〜15 列の抽選のまま、箱が画面下へはみ出し得る
+  // （top はマージン位置で止まるので上は切れない）。
+  "square-1-1": { minColumns: 11, maxColumns: 15, ignoreViewportHeightCap: true },
 };
 
 function randomInt(min: number, max: number) {
@@ -94,7 +101,11 @@ function generateRandomPreviewRect(previewRatio: PreviewRatio): HoverPreviewRect
   const maxHeightPx = Math.max(1, viewportHeight - PREVIEW_VERTICAL_MARGIN_PX * 2);
   const maxWidthByHeightColumns = Math.floor((maxHeightPx * widthOverHeight) / columnWidthPx);
 
-  const widthCeilingColumns = Math.min(availableColumns, maxWidthByHeightColumns, size.maxColumns ?? availableColumns);
+  const widthCeilingColumns = Math.min(
+    availableColumns,
+    size.ignoreViewportHeightCap ? availableColumns : maxWidthByHeightColumns,
+    size.maxColumns ?? availableColumns
+  );
   const maxWidthColumns = Math.max(size.minColumns, widthCeilingColumns);
   const widthColumns = randomInt(size.minColumns, maxWidthColumns);
   const width = widthColumns * columnWidthPx;
