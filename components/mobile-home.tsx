@@ -1460,6 +1460,23 @@ type PreviewImageProps = {
  * the image's own load state guarantees the opacity transition always
  * starts once real pixels are already there to fade in.
  */
+/** 回線が遅い（またはデータセーバー有効）かどうか — Network Information
+ *  API（navigator.connection）で判定。per direct follow-up ("spで回線が
+ *  遅いときはトップの動画は表示せずに静止画を表示して")。effectiveType は
+ *  Chrome 系のみ対応（iOS Safari は connection 自体が undefined）なので、
+ *  取れない環境では「遅くない」扱い＝従来どおり動画。saveData はユーザーの
+ *  明示的な節約意思なので回線速度に関係なく静止画に落とす。 */
+function isSlowConnection(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const connection = (navigator as Navigator & {
+    connection?: { effectiveType?: string; saveData?: boolean };
+  }).connection;
+  if (!connection) return false;
+  if (connection.saveData) return true;
+  const type = connection.effectiveType ?? "";
+  return type === "slow-2g" || type === "2g" || type === "3g";
+}
+
 function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
   const [entered, setEntered] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -1532,7 +1549,7 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
           理由の属性（poster / autoPlay / muted / loop / playsInline）。
           per direct follow-up ("トップのtxt時のサムネ画像に、動画も登録
           できるようにしたい Img時は静止画を表示する")。 */}
-      {entry.videoSrc ? (
+      {entry.videoSrc && !isSlowConnection() ? (
         <video
           ref={videoRef}
           src={entry.videoSrc}
