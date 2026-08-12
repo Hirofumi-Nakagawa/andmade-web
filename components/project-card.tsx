@@ -250,7 +250,7 @@ export function ProjectCard({
         // ("トップページ一覧の下線見出しの下マージンを2px詰めて", then
         // "さらに1px詰めて").
         className={`group flex cursor-pointer flex-col items-start gap-[calc(11px*var(--scale))] transition-opacity duration-300 ease-out ${
-          isDimmed ? "opacity-40" : "opacity-100"
+          isDimmed ? "opacity-30" : "opacity-100"
         }`}
       >
         <span

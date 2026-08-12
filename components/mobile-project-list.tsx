@@ -486,8 +486,9 @@ function MobileProjectItem({
         // 見出しの下マージンを2px詰めて", then "さらに1px詰めて") — matching
         // project-card.tsx's own identical reductions.
         className="flex cursor-pointer flex-col items-start gap-[9px] transition-opacity duration-300 ease-out"
-        // 0.3 — SP-specific, deliberately dimmer than PC's own 0.4
-        // (project-card.tsx's opacity-40).
+        // 0.3 → 0.25 → 0.2 → 0.3 — per direct follow-ups（最後は "透過は
+        // 0.3、ホバーアウト後0.5秒で戻るようにして"）。PC（project-card.tsx
+        // の opacity-30）と同値。
         //
         // touchAction: manipulation — mirrors mobile-menu.tsx's own identical
         // fix on every one of its own tap targets (see that file's own doc

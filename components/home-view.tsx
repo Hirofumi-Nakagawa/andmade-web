@@ -283,9 +283,24 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
     }
   }, []);
 
+  /** ホバーアウト後、非選択行の透過（0.2）が 100% へ戻るまでの猶予 — per
+   *  direct follow-up ("ホバーアウトですぐに文字の透過が100%に戻らないように
+   *  したい 1秒後に戻るようにして" → "0.5秒で戻るようにして")。猶予内に
+   *  別の行へホバーし直せば
+   *  タイマーは破棄され、暗いまま次の行が立つ（明→暗の点滅が出ない）。 */
+  const DIM_CLEAR_DELAY_MS = 500;
+  const dimClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (dimClearTimeoutRef.current) clearTimeout(dimClearTimeoutRef.current);
+    },
+    []
+  );
+
   const handleHoverTitle = useCallback(
     (index: number) => {
       if (suppressHoverPreview || suppressHoverFromScroll) return;
+      if (dimClearTimeoutRef.current) clearTimeout(dimClearTimeoutRef.current);
       setActiveIndex(index);
       cancelPendingClear();
       setHoverIdle(false);
@@ -365,7 +380,9 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
   // showing forever, or cutting it instantly with no transition. The card
   // dimming and big title text, by contrast, clear immediately (activeIndex).
   const handleHoverEnd = useCallback(() => {
-    setActiveIndex(null);
+    // 即時ではなく DIM_CLEAR_DELAY_MS 後に戻す（doc comment 参照）。
+    if (dimClearTimeoutRef.current) clearTimeout(dimClearTimeoutRef.current);
+    dimClearTimeoutRef.current = setTimeout(() => setActiveIndex(null), DIM_CLEAR_DELAY_MS);
     cancelPendingClear();
     clearTimeoutRef.current = setTimeout(() => {
       setHoverIdle(true);
