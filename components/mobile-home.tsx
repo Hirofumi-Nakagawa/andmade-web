@@ -749,11 +749,51 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
   // ticks while that same project stays active (so continuing to scroll
   // through one long entry keeps resetting the timer too, not just
   // switching entries).
+  // 指が画面に触れている間はプレビューを消さない — per direct follow-up
+  // ("スクロール時に選択中に背面にイメージが表示されてる状態で、画面に
+  // 触れてたらイメージを消さない仕様にできる？")。Lenis の慣性スクロールは
+  // 指を離した後も tick が続くので「触れているか」はスクロール状態からは
+  // 分からず、touchstart/touchend を直接見る。タイマー満了時に触れていたら
+  // 消さずにおき、指が離れた時点で（プレビューが出たままなら）改めて
+  // PREVIEW_IDLE_MS を数え直す。
+  const touchActiveRef = useRef(false);
+  const previewVisibleRef = useRef(false);
+  useEffect(() => {
+    previewVisibleRef.current = previewVisible;
+  }, [previewVisible]);
+
   const showPreview = useCallback(() => {
     setPreviewVisible(true);
     if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
-    idleTimeoutRef.current = setTimeout(() => setPreviewVisible(false), PREVIEW_IDLE_MS);
+    idleTimeoutRef.current = setTimeout(() => {
+      // 触れている間は消さない（touchActiveRef の doc comment 参照）。
+      // 指が離れたときに touchend 側が数え直す。
+      if (touchActiveRef.current) return;
+      setPreviewVisible(false);
+    }, PREVIEW_IDLE_MS);
   }, []);
+
+  useEffect(() => {
+    const handleTouchStart = () => {
+      touchActiveRef.current = true;
+    };
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length > 0) return; // まだ他の指が残っている
+      touchActiveRef.current = false;
+      // 触れている間にタイマーが満了して「消し損ねた」プレビューがあれば、
+      // 離した時点から改めて数え直す。プレビューが出ていないときの単なる
+      // タップで showPreview（＝表示）してしまわないよう、表示中のみ。
+      if (previewVisibleRef.current && activeIndexRef.current != null) showPreview();
+    };
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", handleTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchend", handleTouchEnd);
+      window.removeEventListener("touchcancel", handleTouchEnd);
+    };
+  }, [showPreview]);
 
   // Wrapped in useCallback — lenis-react's own useLenis(callback) invokes
   // `callback(lenis)` immediately (not just on real scroll ticks) any time
