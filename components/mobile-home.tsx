@@ -1473,6 +1473,18 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
     if (videoRef.current && videoRef.current.readyState >= 2) setEntered(true);
   }, []);
 
+  // 背面（残像）に回った動画は停止 — per direct follow-up ("次を選択して
+  // 動画が背面にいったら停止して")。PC（project-hover-preview.tsx）と同じ。
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (isCurrent && !released) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }, [isCurrent, released]);
+
   const targetOpacity = released ? 0 : isCurrent ? 1 : PREVIEW_BACKDROP_OPACITY;
   const opacity = entered ? targetOpacity : 0;
   // Read from the *target* state (`released`), not a single shared constant —

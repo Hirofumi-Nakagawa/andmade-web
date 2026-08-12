@@ -3,7 +3,7 @@
 import { PC_PREVIEW_SIZES, previewSrcSet } from "@/lib/preview-image";
 import { KONAMI_WARP_HOVER_ATTRIBUTE } from "@/components/konami-warp-canvas";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Large background preview shown behind the page while hovering a project
@@ -125,14 +125,48 @@ type HoverPreviewImageProps = {
  * its doc comment) can make Safari drop the blend. Confirmed by the user
  * this did NOT fix it — reverted. Root cause still unconfirmed; needs
  * further investigation (not yet re-attempted). */
+/** エッグ（コナミコード）実行中かどうか — html.konami-glitch を
+ *  MutationObserver で追う。エッグ中は動画プレビューを出さず静止画に
+ *  差し替えるため（per direct follow-up "エッグ時は動画は出さずに静止画に
+ *  して"）。ポーリングなし・クラス変化時だけ再レンダー。 */
+function useKonamiGlitchActive() {
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setActive(root.classList.contains("konami-glitch"));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return active;
+}
+
 function HoverPreviewImage({ entry, isCurrent, released }: HoverPreviewImageProps) {
   const [entered, setEntered] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const glitchActive = useKonamiGlitchActive();
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(frame);
   }, []);
+
+  // 動画プレビューは背面（残像）に回ったら停止する — per direct follow-up
+  // ("次を選択して動画が背面にいったら停止して")。released（全体フェード
+  // アウト）でも同様に止める。再び current に戻ることは仕様上ない（残像は
+  // 入れ替わるだけ）が、play 側も対にしておく。play() の Promise は
+  // 自動再生ポリシーで reject し得るので握りつぶす。
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (isCurrent && !released) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }, [isCurrent, released]);
 
   const targetOpacity = released ? 0 : isCurrent ? 1 : 0.1;
 
@@ -166,11 +200,13 @@ function HoverPreviewImage({ entry, isCurrent, released }: HoverPreviewImageProp
           なり、poster に静止画（imageSrc）を敷くので読み込み中も枠が空か
           ない。onLoadedData で画像側と同じフェードインに乗せる。muted +
           playsInline は自動再生の必須条件。
-          ※ エッグの紙モード（konami-warp-canvas.tsx）は <img> しか
-          キャプチャしないため、動画プレビューの実績ではキャプチャが不成立
-          → canvas は実DOMを隠さず、動画がそのまま見え続ける（安全側）。 */}
-      {entry.videoSrc ? (
+          エッグ中は動画を出さず静止画に落とす（useKonamiGlitchActive の
+          doc comment 参照）— 紙モード（konami-warp-canvas.tsx）は <img>
+          しかキャプチャできないので、静止画に落とすことでエッグの紙アニメも
+          従来どおり成立する。 */}
+      {entry.videoSrc && !glitchActive ? (
         <video
+          ref={videoRef}
           src={entry.videoSrc}
           poster={entry.imageSrc}
           autoPlay
