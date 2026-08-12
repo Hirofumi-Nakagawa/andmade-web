@@ -1517,6 +1517,19 @@ function isSlowConnection(): boolean {
   return type === "slow-2g" || type === "2g" || type === "3g";
 }
 
+/** SP 用に軽い動画 URL へ変換する — per direct follow-up ("SPのとき動画を
+ *  もっと軽くして素早く表示する方法ある？")。Cloudinary の配信 URL
+ *  （/video/upload/）なら変換セグメント `w_720,q_auto:eco` を差し込み、
+ *  幅 720px・自動品質（節約寄り）に再エンコードした版を配信させる。
+ *  SP のプレビュー矩形は最大でも CSS 約400px × dpr2 ≒ 800px なので 720px で
+ *  画質の劣化はほぼ見えず、FHD 元素材なら通信量は概ね 1/4〜1/10 になる。
+ *  Cloudinary 以外の URL はそのまま返す（変換は差し込めないため）。
+ *  既に変換済みの URL でもセグメントの連結（チェーン）として合法。 */
+function lightweightSpVideoSrc(url: string): string {
+  if (!url.includes("res.cloudinary.com") || !url.includes("/video/upload/")) return url;
+  return url.replace("/video/upload/", "/video/upload/w_720,q_auto:eco/");
+}
+
 function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
   const [entered, setEntered] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -1592,7 +1605,7 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
       {entry.videoSrc && !isSlowConnection() ? (
         <video
           ref={videoRef}
-          src={entry.videoSrc}
+          src={lightweightSpVideoSrc(entry.videoSrc)}
           poster={entry.imageSrc}
           autoPlay
           muted
