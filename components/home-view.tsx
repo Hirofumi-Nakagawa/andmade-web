@@ -23,6 +23,7 @@ import {
   PREVIEW_RATIO_ASPECT,
   getProjectImageSrc,
   getProjectImageSrcSet,
+  getProjectPreviewVideoSrc,
   type PreviewRatio,
   type Project,
 } from "@/lib/projects";
@@ -297,6 +298,7 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
             rect: generateRandomPreviewRect(projects[index].previewRatio),
             imageSrc: getProjectImageSrc(projects[index]),
             imageSrcSet: getProjectImageSrcSet(projects[index]),
+            videoSrc: getProjectPreviewVideoSrc(projects[index]),
           },
           ...prev,
         ].slice(0, 2),

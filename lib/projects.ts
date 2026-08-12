@@ -335,6 +335,14 @@ export type Project = {
   /** Responsive companion to `imageSrc` — see ProjectGalleryImage's own
    *  `imageSrcSet` doc comment. Undefined for placeholder projects. */
   imageSrcSet?: string;
+  /** Txt 時のプレビューを動画にする場合の動画 URL — per direct follow-up
+   *  ("トップのtxt時のサムネ画像に、動画も登録できるようにしたい Img時は
+   *  静止画を表示する")。入っていれば Txt のホバー/スクロールプレビュー
+   *  （PC: project-hover-preview.tsx / SP: mobile-home.tsx）だけが動画に
+   *  なり、`imageSrc` はそのポスターとして使われる。Img グリッドと詳細
+   *  ページは従来どおり静止画（imageSrc）のまま。ギャラリーの動画と同じく
+   *  外部ホスティング（Cloudinary 推奨）の直リンクを想定。 */
+  previewVideoSrc?: string;
   /** This project's own color, used for the Th-mode thumbnail color-wipe
    *  reveal (getProjectColor() below) — read directly from that same
    *  project's `dtlBgColor` microCMS field (its detail page's own background
@@ -386,6 +394,12 @@ export function getProjectImageSrc(project: Project): string {
  *  uses `src` alone, exactly as before. */
 export function getProjectImageSrcSet(project: Project): string | undefined {
   return project.imageSrcSet;
+}
+
+/** Txt プレビューが動画の実績はその URL、静止画の実績は undefined —
+ *  Project.previewVideoSrc の doc comment 参照。 */
+export function getProjectPreviewVideoSrc(project: Project): string | undefined {
+  return project.previewVideoSrc;
 }
 
 /** Cycled by index for projects with no real `detail.backgroundColor` of
@@ -753,6 +767,11 @@ type ProjectCmsContent = {
    *  this field; falls back to the shared PREVIEW_RATIO_IMAGE_SRC sample for
    *  this project's previewRatio when not uploaded yet. */
   image?: { url: string; height: number; width: number };
+  /** テキストフィールド（任意）— Txt プレビュー用の動画 URL。ダッシュ
+   *  ボードでの追加: テキストフィールド `previewVideo`。ギャラリーの
+   *  `video` と同じ運用（外部ホスティングの mp4 直リンク。Project.
+   *  previewVideoSrc の doc comment 参照）。 */
+  previewVideo?: string;
 
   // ---- per-project meta（SEO/OGP）フィールド — per direct follow-up
   // ("各実績ページのmetaを設定できるようにして")。すべて任意。ダッシュ
@@ -1046,6 +1065,7 @@ export async function getProjects(): Promise<Project[]> {
       ),
       imageSrc: content.image ? microcmsImageUrl(content.image.url) : undefined,
       imageSrcSet: content.image ? microcmsImageSrcSet(content.image.url) : undefined,
+      previewVideoSrc: trimmedText(content.previewVideo),
       color: content.dtlBgColor?.trim() || undefined,
       metaTitle: trimmedText(content.metaTitle),
       description: trimmedText(content.metaDescription),

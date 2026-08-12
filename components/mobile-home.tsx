@@ -17,6 +17,7 @@ import { previewSrcSet, SP_PREVIEW_SIZES } from "@/lib/preview-image";
 import {
   PREVIEW_RATIO_ASPECT,
   getProjectImageSrc,
+  getProjectPreviewVideoSrc,
   getProjectImageSrcSet,
   slugify,
   type Project,
@@ -271,6 +272,9 @@ type PreviewEntry = {
   /** Responsive candidates for `imageSrc` — undefined for placeholder
    *  projects (see lib/projects.ts's own getProjectImageSrcSet). */
   imageSrcSet?: string;
+  /** 入っていればこのプレビューは動画（imageSrc はポスター）— lib/projects.ts
+   *  の Project.previewVideoSrc の doc comment 参照。 */
+  videoSrc?: string;
 };
 
 function generateRandomPreviewRect(project: Project): PreviewRect {
@@ -889,6 +893,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
               rect: generateRandomPreviewRect(project),
               imageSrc: getProjectImageSrc(project),
               imageSrcSet: getProjectImageSrcSet(project),
+              videoSrc: getProjectPreviewVideoSrc(project),
             },
             ...prev.filter((entry) => entry.title !== project.title),
           ].slice(0, 2),
@@ -1458,11 +1463,14 @@ type PreviewImageProps = {
 function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
   const [entered, setEntered] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     // Covers the cached case — a cached image can already be `complete` the
     // instant this ref attaches, before an `onLoad` listener would ever
-    // fire for it.
+    // fire for it. 動画も同様に、マウント時点で最初のフレームが既に
+    // デコード済み（readyState >= HAVE_CURRENT_DATA = 2）なら即 entered。
     if (imgRef.current?.complete) setEntered(true);
+    if (videoRef.current && videoRef.current.readyState >= 2) setEntered(true);
   }, []);
 
   const targetOpacity = released ? 0 : isCurrent ? 1 : PREVIEW_BACKDROP_OPACITY;
@@ -1508,7 +1516,24 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
         transitionDuration: `${fadeDurationMs}ms`,
       }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- dynamically sized/swapped, same convention as project-hover-preview.tsx */}
+      {/* 動画プレビュー — PC（project-hover-preview.tsx）と同じ分岐・同じ
+          理由の属性（poster / autoPlay / muted / loop / playsInline）。
+          per direct follow-up ("トップのtxt時のサムネ画像に、動画も登録
+          できるようにしたい Img時は静止画を表示する")。 */}
+      {entry.videoSrc ? (
+        <video
+          ref={videoRef}
+          src={entry.videoSrc}
+          poster={entry.imageSrc}
+          autoPlay
+          muted
+          loop
+          playsInline
+          onLoadedData={() => setEntered(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+      /* eslint-disable-next-line @next/next/no-img-element -- dynamically sized/swapped, same convention as project-hover-preview.tsx */
       <img
         ref={imgRef}
         src={entry.imageSrc}
@@ -1523,6 +1548,7 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
         className="h-full w-full object-cover"
         onLoad={() => setEntered(true)}
       />
+      )}
     </div>
       {/* 画像タップで詳細へ — per direct follow-up ("SPでTx時に選択中に
           背面に表示されるイメージもタップして詳細ページに飛べるようにして"

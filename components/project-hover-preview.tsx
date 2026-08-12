@@ -34,6 +34,9 @@ export type HoverPreviewEntry = {
   /** Responsive candidates for `imageSrc` (lib/projects.ts's own
    *  getProjectImageSrcSet) — undefined for placeholder projects. */
   imageSrcSet?: string;
+  /** 入っていればこのプレビューは動画（imageSrc はポスター）— lib/projects.ts
+   *  の Project.previewVideoSrc の doc comment 参照。 */
+  videoSrc?: string;
 };
 
 type ProjectHoverPreviewProps = {
@@ -158,7 +161,27 @@ function HoverPreviewImage({ entry, isCurrent, released }: HoverPreviewImageProp
         borderColor: imageLoaded ? "transparent" : "#e5e5e5",
       }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- dynamically sized/positioned, see app/page.tsx */}
+      {/* 動画プレビュー — per direct follow-up ("トップのtxt時のサムネ画像
+          に、動画も登録できるようにしたい")。videoSrc がある実績だけ動画に
+          なり、poster に静止画（imageSrc）を敷くので読み込み中も枠が空か
+          ない。onLoadedData で画像側と同じフェードインに乗せる。muted +
+          playsInline は自動再生の必須条件。
+          ※ エッグの紙モード（konami-warp-canvas.tsx）は <img> しか
+          キャプチャしないため、動画プレビューの実績ではキャプチャが不成立
+          → canvas は実DOMを隠さず、動画がそのまま見え続ける（安全側）。 */}
+      {entry.videoSrc ? (
+        <video
+          src={entry.videoSrc}
+          poster={entry.imageSrc}
+          autoPlay
+          muted
+          loop
+          playsInline
+          onLoadedData={() => setImageLoaded(true)}
+          className={`h-full w-full object-cover transition-opacity duration-300 ease-out ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+        />
+      ) : (
+      /* eslint-disable-next-line @next/next/no-img-element -- dynamically sized/positioned, see app/page.tsx */
       <img
         src={entry.imageSrc}
         srcSet={previewSrcSet(entry.imageSrcSet)}
@@ -175,6 +198,7 @@ function HoverPreviewImage({ entry, isCurrent, released }: HoverPreviewImageProp
         onLoad={() => setImageLoaded(true)}
         className={`h-full w-full object-cover transition-opacity duration-300 ease-out ${imageLoaded ? "opacity-100" : "opacity-0"}`}
       />
+      )}
     </div>
   );
 }
