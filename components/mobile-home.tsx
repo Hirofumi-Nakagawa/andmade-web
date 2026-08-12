@@ -17,7 +17,7 @@ import { previewSrcSet, SP_PREVIEW_SIZES } from "@/lib/preview-image";
 import {
   PREVIEW_RATIO_ASPECT,
   getProjectImageSrc,
-  getProjectPreviewVideoSrc,
+  getProjectSpPreviewVideoSrc,
   getProjectImageSrcSet,
   slugify,
   type Project,
@@ -749,6 +749,37 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
   // ticks while that same project stays active (so continuing to scroll
   // through one long entry keeps resetting the timer too, not just
   // switching entries).
+  // 動画プレビューの先読み（ウォームアップ）。ページ表示後のアイドル
+  // 時間に preload="metadata" で先頭だけ読んでおき、CDN・ブラウザの
+  // キャッシュを選択前に温める（データ量は先頭数百KB程度）。
+  // 低速回線・データセーバー時は動画自体を出さないので先読みもしない。
+  useEffect(() => {
+    if (isSlowConnection()) return;
+    const urls = Array.from(
+      new Set(
+        projects.flatMap((project) => {
+          const video = getProjectSpPreviewVideoSrc(project);
+          return video ? [video] : [];
+        })
+      )
+    );
+    if (urls.length === 0) return;
+    const warm = () => {
+      for (const url of urls) {
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        video.muted = true;
+        video.src = url;
+      }
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const idle = window.requestIdleCallback(warm, { timeout: 5000 });
+      return () => window.cancelIdleCallback(idle);
+    }
+    const timer = window.setTimeout(warm, 2000);
+    return () => window.clearTimeout(timer);
+  }, [projects]);
+
   // 指が画面に触れている間はプレビューを消さない — per direct follow-up
   // ("スクロール時に選択中に背面にイメージが表示されてる状態で、画面に
   // 触れてたらイメージを消さない仕様にできる？")。Lenis の慣性スクロールは
@@ -933,7 +964,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
               rect: generateRandomPreviewRect(project),
               imageSrc: getProjectImageSrc(project),
               imageSrcSet: getProjectImageSrcSet(project),
-              videoSrc: getProjectPreviewVideoSrc(project),
+              videoSrc: getProjectSpPreviewVideoSrc(project),
             },
             ...prev.filter((entry) => entry.title !== project.title),
           ].slice(0, 2),
@@ -1517,19 +1548,6 @@ function isSlowConnection(): boolean {
   return type === "slow-2g" || type === "2g" || type === "3g";
 }
 
-/** SP 用に軽い動画 URL へ変換する — per direct follow-up ("SPのとき動画を
- *  もっと軽くして素早く表示する方法ある？")。Cloudinary の配信 URL
- *  （/video/upload/）なら変換セグメント `w_720,q_auto:eco` を差し込み、
- *  幅 720px・自動品質（節約寄り）に再エンコードした版を配信させる。
- *  SP のプレビュー矩形は最大でも CSS 約400px × dpr2 ≒ 800px なので 720px で
- *  画質の劣化はほぼ見えず、FHD 元素材なら通信量は概ね 1/4〜1/10 になる。
- *  Cloudinary 以外の URL はそのまま返す（変換は差し込めないため）。
- *  既に変換済みの URL でもセグメントの連結（チェーン）として合法。 */
-function lightweightSpVideoSrc(url: string): string {
-  if (!url.includes("res.cloudinary.com") || !url.includes("/video/upload/")) return url;
-  return url.replace("/video/upload/", "/video/upload/w_720,q_auto:eco/");
-}
-
 function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
   const [entered, setEntered] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -1605,7 +1623,7 @@ function PreviewImage({ entry, isCurrent, released }: PreviewImageProps) {
       {entry.videoSrc && !isSlowConnection() ? (
         <video
           ref={videoRef}
-          src={lightweightSpVideoSrc(entry.videoSrc)}
+          src={entry.videoSrc}
           poster={entry.imageSrc}
           autoPlay
           muted

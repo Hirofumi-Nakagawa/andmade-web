@@ -343,6 +343,14 @@ export type Project = {
    *  ページは従来どおり静止画（imageSrc）のまま。ギャラリーの動画と同じく
    *  外部ホスティング（Cloudinary 推奨）の直リンクを想定。 */
   previewVideoSrc?: string;
+  /** SP 用に軽く書き出した動画の URL — per direct follow-up ("最初から
+   *  SP用の軽い動画を用意するようにするわ なのでcmsに動画登録項目を
+   *  もうひとつ設けて")。SP のプレビューはこちらを優先し、未設定なら
+   *  previewVideoSrc にフォールバックする（getProjectSpPreviewVideoSrc
+   *  参照）。当初は Cloudinary の URL 変換（w_720,q_auto:eco）で自動生成
+   *  していたが、初回リクエスト時の再エンコード待ちで逆に表示が遅く
+   *  なったため、事前に用意したファイルを登録する運用に切り替えた。 */
+  previewVideoSpSrc?: string;
   /** This project's own color, used for the Th-mode thumbnail color-wipe
    *  reveal (getProjectColor() below) — read directly from that same
    *  project's `dtlBgColor` microCMS field (its detail page's own background
@@ -400,6 +408,12 @@ export function getProjectImageSrcSet(project: Project): string | undefined {
  *  Project.previewVideoSrc の doc comment 参照。 */
 export function getProjectPreviewVideoSrc(project: Project): string | undefined {
   return project.previewVideoSrc;
+}
+
+/** SP のプレビュー動画 — SP 用の軽い動画（previewVideoSpSrc）があれば
+ *  それ、無ければ PC と同じ動画。どちらも無ければ undefined（静止画）。 */
+export function getProjectSpPreviewVideoSrc(project: Project): string | undefined {
+  return project.previewVideoSpSrc ?? project.previewVideoSrc;
 }
 
 /** Cycled by index for projects with no real `detail.backgroundColor` of
@@ -772,6 +786,10 @@ type ProjectCmsContent = {
    *  `video` と同じ運用（外部ホスティングの mp4 直リンク。Project.
    *  previewVideoSrc の doc comment 参照）。 */
   previewVideo?: string;
+  /** テキストフィールド（任意）— SP 用に軽く書き出した動画の URL。
+   *  ダッシュボードでの追加: テキストフィールド `previewVideoSp`。
+   *  Project.previewVideoSpSrc の doc comment 参照。 */
+  previewVideoSp?: string;
 
   // ---- per-project meta（SEO/OGP）フィールド — per direct follow-up
   // ("各実績ページのmetaを設定できるようにして")。すべて任意。ダッシュ
@@ -1066,6 +1084,7 @@ export async function getProjects(): Promise<Project[]> {
       imageSrc: content.image ? microcmsImageUrl(content.image.url) : undefined,
       imageSrcSet: content.image ? microcmsImageSrcSet(content.image.url) : undefined,
       previewVideoSrc: trimmedText(content.previewVideo),
+      previewVideoSpSrc: trimmedText(content.previewVideoSp),
       color: content.dtlBgColor?.trim() || undefined,
       metaTitle: trimmedText(content.metaTitle),
       description: trimmedText(content.metaDescription),
