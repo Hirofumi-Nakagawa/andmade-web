@@ -486,9 +486,9 @@ function MobileProjectItem({
         // 見出しの下マージンを2px詰めて", then "さらに1px詰めて") — matching
         // project-card.tsx's own identical reductions.
         className="flex cursor-pointer flex-col items-start gap-[9px] transition-opacity duration-300 ease-out"
-        // 0.3 → 0.25 → 0.2 → 0.3 — per direct follow-ups（最後は "透過は
-        // 0.3、ホバーアウト後0.5秒で戻るようにして"）。PC（project-card.tsx
-        // の opacity-30）と同値。
+        // 0.3 → 0.25 → 0.2 → 0.3 → 0.25 — per direct follow-ups（最後は
+        // "非選択（ホバー/選択中以外）の透過を0.25にして"）。
+        // PC（project-card.tsx の opacity-25）と同値。
         //
         // touchAction: manipulation — mirrors mobile-menu.tsx's own identical
         // fix on every one of its own tap targets (see that file's own doc
@@ -498,7 +498,7 @@ function MobileProjectItem({
         // firing `click` — a delay that never reproduces in devtools' own
         // mouse-driven touch emulation, only on genuine touch hardware.
         // `manipulation` skips that disambiguation delay entirely.
-        style={{ opacity: isDimmed ? 0.3 : 1, touchAction: "manipulation" }}
+        style={{ opacity: isDimmed ? 0.25 : 1, touchAction: "manipulation" }}
       >
         <span
           // No text-box-trim here — deliberately plain, normal-flow line
