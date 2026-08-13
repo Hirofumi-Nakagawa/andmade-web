@@ -73,8 +73,10 @@ export function SiteFooter({
         style={{ left: "calc(348px * var(--grid-scale))" }}
       >
         <div className="flex w-[calc(92px*var(--scale))] flex-col items-start gap-[calc(12px*var(--scale))] whitespace-nowrap">
+          {/* relative top 2px — per direct follow-up ("フッターの「Inquiries」、
+              「Social」を2px下げて")。relative なので下の値の位置は動かない。 */}
           <p
-            className={`font-(family-name:--font-courier) ${textMuted} tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+            className={`relative top-[calc(2px*var(--scale))] font-(family-name:--font-courier) ${textMuted} tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
           >
             Inquiries
           </p>
@@ -86,7 +88,7 @@ export function SiteFooter({
         </div>
         <div className="flex w-[calc(72px*var(--scale))] flex-col items-start gap-[calc(12px*var(--scale))] whitespace-nowrap">
           <p
-            className={`font-(family-name:--font-courier) ${textMuted} tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+            className={`relative top-[calc(2px*var(--scale))] font-(family-name:--font-courier) ${textMuted} tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
           >
             Social
           </p>
