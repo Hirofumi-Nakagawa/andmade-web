@@ -1248,7 +1248,7 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                own tiny client component (project-title-scramble.tsx) since
                this page itself is an async Server Component. */}
             <p
-              className={`shrink-0 text-[length:calc(32px*var(--scale))] leading-[1.5] font-medium whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+              className={`shrink-0 text-[length:calc(30px*var(--scale))] leading-[1.5] font-medium whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
                 headerDark ? "text-black" : "text-white"
               }`}
             >
