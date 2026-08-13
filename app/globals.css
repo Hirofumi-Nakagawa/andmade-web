@@ -1020,7 +1020,10 @@ html.konami-glitch .project-hover-preview {
    消えるよりよい）。ホバープレビューも中身は img 1枚なので同じ規則で足りる。
    ※ テキスト用ラスタ経路（現在未使用）を再有効化する場合、この規則では
    テキストが隠れないことに注意。 */
-html.konami-glitch [data-konami-warp-hidden] img {
+html.konami-glitch [data-konami-warp-hidden] img,
+html.konami-glitch [data-konami-warp-hidden] video {
+  /* video も対象 — Img サムネのホバー動画（project-thumbnail-grid.tsx）が
+     エッグのスクロール歪み中に canvas の複製と二重に見えないように。 */
   opacity: 0 !important;
 }
 

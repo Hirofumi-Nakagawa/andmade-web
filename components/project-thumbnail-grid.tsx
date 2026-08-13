@@ -11,6 +11,7 @@ import {
   getProjectColor,
   getProjectImageSrc,
   getProjectImageSrcSet,
+  getProjectPreviewVideoSrc,
   type Project,
 } from "@/lib/projects";
 
@@ -85,8 +86,11 @@ const COLUMN_WIDTH_PX = (ROW_WIDTH_PX - (COLUMNS - 1) * GAP_PX) / COLUMNS;
  *  order was actually correct — confirmed per direct follow-up
  *  ("確認できたので、もう少し控えめな値にして"), then dialed back down to
  *  these more understated ones. */
-const COLUMN_STAGGER_MS = 20;
-const ROW_STAGGER_MS = 100;
+// 20/100 → 30/150 — per direct follow-up ("img時のサムネが表示されるときの
+// アニメーションが順になってる感が弱いので、もう少しだけ差を付けて")。
+// 制約（ROW > (COLUMNS-1) × COLUMN = 4×30 = 120）は 150 で引き続き満たす。
+const COLUMN_STAGGER_MS = 30;
+const ROW_STAGGER_MS = 150;
 const STAGGER_MAX_MS = 2000;
 
 /**
@@ -325,6 +329,13 @@ function ProjectThumbnailCard({
   const router = useRouter();
   const titleRef = useRef<HTMLSpanElement>(null);
   const href = `/projects/${slugify(project.title)}`;
+  // ホバー中だけ静止画→動画に切り替える（下の <video> 参照）— per direct
+  // follow-up ("Img 時のサムネホバーで動画再生"、previewVideo がある実績
+  // のみ）。videoReady はフェードイン用（最初のフレームがデコード済みに
+  // なるまで静止画を出したままにする）。
+  const [thumbHovered, setThumbHovered] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const hoverVideoSrc = getProjectPreviewVideoSrc(project);
 
   // Replays the title's underline-sweep on thumbnail hover — per direct
   // follow-up ("Thのサムネにホバーしても下線アニメーションが走るように").
@@ -400,7 +411,14 @@ function ProjectThumbnailCard({
         tabIndex={-1}
         aria-hidden
         onClick={navigate}
-        onMouseEnter={playUnderlineSweep}
+        onMouseEnter={() => {
+          playUnderlineSweep();
+          setThumbHovered(true);
+        }}
+        onMouseLeave={() => {
+          setThumbHovered(false);
+          setVideoReady(false);
+        }}
         // No bg-[#d9d9d9] placeholder fill anymore — per direct follow-up
         // ("カラーワイプが右にはけるとき、左にグレー画像をアニメーションさ
         // せてる？それが余計な動きに見えるから、グレーベタは最初から無しで
@@ -451,6 +469,23 @@ function ProjectThumbnailCard({
             // 時のサムネ拡大をもう少し抑えたい"), a more subdued hover scale.
             className="h-full w-full object-cover transition-transform duration-[220ms] ease-[cubic-bezier(0.16,1,0.55,1)] hover:scale-[1.04]"
           />
+          {/* ホバー中の動画（previewVideo がある実績のみ）。静止画の上に
+              重ね、最初のフレームがデコードできたらフェードイン — 準備中は
+              下の静止画が見えたままなので空白は出ない。ホバーが外れたら
+              アンマウント（次回はまた頭から再生）。pointer-events-none で
+              ホバー判定は親（画像ラッパー）に任せ、img の hover:scale は
+              動画には掛けない（拡大中に切り替わると段差が出るため）。 */}
+          {hoverVideoSrc && thumbHovered && (
+            <video
+              src={hoverVideoSrc}
+              autoPlay
+              muted
+              loop
+              playsInline
+              onLoadedData={() => setVideoReady(true)}
+              className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ease-out ${videoReady ? "opacity-100" : "opacity-0"}`}
+            />
+          )}
         </div>
         {/* Color-wipe reveal — per direct follow-up ("Th選択時、サムネが表
            示されるとき、各実績に設定してるカラーが左→右にスライドアニメー

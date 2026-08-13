@@ -1,0 +1,249 @@
+/**
+ * 再生中ジャケットの代表色まわりの共有ロジック — per direct follow-up
+ * ("TOPのヘッダー・フッター含め全要素がアイドル中はジャケの色をランダムに
+ * 抽出して色が変わるようにして")。
+ *
+ * 2つの持ち場:
+ * 1. extractAlbumColors() — ジャケット画像から代表色を最大5色抽出する。
+ *    （経緯: 中央グラデ案 → 一覧の滲み/グリッチ/版ズレ案を経て、いずれも
+ *    "全部なし" で撤去。抽出ロジックだけが生き残り、現行の「アイドル中の
+ *    全要素インク差し替え」で使われている。過去の案は git 履歴参照。）
+ * 2. applyRandomInk() — トップページ（#top 配下）のテキストを持つ末端要素
+ *    すべてに、パレットからランダムに選んだ色を inline で塗り、解除用の
+ *    復元関数を返す。idle-overlay.tsx がアイドルの点灯/消灯に合わせて呼ぶ。
+ */
+
+/** 抽出する色数（4 → 5 — per direct follow-up "4色→5色抽出してランダム
+ *  に"）と、量子化の粗さ（RGB 各チャンネルのビット数）。 */
+const COLOR_COUNT = 5;
+const QUANT_BITS = 3;
+
+/** ジャケット画像から代表色を抽出する。失敗時は空配列。
+ *  Spotify CDN（i.scdn.co）は CORS 許可があるので canvas で画素が読める。 */
+export async function extractAlbumColors(url: string): Promise<string[]> {
+  const image = await new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+  if (!image) return [];
+
+  const size = 12;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return [];
+  ctx.drawImage(image, 0, 0, size, size);
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(0, 0, size, size).data;
+  } catch {
+    return []; // CORS で taint された場合
+  }
+
+  // 量子化バケツごとに出現数と平均色を集計。
+  const buckets = new Map<number, { count: number; r: number; g: number; b: number }>();
+  const shift = 8 - QUANT_BITS;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const key = ((r >> shift) << (QUANT_BITS * 2)) | ((g >> shift) << QUANT_BITS) | (b >> shift);
+    const bucket = buckets.get(key) ?? { count: 0, r: 0, g: 0, b: 0 };
+    bucket.count += 1;
+    bucket.r += r;
+    bucket.g += g;
+    bucket.b += b;
+    buckets.set(key, bucket);
+  }
+
+  const entries = Array.from(buckets.values())
+    .map((bucket) => {
+      const r = bucket.r / bucket.count;
+      const g = bucket.g / bucket.count;
+      const b = bucket.b / bucket.count;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      // 彩度（HSV の S）× 出現数をスコアに — 面積が広くても無彩色（白背景
+      // など）ばかりが選ばれないように。
+      const saturation = max === 0 ? 0 : (max - min) / max;
+      return { r, g, b, count: bucket.count, score: bucket.count * (0.35 + saturation) };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  // 背景（クリーム #f6f6f4）に近い明るい色は除外する — per direct
+  // follow-up ("背景色に近い明るい色は選ばないで")。知覚輝度（BT.601 の
+  // 重み付け）がしきい値を超えるバケツは候補から落とす。全部落ちて
+  // しまった場合（白系ジャケット）は、暗い順に拾い直す。
+  const MAX_BRIGHTNESS = 200; // 0-255。#f6f6f4 は約 246
+  const brightness = (e: { r: number; g: number; b: number }) => (e.r * 299 + e.g * 587 + e.b * 114) / 1000;
+  const darkEnough = entries.filter((entry) => brightness(entry) <= MAX_BRIGHTNESS);
+  const pool = darkEnough.length > 0 ? darkEnough : [...entries].sort((a, b) => brightness(a) - brightness(b));
+
+  // スコア順に、既に選んだ色から十分離れているものだけ採用。
+  const picked: { r: number; g: number; b: number }[] = [];
+  for (const entry of pool) {
+    if (picked.length >= COLOR_COUNT) break;
+    const distinct = picked.every(
+      (p) => Math.abs(p.r - entry.r) + Math.abs(p.g - entry.g) + Math.abs(p.b - entry.b) > 90
+    );
+    if (distinct) picked.push(entry);
+  }
+  // 離れた色が足りなければスコア順で埋める（同系色のジャケット対策）。
+  for (const entry of pool) {
+    if (picked.length >= COLOR_COUNT) break;
+    if (!picked.includes(entry)) picked.push(entry);
+  }
+
+  return picked.map((p) => `rgb(${Math.round(p.r)}, ${Math.round(p.g)}, ${Math.round(p.b)})`);
+}
+
+/**
+ * トップページ（#top 配下）のテキストを持つ末端要素すべてに、パレットから
+ * ランダムに選んだ色を inline で塗る。返り値は復元関数 — 呼び出し側は
+ * アイドル解除時に必ず呼ぶこと（元の inline color 値まで正確に戻す）。
+ *
+ * 実装メモ:
+ * - 対象は「子要素を持たず、空白以外のテキストを持つ」要素 — 親子で二重に
+ *   塗って濃くなるのを避ける最小の近似。ScrambleText の1文字 span なども
+ *   個別に拾われるが、それはむしろ「文字単位で色が散る」演出として好都合。
+ * - inline style への直書きなのは、このプロジェクトの慣例（dev の生成CSS
+ *   遅延を踏まない）と、React の className を汚さず確実に上書きするため。
+ *   React が再レンダーで要素を作り直した場合、その要素の色は戻る（アイドル
+ *   中はほぼ操作がないので実害は僅か）。
+ * - color の transition はあえて仕込まない — 差し替わった瞬間に一斉に
+ *   色が「切り替わる」方が、じわっと変わるより意図（ジャケ色に染まる）が
+ *   明瞭だったため。必要になれば呼び出し側で一時的に付与する。
+ */
+export function applyRandomInk(colors: string[]): () => void {
+  if (colors.length === 0) return () => {};
+  const root = document.getElementById("top");
+  if (!root) return () => {};
+
+  const savedColor = new Map<HTMLElement, string>();
+  const paint = (el: HTMLElement) => {
+    if (savedColor.has(el)) return;
+    savedColor.set(el, el.style.color);
+    el.style.color = colors[Math.floor(Math.random() * colors.length)];
+  };
+
+  root.querySelectorAll<HTMLElement>("*").forEach((el) => {
+    if (el.children.length > 0) return;
+    if (!el.textContent || !el.textContent.trim()) return;
+    paint(el);
+  });
+
+  // 下線も塗る — per direct follow-up ("下線も色変えて")。タイトルの
+  // .underline-sweep（::after が currentColor）とSPの .underline-bar
+  // （background が currentColor）は「子を持つ/テキストを持たない」ため
+  // 上の走査に乗らない。要素自身の color を塗れば currentColor 経由で
+  // 線に効く（子のテキストは各自の色が勝つので、線と文字の色は独立に散る）。
+  root.querySelectorAll<HTMLElement>(".underline-sweep, .underline-bar").forEach(paint);
+
+  // ブレンドモードの一時解除 — per direct follow-up ("アイドル中は、
+  // お知らせとかブレンドモードは全部解除して")。お知らせ・SPヘッダー・
+  // Tx/Img レールなどの mix-blend-exclusion は白文字前提の反転表示で、
+  // 塗った色がそのまま見えない。アイドル中だけ normal に落とし、復元時に
+  // 元の inline 値へ戻す（クラス由来なら removeProperty でクラスが復活）。
+  const savedBlend = new Map<HTMLElement, string>();
+  root.querySelectorAll<HTMLElement>('[class*="mix-blend-"]').forEach((el) => {
+    savedBlend.set(el, el.style.mixBlendMode);
+    el.style.mixBlendMode = "normal";
+  });
+
+  // ヘッダー上のスクロールインジケーターも塗る — per direct follow-up
+  // ("ヘッダー上のスクロールインジケーターも色変わるようにして")。
+  // ゲージは layout 直下の fixed（#top の外）なので document から引く。
+  // バーは background-color（bg-black / bg-white + difference）なので
+  // color ではなく backgroundColor を塗り、blend も一時的に normal へ
+  // （親の mix-blend-difference は上の [class*="mix-blend-"] 走査が #top 外の
+  // ため拾えない — ここで個別に落とす）。
+  const savedGauge: { el: HTMLElement; background: string }[] = [];
+  document.querySelectorAll<HTMLElement>("[data-scroll-gauge-bar]").forEach((el) => {
+    savedGauge.push({ el, background: el.style.backgroundColor });
+    el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    const wrapper = el.parentElement;
+    if (wrapper) {
+      savedBlend.set(wrapper, wrapper.style.mixBlendMode);
+      wrapper.style.mixBlendMode = "normal";
+    }
+  });
+
+  // フッター右下のロゴも塗る — per direct follow-up ("フッターの右下ロゴ
+  // も色変わるようにして")。ロゴは <img>（SVG。dark テーマでは invert で
+  // 黒表示）なので color では塗れない。img を visibility: hidden にして、
+  // 同じ SVG を mask にしたジャケ色のシルエット span をリンク内に重ねる。
+  // 復元時は span を取り除き、img と親の position を元へ戻す。
+  const savedLogo: {
+    el: HTMLImageElement;
+    visibility: string;
+    parent: HTMLElement | null;
+    parentPosition: string;
+    overlay: HTMLSpanElement;
+  }[] = [];
+  root.querySelectorAll<HTMLImageElement>("img[data-footer-logo]").forEach((el) => {
+    const parent = el.parentElement;
+    const src = el.currentSrc || el.src;
+    if (!parent || !src) return;
+    const overlay = document.createElement("span");
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.position = "absolute";
+    overlay.style.inset = "0";
+    overlay.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    overlay.style.maskImage = `url("${src}")`;
+    overlay.style.maskRepeat = "no-repeat";
+    overlay.style.maskPosition = "center";
+    overlay.style.maskSize = "contain";
+    overlay.style.setProperty("-webkit-mask-image", `url("${src}")`);
+    overlay.style.setProperty("-webkit-mask-repeat", "no-repeat");
+    overlay.style.setProperty("-webkit-mask-position", "center");
+    overlay.style.setProperty("-webkit-mask-size", "contain");
+    const parentPosition = parent.style.position;
+    if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
+    savedLogo.push({ el, visibility: el.style.visibility, parent, parentPosition, overlay });
+    el.style.visibility = "hidden";
+    parent.appendChild(overlay);
+  });
+
+  return () => {
+    savedLogo.forEach(({ el, visibility, parent, parentPosition, overlay }) => {
+      overlay.remove();
+      if (visibility) {
+        el.style.visibility = visibility;
+      } else {
+        el.style.removeProperty("visibility");
+      }
+      if (parent) {
+        if (parentPosition) {
+          parent.style.position = parentPosition;
+        } else {
+          parent.style.removeProperty("position");
+        }
+      }
+    });
+    savedGauge.forEach(({ el, background }) => {
+      if (background) {
+        el.style.backgroundColor = background;
+      } else {
+        el.style.removeProperty("background-color");
+      }
+    });
+    savedColor.forEach((previous, el) => {
+      if (previous) {
+        el.style.color = previous;
+      } else {
+        el.style.removeProperty("color");
+      }
+    });
+    savedBlend.forEach((previous, el) => {
+      if (previous) {
+        el.style.mixBlendMode = previous;
+      } else {
+        el.style.removeProperty("mix-blend-mode");
+      }
+    });
+  };
+}

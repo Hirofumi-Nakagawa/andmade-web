@@ -197,6 +197,10 @@ export function ScrollProgressGauge() {
     >
       <div
         ref={barRef}
+        // data-scroll-gauge-bar — トップのアイドル中インク差し替え
+        // （lib/album-colors.ts の applyRandomInk）がこのバーを見つけて
+        // 背景色を塗るためのフック。他の用途はない。
+        data-scroll-gauge-bar
         className={`h-full w-full origin-left ${solid ? "bg-black" : "bg-white"}`}
         // scaleX(0) inline as the initial value so the very first paint is an
         // empty bar even before the first scroll tick — a full-width flash on

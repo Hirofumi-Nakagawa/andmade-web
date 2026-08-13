@@ -58,6 +58,10 @@ export function SiteFooter({
           alt="ANDMADE"
           width={52}
           height={52}
+          // data-footer-logo — トップのアイドル中インク差し替え
+          // （lib/album-colors.ts の applyRandomInk）がロゴを見つけて
+          // ジャケ色のシルエットに差し替えるためのフック。
+          data-footer-logo
           // The SVG's paths are hardcoded fill="white" — on the "blend" theme
           // that's read through an ancestor's mix-blend-exclusion (see
           // app/page.tsx) and appears dark once blended against the cream

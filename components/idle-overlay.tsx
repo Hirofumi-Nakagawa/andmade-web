@@ -7,6 +7,8 @@ import { useLenis } from "lenis/react";
 import { IdleDateTime } from "@/components/idle-datetime";
 import { IdleNowPlaying } from "@/components/idle-now-playing";
 import { VerticalLabel } from "@/components/vertical-label";
+import { useNowPlaying } from "@/components/now-playing-provider";
+import { applyRandomInk, extractAlbumColors } from "@/lib/album-colors";
 import { fetchTokyoTemperatureC, WEATHER_POLL_MS } from "@/lib/tokyo-weather";
 import { withBasePath } from "@/lib/base-path";
 import { isSamePath } from "@/lib/route-path";
@@ -745,6 +747,34 @@ export function IdleOverlay() {
   // unconditionally; only the rest of the overlay's own visible content
   // stays gated on `showOverlay`.
   const showOverlay = visible && isKnownRoute;
+
+  // トップページ限定・アイドル中の「全要素インク差し替え」— per direct
+  // follow-up ("TOPのヘッダー・フッター含め全要素がアイドル中はジャケの
+  // 色をランダムに抽出して色が変わるようにして")。表示条件が揃ったら
+  // ジャケットから色を抽出し、#top 配下のテキスト末端要素すべてに
+  // ランダムに塗る（lib/album-colors.ts の applyRandomInk 参照）。
+  // 解除（オーバーレイが消える・曲が止まる・ページ遷移）で元の色へ復元。
+  const isTopPage = isSamePath(pathname, "/");
+  const nowPlaying = useNowPlaying();
+  // !exiting — per direct follow-up ("アイドルが解除される瞬間、色抽出状態
+  // もすぐに解除して")。オーバーレイ自体は EXIT_FADE_MS のフェード後に
+  // 消える（visible はその間 true のまま）が、インクは解除操作の瞬間に
+  // 即復元する。
+  const inkActive = showOverlay && !exiting && isTopPage && nowPlaying.isPlaying && !!nowPlaying.albumImageUrl;
+  const inkAlbumUrl = inkActive ? nowPlaying.albumImageUrl : undefined;
+  useEffect(() => {
+    if (!inkAlbumUrl) return;
+    let cancelled = false;
+    let restore: (() => void) | null = null;
+    extractAlbumColors(inkAlbumUrl).then((colors) => {
+      if (cancelled || colors.length === 0) return;
+      restore = applyRandomInk(colors);
+    });
+    return () => {
+      cancelled = true;
+      restore?.();
+    };
+  }, [inkAlbumUrl]);
 
   // SP では表示中ページのスクロールをロックする — per direct follow-up
   // ("spのstudiesとcontactでアイドルレイヤーが表示中に画面固定が効かなくて
