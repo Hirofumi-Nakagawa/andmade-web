@@ -84,19 +84,39 @@ export async function extractAlbumColors(url: string): Promise<string[]> {
   const darkEnough = entries.filter((entry) => brightness(entry) <= MAX_BRIGHTNESS);
   const pool = darkEnough.length > 0 ? darkEnough : [...entries].sort((a, b) => brightness(a) - brightness(b));
 
-  // スコア順に、既に選んだ色から十分離れているものだけ採用。
+  // 「できるだけ近くない」6色を選ぶ — per direct follow-up ("ジャケから
+  // できるだけ近くない色6色を抽出してランダムに変更するようにして")。
+  // 以前の「固定しきい値(90)を超えるものを順に採用 → 足りなければ埋める」
+  // は、似た色ばかりのジャケットでしきい値を割ると近い色が並んだ。
+  // farthest-point 方式に変更: 最上位スコアから始め、以降は「既に選んだ
+  // どの色からも最も遠い（最小距離が最大の）候補」を繰り返し選ぶ。これで
+  // パレット内の相互距離が構造的に最大化される。スコアはタイブレーク程度に
+  // 薄く効かせ、代表性（画面に実際に多い色）も少し残す。
+  const distance = (
+    a: { r: number; g: number; b: number },
+    b: { r: number; g: number; b: number }
+  ) => Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+
   const picked: { r: number; g: number; b: number }[] = [];
-  for (const entry of pool) {
-    if (picked.length >= COLOR_COUNT) break;
-    const distinct = picked.every(
-      (p) => Math.abs(p.r - entry.r) + Math.abs(p.g - entry.g) + Math.abs(p.b - entry.b) > 90
-    );
-    if (distinct) picked.push(entry);
-  }
-  // 離れた色が足りなければスコア順で埋める（同系色のジャケット対策）。
-  for (const entry of pool) {
-    if (picked.length >= COLOR_COUNT) break;
-    if (!picked.includes(entry)) picked.push(entry);
+  if (pool.length > 0) {
+    picked.push(pool[0]);
+    const maxScore = Math.max(...pool.map((entry) => entry.score));
+    while (picked.length < COLOR_COUNT && picked.length < pool.length) {
+      let best: (typeof pool)[number] | null = null;
+      let bestValue = -1;
+      for (const entry of pool) {
+        if (picked.includes(entry)) continue;
+        const minDistance = Math.min(...picked.map((p) => distance(p, entry)));
+        // 距離を主、スコアを従（最大 +40 相当）で評価。
+        const value = minDistance + (entry.score / maxScore) * 40;
+        if (value > bestValue) {
+          bestValue = value;
+          best = entry;
+        }
+      }
+      if (!best) break;
+      picked.push(best);
+    }
   }
 
   return picked.map((p) => `rgb(${Math.round(p.r)}, ${Math.round(p.g)}, ${Math.round(p.b)})`);
