@@ -124,24 +124,39 @@ export function applyRandomInk(colors: string[]): () => void {
   if (!root) return () => {};
 
   const savedColor = new Map<HTMLElement, string>();
-  const paint = (el: HTMLElement) => {
+  const pickColor = () => colors[Math.floor(Math.random() * colors.length)];
+  const paintWith = (el: HTMLElement, color: string) => {
     if (savedColor.has(el)) return;
     savedColor.set(el, el.style.color);
-    el.style.color = colors[Math.floor(Math.random() * colors.length)];
+    el.style.color = color;
   };
+  const paint = (el: HTMLElement) => paintWith(el, pickColor());
+
+  // 先に「タイトル + タイトル下線」を1色に揃えて塗る — per direct
+  // follow-up ("タイトルとタイトル下線は同じ色にして")。
+  // .underline-sweep（::after が currentColor で線を引く）は要素と配下の
+  // テキストを同じ色で塗り、SP の .underline-bar（background が
+  // currentColor の別要素）は親のタイトル span ごと同色で塗る — bar 自身は
+  // 塗らず継承させる。ここで塗った要素は savedColor に記録済みになるので、
+  // 後段の全要素走査（ランダム色）はそれらをスキップする。
+  root.querySelectorAll<HTMLElement>(".underline-sweep").forEach((el) => {
+    const color = pickColor();
+    paintWith(el, color);
+    el.querySelectorAll<HTMLElement>("*").forEach((child) => paintWith(child, color));
+  });
+  root.querySelectorAll<HTMLElement>(".underline-bar").forEach((el) => {
+    const holder = el.parentElement;
+    if (!holder) return;
+    const color = pickColor();
+    paintWith(holder, color);
+    holder.querySelectorAll<HTMLElement>("*").forEach((child) => paintWith(child, color));
+  });
 
   root.querySelectorAll<HTMLElement>("*").forEach((el) => {
     if (el.children.length > 0) return;
     if (!el.textContent || !el.textContent.trim()) return;
     paint(el);
   });
-
-  // 下線も塗る — per direct follow-up ("下線も色変えて")。タイトルの
-  // .underline-sweep（::after が currentColor）とSPの .underline-bar
-  // （background が currentColor）は「子を持つ/テキストを持たない」ため
-  // 上の走査に乗らない。要素自身の color を塗れば currentColor 経由で
-  // 線に効く（子のテキストは各自の色が勝つので、線と文字の色は独立に散る）。
-  root.querySelectorAll<HTMLElement>(".underline-sweep, .underline-bar").forEach(paint);
 
   // ブレンドモードの一時解除 — per direct follow-up ("アイドル中は、
   // お知らせとかブレンドモードは全部解除して")。お知らせ・SPヘッダー・
