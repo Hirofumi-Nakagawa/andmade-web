@@ -62,9 +62,9 @@ export function ProjectList({
       style={{
         gridTemplateColumns: "repeat(3, calc(220px * var(--grid-scale)))",
         columnGap: "calc(128px * var(--grid-scale))",
-        // 100px → 95px → 90px — per direct follow-ups ("トップTxt時の一覧の
-        // 行間を5px詰めて" → "95から90pxにしてみて")。
-        rowGap: "calc(90px * var(--grid-scale))",
+        // 100px → 95px → 90px → 85px — per direct follow-ups（最後は
+        // "行間85pxにして"）。
+        rowGap: "calc(85px * var(--grid-scale))",
       }}
     >
       {projects.map((project, index) => (
