@@ -202,6 +202,24 @@ export function ProjectCard({
 
   const baseDelay = (initialReveal ? LIST_ENTRANCE_DELAY_MS : 0) + column * COLUMN_STAGGER_MS;
 
+  /**
+   * スクランブルの開始も baseDelay ぶん待つ — per direct follow-up（"pcで
+   * txt一覧が表示される際、右のほうの列はフェードインする前にスクランブルが
+   * 走ってるせいか、テキストが普通にフェードインしてるように見える"）。
+   *
+   * カード自体のスライド＋フェードは列ごとに遅らせている（baseDelay）のに、
+   * ScrambleText だけは `revealed` で即スタートしていた。右の列ほど待ち時間が
+   * 長いので、姿を現す頃にはスクランブルが終わっていて、ただのフェードインに
+   * 見えていた。開始を揃えれば、どの列も「出てきながら組み上がる」になる。
+   */
+  const [scrambleActive, setScrambleActive] = useState(false);
+  useEffect(() => {
+    if (!revealed) return;
+    // 0ms でも setTimeout 経由（effect 本体で直接 setState しない）。
+    const timer = setTimeout(() => setScrambleActive(true), baseDelay);
+    return () => clearTimeout(timer);
+  }, [revealed, baseDelay]);
+
   return (
     // Slide-in (translate-y) restored — briefly removed per "Txのスライドイ
     // ンは無しで", then reverted right back per a direct follow-up
@@ -277,7 +295,7 @@ export function ProjectCard({
              plate is absolutely positioned, which would otherwise stack it
              over this static inline content. */}
           <span className="relative">
-            <ScrambleText text={project.title} active={revealed} />
+            <ScrambleText text={project.title} active={scrambleActive} />
           </span>
         </span>
         <div
