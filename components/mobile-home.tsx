@@ -398,9 +398,15 @@ const TOGGLE_PREVIEW_SUPPRESS_FALLBACK_MS = 6000;
 /** FV ステートメントの登場。PC（home-statement.tsx）と同じ値。
  *  タイミングはヘッダーと同じくイントロ完了待ち（headerRevealed）。 */
 /** コピー本文 — SP は画面幅で折り返しが変わるので改行位置は指定せず、
- *  CurtainLines 側で実測して1行ずつのマスクに割ってもらう。 */
-const STATEMENT_COPY =
-  "We uncover what truly matters and give purpose a clear form. By making every design decision intentional, we believe each thoughtful choice contributes to work that holds value over time.";
+ *  CurtainLines 側で実測して1行ずつのマスクに割ってもらう。
+ *
+ *  配列にしてあるのは「"By" の前では必ず改行する」ため（PC の
+ *  home-statement.tsx も同じ位置で行を分けている）。各要素の中の折り返しは
+ *  実測のまま自然に流れる。 */
+const STATEMENT_COPY = [
+  "We uncover what truly matters and give purpose a clear form.",
+  "By making every design decision intentional, we believe each thoughtful choice contributes to work that holds value over time.",
+];
 const STATEMENT_SLIDE_MS = 500;
 const STATEMENT_DELAY_WHAT_MATTERS_MS = 0;
 const STATEMENT_DELAY_COPY_MS = 120;
@@ -1211,7 +1217,9 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
                 active={headerRevealed}
                 delayMs={STATEMENT_DELAY_COPY_MS}
                 onLastLineStart={handleCopyLastLineStart}
-                className="text-[22px] leading-[1.05] font-medium text-black"
+                // tracking — PC（home-statement.tsx）と同じ -0.01em 相当。
+                // 22px に対して -0.22px。
+                className="text-[22px] leading-[1.05] font-medium tracking-[-0.22px] text-black"
               />
             </div>
             <div

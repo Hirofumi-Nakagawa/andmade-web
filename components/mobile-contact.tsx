@@ -113,7 +113,7 @@ const CONTACT_LINKS_TOP_PX = 454 - 53 + BELOW_HEADER_OFFSET_PX;
  *  ≈100px）≈ 300px。数px の誤差は「中央」の知覚には影響しない。 */
 const GROUP_HEIGHT_PX = 300;
 /** 中央配置からの微調整 — per direct follow-up ("もう少しだけ下に下げたい")。 */
-const GROUP_NUDGE_Y_PX = 20; // 10 → 20（"さらに10px下げて"）
+const GROUP_NUDGE_Y_PX = 10; // 10 → 20 → 10（ヘッダー下の要素をまとめて10px上へ）
 /** `font-feature-settings: "ss09" 1` — matches the stylistic set the PC
  *  Contact page (app/contact/page.tsx) applies to this same Japanese copy. */
 const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;

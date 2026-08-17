@@ -157,8 +157,14 @@ const MENU_PILL_RESERVE_PX = 40;
 const INTRO_TEXT_TO_CENTER_PX = CENTER_TOP_PX - INTRO_TEXT_TOP_PX;
 /** 中央寄せの対象ブロック（リード文の上端〜カウンター行の下端）の高さ。 */
 const GROUP_HEIGHT = `calc(${INTRO_TEXT_TO_CENTER_PX}px + ${CENTER_HEIGHT} + ${IMAGE_TO_COUNTER_GAP_PX}px + ${COUNTER_ROW_HEIGHT_PX}px)`;
+/** ブロック全体の微調整（負で上へ）。BELOW_HEADER_OFFSET_PX を減らす形に
+ *  しないのは、縦に余裕のある端末では下の max() が中央寄せ側に倒れていて
+ *  あちらの値が効かないため。ここで足せば、詰まっている端末でも中央寄せの
+ *  端末でも同じだけ動く。左のサムネのレール（rail）はこの系統ではないので
+ *  影響しない。 */
+const GROUP_NUDGE_Y_PX = -10;
 /** ブロックの実際の上端（= リード文の上端）。 */
-const GROUP_TOP = `max(${INTRO_TEXT_TOP_PX}px, calc(${HEADER_BOTTOM_PX}px + (100dvh - ${MENU_PILL_RESERVE_PX}px - ${HEADER_BOTTOM_PX}px - ${GROUP_HEIGHT}) / 2))`;
+const GROUP_TOP = `calc(max(${INTRO_TEXT_TOP_PX}px, calc(${HEADER_BOTTOM_PX}px + (100dvh - ${MENU_PILL_RESERVE_PX}px - ${HEADER_BOTTOM_PX}px - ${GROUP_HEIGHT}) / 2)) + ${GROUP_NUDGE_Y_PX}px)`;
 /** イメージの上端。以降、位置指定はこれを使う（CENTER_TOP_PX /
  *  INTRO_TEXT_TOP_PX は「詰まっているときの下限値」として上の式の中にだけ
  *  残る）。 */

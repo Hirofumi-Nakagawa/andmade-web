@@ -106,7 +106,8 @@ export function HomeStatement({ colorsOn, onColorsToggle }: HomeStatementProps) 
           lines={copyLines}
           active={revealed}
           delayMs={DELAY_COPY_MS}
-          className="text-[length:calc(28px*var(--scale))] leading-[1.05] font-medium text-black"
+          // tracking — -0.01em 相当。28px に対して -0.28px。
+          className="text-[length:calc(28px*var(--scale))] leading-[1.05] font-medium tracking-[calc(-0.28px*var(--scale))] text-black"
         />
 
         {/* mt は Link 自身ではなくこの div に — inline-flex の縦マージンは
