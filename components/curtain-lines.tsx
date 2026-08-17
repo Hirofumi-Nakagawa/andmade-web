@@ -79,6 +79,12 @@ type CurtainLinesProps = {
    *  SP でも正しく効くよう、時間の計算ではなく実際の transitionend で
    *  通知する（ScrambleText の onSettled と同じ考え方）。 */
   onSettled?: () => void;
+  /** 最終行が**上がり始めた**瞬間に呼ばれる — 「最後の行が出てくるのと
+   *  一緒に現れてほしい」要素（SP の Who we are）のため。onSettled は
+   *  最終行が止まりきってから（さらに REVEAL_MS 後）なので、それより
+   *  1行ぶん早いこちらを使う。行数が実測で決まる SP でも合うよう、
+   *  行数が確定してから計算する。 */
+  onLastLineStart?: () => void;
 };
 
 export function CurtainLines({
@@ -88,6 +94,7 @@ export function CurtainLines({
   className,
   delayMs = 0,
   onSettled,
+  onLastLineStart,
 }: CurtainLinesProps) {
   const measureRef = useRef<HTMLParagraphElement>(null);
   const [measured, setMeasured] = useState<string[] | null>(null);
@@ -119,6 +126,20 @@ export function CurtainLines({
     const frame = requestAnimationFrame(() => setPlay(true));
     return () => cancelAnimationFrame(frame);
   }, [signature, active]);
+
+  // 最終行が上がり始める時刻（onLastLineStart の doc comment 参照）。
+  // transitionstart は「遅延が終わって実際に動き出した」ときに飛ぶが、
+  // 途中で行が差し替わると拾えないことがあるので、行数が確定している
+  // ここで素直に時間で測る。
+  const lineCount = lines.length;
+  useEffect(() => {
+    if (!play || !onLastLineStart) return;
+    const timer = window.setTimeout(
+      onLastLineStart,
+      delayMs + (lineCount - 1) * LINE_STAGGER_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [play, delayMs, lineCount, onLastLineStart]);
 
   useEffect(() => {
     if (explicitLines) return;

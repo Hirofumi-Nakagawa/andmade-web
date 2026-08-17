@@ -406,7 +406,13 @@ const STATEMENT_DELAY_WHAT_MATTERS_MS = 0;
 const STATEMENT_DELAY_COPY_MS = 120;
 /** 「A sound archive〜 / Colors of Sound」はコピーより一拍遅れて（PC と同じ）。 */
 const STATEMENT_DELAY_SOUND_MS = FV_SECOND_BEAT_MS;
-/** 「Who we are」のフェードイン（PC と同値）。カーテンと同時に始める。 */
+/** 「Who we are」のフェードイン（PC と同値）。
+ *
+ *  始まりはコピーの**最終行が上がり始めた瞬間**（CurtainLines の
+ *  onLastLineStart）。当初はコピーと同時（FV_SECOND_BEAT_MS）だったが、
+ *  SP は折り返しが実測で決まって行数が多く、コピーがまだ半分も出ていない
+ *  うちに先へ出てしまっていた。固定値だと画面幅で行数が変わるたびにずれる
+ *  ので、行数からの逆算をコンポーネント側に任せている。 */
 const STATEMENT_WHO_FADE_MS = 500;
 
 type MobileHomeProps = {
@@ -427,6 +433,10 @@ type MobileHomeProps = {
 
 export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileHomeProps) {
   const pathname = usePathname();
+  /** コピー（CurtainLines）の最終行が上がり始めたか — 「Who we are」を
+   *  出すきっかけ（STATEMENT_WHO_FADE_MS の doc comment 参照）。 */
+  const [copyLastLineStarted, setCopyLastLineStarted] = useState(false);
+  const handleCopyLastLineStart = useCallback(() => setCopyLastLineStarted(true), []);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   // "ANDMADE Inc." header link (below) fades in instead of rendering
@@ -1200,6 +1210,7 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
                 text={STATEMENT_COPY}
                 active={headerRevealed}
                 delayMs={STATEMENT_DELAY_COPY_MS}
+                onLastLineStart={handleCopyLastLineStart}
                 className="text-[22px] leading-[1.05] font-medium text-black"
               />
             </div>
@@ -1210,11 +1221,12 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
               // 追いつかず効かないことがあるため、確実に効く書き方に寄せる。
               className="mt-[20px]"
               style={{
-                opacity: headerRevealed ? 1 : 0,
+                // 出るきっかけはコピーの最終行（STATEMENT_WHO_FADE_MS の
+                // doc comment 参照）。遅延はそちらで持っているのでここは 0。
+                opacity: headerRevealed && copyLastLineStarted ? 1 : 0,
                 transitionProperty: "opacity",
                 transitionDuration: `${STATEMENT_WHO_FADE_MS}ms`,
                 transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
-                transitionDelay: `${FV_SECOND_BEAT_MS}ms`,
               }}
             >
               <Link
