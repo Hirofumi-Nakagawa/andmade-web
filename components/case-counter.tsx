@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { SlotDigits } from "@/components/slot-digits";
 import { introDefinitelyWontShow, willIntroShow } from "@/components/site-intro";
+import { LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
 
 type CaseCounterProps = {
-  count: number;
   /** Ref to the last row's title — the same element the sticky release point
    *  is aligned to (see project-grid-section.tsx). Used to detect that release. */
   lastTitleRef: React.RefObject<HTMLDivElement | null>;
@@ -44,9 +43,20 @@ const RELEASE_ZONE_PX = 40;
  * deliberate reveal rather than frequent live-navigation feedback, so it can
  * afford to be showier and slower.
  */
-export function CaseCounter({ count, lastTitleRef }: CaseCounterProps) {
+export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
   const pathname = usePathname();
   const [released, setReleased] = useState(false);
+  /** 少しでもスクロールしたら即座に消す — per direct follow-up（"Scrollは
+   *  スクロールしたらすぐ消す"）。最終行に到達したら消える従来の `released`
+   *  はそのまま（スクロールを戻したときに戻ってこないよう、こちらが先に
+   *  効く）。 */
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 0);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
   const [replayGeneration, setReplayGeneration] = useState(0);
   // `revealed` — per direct follow-up ("トップ右下の29 casesもイントロが終
   // わってから表示するようにして"): same `introDefinitelyWontShow()`/
@@ -121,22 +131,26 @@ export function CaseCounter({ count, lastTitleRef }: CaseCounterProps) {
     // is just static text, never interactive, so this has no downside.
     <div className="sticky bottom-[18px] h-[calc(15px*var(--scale))] pointer-events-none">
       <p
-        // Hidden (opacity-0) whenever either gate says so — not yet
+        // Hidden (opacity-0) whenever any gate says so — not yet
         // `revealed` (still waiting on the intro, see this component's own
         // top-level `revealed` doc comment) or already `released` (scrolled
         // past, this element's own pre-existing scroll fade-out).
         className={`absolute top-0 whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity duration-300 ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
-          revealed && !released ? "opacity-100" : "opacity-0"
+          revealed && !released && !scrolled ? "opacity-100" : "opacity-0"
         }`}
-        style={{ right: "var(--edge-right-inset)" }}
+        style={{
+          right: "var(--edge-right-inset)",
+          // 一覧と足並みを揃えて一拍おいて出す（lib/entrance.ts 参照）。
+          // 消えるとき（released / scrolled）は待たせたくないので、出るとき
+          // だけ遅延を付ける。
+          transitionDelay: revealed && !released && !scrolled ? `${LIST_ENTRANCE_DELAY_MS}ms` : "0ms",
+        }}
       >
-        {/* 数字だけ medium、"Cases" は regular — 直接の指示（"PC,SPのCasesの
-           ウェイトをmediumに" → "pcのcasesの文字のregularにして"）。SP
-           (mobile-home.tsx) と同じ組み合わせ。 */}
-        <span className="font-medium">
-          <SlotDigits key={replayGeneration} value={count} digits={String(count).length} extraSpins={2} durationMs={1200} />
-        </span>{" "}
-        Cases
+        {/* 「N Cases」→「Scroll」— per direct request（貼付モック "画面右下の
+           cases は Scroll に変更"）。件数の表示は左レール（Made Here / N
+           Cases、project-view-toggle.tsx）へ移した。出す/引っ込めるタイミング
+           （イントロ待ち・最終行に到達したらフェードアウト）はそのまま。 */}
+        Scroll
       </p>
     </div>
   );

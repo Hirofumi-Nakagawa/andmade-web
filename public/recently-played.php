@@ -9,7 +9,7 @@
  * now-playing.php の冒頭コメント参照）。
  *
  * 返す JSON:
- *   {"tracks":[{"image":"https://i.scdn.co/image/...","artist":"..."}, ...]}
+ *   {"tracks":[{"image":"https://i.scdn.co/image/...","artist":"...","time":"HH:MM","date":"Aug.15,2026"}, ...]}
  *   直近再生順（新しい順）。取得できなかった場合は {"tracks":[]}。
  * 失敗時も常に 200 + 空配列（呼び出し側は「何も表示しない」だけで済む。
  * components/recently-played-flip.tsx 参照）。
@@ -52,6 +52,90 @@ const CACHE_SECONDS = 300;
 function cache_path(): string
 {
     return sys_get_temp_dir() . '/andmade-recently-played.json';
+}
+
+/** 再生ログの置き場所 — per direct follow-up（"colors of soundは後々
+ *  アーカイブを作れるようにログを残して"）。
+ *
+ *  Spotify の「直近再生」は最大50曲しか遡れないので、あとから
+ *  「Colors of Sound」のアーカイブ（日ごとの色）を作ろうとしても、過去は
+ *  もう取れない。そこでこのエンドポイントが叩かれるたびに、取得できた
+ *  ぶんを**日付ごとの JSON へ追記**していく。played_at をキーにするので、
+ *  同じ曲が何度取り込まれても重複しない。
+ *
+ *  置き場所は **www の外**（このファイルの1つ上 = ドキュメントルートの親、
+ *  さくらなら /home/andmade/colors-of-sound-logs）。理由は2つ —
+ *   ・一時ディレクトリ（sys_get_temp_dir）はサーバー側の掃除で消え得るので
+ *     アーカイブの保存先には使えない per direct follow-up（"これから再生する
+ *     曲は今後アーカイブページを作る上ですべてログとして残るようにして"）。
+ *   ・www の下に置くと URL で直接読めてしまう（デプロイの rsync --delete で
+ *     消える危険もある）。
+ *  書き込みできない環境では黙って諦める（append_play_log 参照）。環境変数
+ *  ANDMADE_COLORS_LOG_DIR があればそちらを優先する。
+ *
+ *  ■ 取りこぼしを無くすには cron が要る
+ *  このログはこのエンドポイントが叩かれたときにしか動かない。Spotify の
+ *  「直近再生」は50曲までしか遡れないので、誰も訪問しない時間が長いと
+ *  その間の再生が失われる。サーバー側で10〜15分おきに叩いておくこと:
+ *
+ *      0,10,20,30,40,50 * * * * curl -s https://andmade.jp/recently-played.php > /dev/null
+ *
+ *  （キャッシュ（CACHE_SECONDS）が生きている間は API を叩かないので、
+ *   Spotify へのリクエストが増えすぎることはない。） */
+function log_dir(): string
+{
+    $dir = getenv('ANDMADE_COLORS_LOG_DIR');
+    if (is_string($dir) && $dir !== '') {
+        return rtrim($dir, '/');
+    }
+    return dirname(__DIR__) . '/colors-of-sound-logs';
+}
+
+/**
+ * 取得できた再生履歴を日付（日本時間）ごとの JSON へ追記する。
+ *
+ * 形式: { "date": "2026-08-15", "plays": { "<played_at(ISO)>": {...} } }
+ * played_at をキーにした連想配列なので、追記のたびに array_merge するだけで
+ * 自然に重複が排除される（同じ再生は同じキー）。読み出す側は values を
+ * 時刻順に並べ替えて使う想定。
+ *
+ * 失敗しても API のレスポンスには影響させない（ログはあくまで副作用）。
+ */
+function append_play_log(array $plays): void
+{
+    if ($plays === []) {
+        return;
+    }
+    $dir = log_dir();
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+        return;
+    }
+    // 1回の取得に複数日ぶんが混ざり得る（日付をまたいで聴いた場合）ので、
+    // まず日付ごとに仕分けてからファイルを開く。
+    $byDate = [];
+    foreach ($plays as $play) {
+        $byDate[$play['day']][$play['played_at']] = $play['entry'];
+    }
+    foreach ($byDate as $day => $entries) {
+        $file = $dir . '/' . $day . '.json';
+        $existing = [];
+        if (is_readable($file)) {
+            $decoded = json_decode((string) @file_get_contents($file), true);
+            if (is_array($decoded) && isset($decoded['plays']) && is_array($decoded['plays'])) {
+                $existing = $decoded['plays'];
+            }
+        }
+        $merged = $existing + $entries; // 既存を優先（同じ played_at は上書きしない）
+        ksort($merged);
+        @file_put_contents(
+            $file,
+            json_encode(
+                ['date' => $day, 'plays' => $merged],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT
+            ),
+            LOCK_EX
+        );
+    }
 }
 
 // PHPの警告・エラーが本文に混ざるとJSONが壊れるので出力を止める（ログには残る）。
@@ -221,6 +305,9 @@ if (!is_array($data) || empty($data['items'])) {
 // 「同じ画が続いて止まって見える」だけなので、連続する重複のみ間引く
 // （離れた位置での再登場は時系列として意味があるので残す）。
 $tracks = [];
+/** アーカイブ用の再生ログ（append_play_log の doc comment 参照）。表示用の
+ *  $tracks とは別物 — こちらは連続重複も間引かず、曲名まで残す。 */
+$plays = [];
 $previous = null;
 foreach ($data['items'] as $entry) {
     $track = $entry['track'] ?? null;
@@ -238,12 +325,48 @@ foreach ($data['items'] as $entry) {
             $artists[] = $artist['name'];
         }
     }
+    // time — 再生時刻（HH:MM、日本時間）。トップ背景の帯に添えるラベルで
+    // 使う（components/sound-colors-background.tsx）— per direct follow-up
+    // ("再生曲の時間とアーティスト名を…表示して")。API の played_at は
+    // ISO8601 の UTC。
+    $time = '';
+    // date — 再生日（Aug.15,2026 形式、日本時間）。トップ背景の帯の
+    // ラベル1行目 per direct follow-up（"日付（改行）アーティスト名にして"）。
+    $date = '';
+    if (!empty($entry['played_at'])) {
+        $playedAt = new DateTime($entry['played_at'], new DateTimeZone('UTC'));
+        $playedAt->setTimezone(new DateTimeZone('Asia/Tokyo'));
+        $time = $playedAt->format('H:i');
+        $date = $playedAt->format('M.j,Y');
+    }
+    // アーカイブ用ログ（表示用の間引きとは無関係に、取れたものは全部残す）。
+    if (!empty($entry['played_at'])) {
+        $playedAtJst = new DateTime($entry['played_at'], new DateTimeZone('UTC'));
+        $playedAtJst->setTimezone(new DateTimeZone('Asia/Tokyo'));
+        $plays[] = [
+            'day' => $playedAtJst->format('Y-m-d'),
+            'played_at' => (string) $entry['played_at'],
+            'entry' => [
+                'played_at' => (string) $entry['played_at'],
+                'time' => $playedAtJst->format('H:i'),
+                'artist' => implode(', ', $artists),
+                'title' => (string) ($track['name'] ?? ''),
+                'image' => $url,
+            ],
+        ];
+    }
+
     $tracks[] = [
         'image' => $url,
         'artist' => implode(', ', $artists),
+        'time' => $time,
+        'date' => $date,
     ];
     $previous = $url;
 }
+
+// 副作用としてログを追記（失敗してもレスポンスには影響しない）。
+append_play_log($plays);
 
 $payload = ['tracks' => $tracks];
 

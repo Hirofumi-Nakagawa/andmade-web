@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
 import type { NewsItem } from "@/lib/news";
 
 type MobileRecentNewsProps = {
@@ -110,11 +111,14 @@ export function MobileRecentNews({ items, revealed, topPx, hidden = false }: Mob
 
   return (
     <div
-      className={`relative z-40 ml-auto flex-none mix-blend-exclusion transition-all duration-500 ease-out ${
+      className={`relative z-40 ml-auto flex-none transition-all duration-500 ease-out ${
         contentRevealed ? "translate-y-0" : "translate-y-[24px]"
       } ${contentRevealed && !hidden ? "opacity-100" : "opacity-0"}`}
       style={{
         top: topPx,
+        // 一覧・レールと足並みを揃えて一拍おく（lib/entrance.ts 参照）。
+        // 消えるとき（hidden = Img 表示）は待たせない。
+        transitionDelay: hidden ? "0ms" : `${LIST_ENTRANCE_DELAY_MS}ms`,
         // Swapped — see this component's own doc comment above.
         width: contentSize ? contentSize.height : undefined,
         height: contentSize ? contentSize.width : undefined,
@@ -182,7 +186,7 @@ export function MobileRecentNews({ items, revealed, topPx, hidden = false }: Mob
               containing block stays unambiguous. */}
           {items.map((item) => (
             <div key={item.id} className="flex flex-col items-start gap-[7px]">
-              <p className="font-(family-name:--font-courier) text-white/50 tracking-[-0.6px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+              <p className="font-(family-name:--font-courier) text-black/50 tracking-[-0.6px] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                 {item.date}
               </p>
               {item.url ? (
@@ -219,7 +223,7 @@ export function MobileRecentNews({ items, revealed, topPx, hidden = false }: Mob
                   href={item.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="underline-sweep font-normal text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                  className="underline-sweep font-normal text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
                   style={
                     {
                       marginTop: -1,
@@ -232,7 +236,7 @@ export function MobileRecentNews({ items, revealed, topPx, hidden = false }: Mob
                 </a>
               ) : (
                 <p
-                  className="font-normal text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                  className="font-normal text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
                   style={{ marginTop: -1 }}
                 >
                   {item.text}

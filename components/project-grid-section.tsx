@@ -8,8 +8,8 @@ import type { Project } from "@/lib/projects";
 type ProjectGridSectionProps = {
   /** Fetched (or placeholder-fallback) project list — threaded down from
    *  app/page.tsx (see that file's own doc comment), forwarded to ProjectList
-   *  and used for CaseCounter's own count, replacing this file's own previous
-   *  direct `import { projects } from "@/lib/projects"`. */
+   *  replacing this file's own previous direct
+   *  `import { projects } from "@/lib/projects"`. */
   projects: Project[];
   /** Reports each project's title element (by index) up to app/page.tsx —
    *  used to play the underline-sweep animation on every title when the
@@ -88,7 +88,7 @@ export function ProjectGridSection({
           activeIndex={activeIndex}
         />
       </div>
-      <CaseCounter count={projects.length} lastTitleRef={lastTitleRef} />
+      <CaseCounter lastTitleRef={lastTitleRef} />
     </div>
   );
 }

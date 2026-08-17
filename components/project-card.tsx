@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ScrambleText } from "@/components/scramble-text";
 import { slugify, type Project } from "@/lib/projects";
+import { isInitialEntrance, LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
 
 type ProjectCardProps = {
   project: Project;
@@ -26,6 +27,14 @@ type ProjectCardProps = {
 
 /** Delay step between columns in the same row, so they reveal left-to-right. */
 const COLUMN_STAGGER_MS = 120;
+/** 一覧全体を「ワンテンポ」遅らせる — per direct follow-up（"一覧はワン
+ *  テンポ遅らせて表示して"）。FV のコピー（カーテンリビール）が動き出して
+ *  から一拍おいて一覧が続く、という順番にするための待ち。
+ *
+ *  効かせるのは**初回表示ぶんだけ**（ページに入った直後に既に画面内に
+ *  あったカード）。スクロールで下から入ってくるカードや、Txt/Img の
+ *  切り替えで作り直されたカードにまでこの遅延を足すと、ただ反応が鈍い
+ *  だけになる — 判定は lib/entrance.ts の isInitialEntrance()。 */
 /** Extra delay before the category/role/date block starts fading in. */
 const META_FADE_DELAY_MS = 150;
 
@@ -144,6 +153,8 @@ export function ProjectCard({
   const cardRef = useRef<HTMLLIElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
   const [revealed, setRevealed] = useState(false);
+  /** 初回表示ぶんか（lib/entrance.ts の pageEnteredAt 参照）。 */
+  const [initialReveal, setInitialReveal] = useState(false);
   // Local hover state purely for the HoverPlate below — the existing
   // onHoverTitle/onHoverEnd props report hover *up* to app/page.tsx for the
   // background preview, but nothing carried it back down to this card's own
@@ -180,6 +191,7 @@ export function ProjectCard({
 
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
+        setInitialReveal(isInitialEntrance());
         setRevealed(true);
         observer.disconnect();
       }
@@ -188,7 +200,7 @@ export function ProjectCard({
     return () => observer.disconnect();
   }, []);
 
-  const baseDelay = column * COLUMN_STAGGER_MS;
+  const baseDelay = (initialReveal ? LIST_ENTRANCE_DELAY_MS : 0) + column * COLUMN_STAGGER_MS;
 
   return (
     // Slide-in (translate-y) restored — briefly removed per "Txのスライドイ

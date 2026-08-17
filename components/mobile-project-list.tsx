@@ -6,6 +6,7 @@ import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
 import { ScrambleText } from "@/components/scramble-text";
 import { slugify, type Project } from "@/lib/projects";
+import { isInitialEntrance, LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
 
 type MobileProjectListProps = {
   /** Fetched (or placeholder-fallback) project list — threaded down from
@@ -113,6 +114,12 @@ const ROW_REVEAL_STAGGER_MS = 90;
  *  regardless of how far down the list a row sits or how many rows happen
  *  to already be visible together. */
 const MAX_STAGGER_ROWS = 8;
+
+/** 一覧全体を「ワンテンポ」遅らせる — per direct follow-up（"一覧はワン
+ *  テンポ遅らせて表示して"）。PC（project-card.tsx の
+ *  LIST_ENTRANCE_DELAY_MS）と同値・同じ考え方で、効かせるのはマウント直後
+ *  に既に画面内にあった行だけ。スクロールで入ってくる行に足すと、ただ
+ *  反応が鈍く感じるため。 */
 
 /**
  * SP project list (Figma node 975:530) — a single-column stack (unlike PC's
@@ -397,12 +404,15 @@ function MobileProjectItem({
     const el = liRef.current;
     if (!el) return;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    // 初回表示ぶんだけ「ワンテンポ」足す（lib/entrance.ts 参照）。Txt/Img の
+    // 切り替えで作り直された回は「初回」ではないので遅延を付けない。
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting) {
+        const initial = isInitialEntrance();
         timeoutId = setTimeout(() => {
           setItemRevealed(true);
           onRevealedRef.current?.();
-        }, revealDelayMs);
+        }, revealDelayMs + (initial ? LIST_ENTRANCE_DELAY_MS : 0));
         observer.disconnect();
       }
     });

@@ -153,6 +153,27 @@ export function applyRandomInk(colors: string[]): () => void {
   };
   const paint = (el: HTMLElement) => paintWith(el, pickColor());
 
+  // 「ひとかたまりで1色にしたい」要素 — per direct follow-up（"今回追加した
+  // what mattersと、who we are、→、colors of soundの文言もアイドル時に
+  // 文字色が変わるようにして"）。data-ink-group を付けた要素とその配下
+  // すべてを同じ色で塗る。
+  //
+  // これが必要なのは、後段の「末端要素だけ塗る」走査では拾えないものが
+  // あるため:
+  //  - 「Who we are →」の矢印は <svg fill="currentColor">。svg 自身は
+  //    テキストを持たないので末端走査の対象外だが、祖先の color を塗れば
+  //    currentColor 経由で色が乗る。文字と矢印は同じ色であってほしいので、
+  //    リンク全体をひとかたまりとして塗る。
+  //  - 「Colors of Sound」も下線（.underline-sweep）と本文を必ず同色に
+  //    したい。
+  // 先頭で実行する（paintWith は塗り済みをスキップするので、後段の
+  // .underline-sweep 走査や末端走査がこの色を上書きすることはない）。
+  root.querySelectorAll<HTMLElement>("[data-ink-group]").forEach((el) => {
+    const color = pickColor();
+    paintWith(el, color);
+    el.querySelectorAll<HTMLElement>("*").forEach((child) => paintWith(child, color));
+  });
+
   // 先に「タイトル + タイトル下線」を1色に揃えて塗る — per direct
   // follow-up ("タイトルとタイトル下線は同じ色にして")。
   // .underline-sweep（::after が currentColor で線を引く）は要素と配下の
@@ -174,7 +195,14 @@ export function applyRandomInk(colors: string[]): () => void {
   });
 
   root.querySelectorAll<HTMLElement>("*").forEach((el) => {
-    if (el.children.length > 0) return;
+    // 子が <br> だけの要素も「末端」とみなす — per direct follow-up（"…
+    // A sound~ …もアイドル時に文字色が変わるようにして"）。<br> で改行した
+    // だけの段落（FV 右上の "A sound archive that turns / everyday listening
+    // into color."）は children.length > 0 になるので、以前はここで丸ごと
+    // スキップされ、色が変わらなかった。<br> はテキストを持たないので、
+    // 親を塗っても二重塗りにはならない。
+    const onlyLineBreaks = Array.from(el.children).every((child) => child.tagName === "BR");
+    if (el.children.length > 0 && !onlyLineBreaks) return;
     if (!el.textContent || !el.textContent.trim()) return;
     paint(el);
   });

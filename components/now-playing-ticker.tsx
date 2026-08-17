@@ -233,7 +233,14 @@ export function NowPlayingTicker({
         <img
           src={albumImageUrl}
           alt=""
-          className="pointer-events-none absolute top-[calc(100%+8px)] right-0 h-[calc(110px*var(--scale))] w-[calc(110px*var(--scale))] object-cover opacity-0 shadow-lg transition-opacity duration-300 ease-out group-hover:opacity-100"
+          // z-20 — per direct follow-up（"右上再生曲にホバーしたときに表示
+          // するジャケをA sound archive that turns~の文言より上に表示して"）。
+          // トップ FV 右上の説明文（home-statement.tsx）はこの img より後の
+          // DOM 順で、どちらも z-index:auto だったため文言のほうが前面に来て
+          // ジャケに重なっていた。ここだけ明示的に持ち上げる（この img の
+          // 祖先に stacking context を作る要素は無いので、そのまま最前面に
+          // 出る）。ホバー中しか出ないので他ページへの影響も無い。
+          className="pointer-events-none absolute top-[calc(100%+8px)] right-0 z-20 h-[calc(110px*var(--scale))] w-[calc(110px*var(--scale))] object-cover opacity-0 shadow-lg transition-opacity duration-300 ease-out group-hover:opacity-100"
         />
       )}
     </div>

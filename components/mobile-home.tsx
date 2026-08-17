@@ -1,16 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
 import { MobileProjectList } from "@/components/mobile-project-list";
 import { MobileProjectThumbnailGrid } from "@/components/mobile-project-thumbnail-grid";
+import { ArrowIcon } from "@/components/arrow-icon";
+import { CurtainLines } from "@/components/curtain-lines";
 import { MobileRecentNews } from "@/components/mobile-recent-news";
 import { introDefinitelyWontShow, willIntroShow } from "@/components/site-intro";
 import { SlotDigits } from "@/components/slot-digits";
 import { VerticalLabel } from "@/components/vertical-label";
+import { FV_SECOND_BEAT_MS, LIST_ENTRANCE_DELAY_MS, markPageEntered } from "@/lib/entrance";
 import { setFooterReady as broadcastFooterReady } from "@/lib/footer-mode-store";
 import type { NewsItem } from "@/lib/news";
 import { previewSrcSet, SP_PREVIEW_SIZES } from "@/lib/preview-image";
@@ -367,6 +370,52 @@ const DIVIDER_HEIGHT_PX = 50;
  *  own doc comment below. */
 const HEADER_FADE_MS = 500;
 
+/** 「Made Here」（13px / text-box-trim:trim-both）のボックス高さ＝キャップ
+ *  ハイト。レールの marginTop と一覧の paddingTop の基準に使う。 */
+const MADE_HERE_HEIGHT_PX = 9;
+
+/** 背景プレビューを引っ込める「上端側」のしきい値 — per direct follow-up
+ *  （"上までいく前にすぐ消して"）。下端側の footerReady と対になる仕組み。
+ *
+ *  当初は「一覧セクションの原点がビューポート上端より下に来たら」という
+ *  レイアウト由来の判定にしていたが、FV が入って一覧の開始位置が下がった
+ *  結果、**1件目（Dots）が読み取り線を越える時点でもまだ抑制が効いていて、
+ *  1件目だけ永久に選択されない**という副作用が出た（per direct follow-up
+ *  "SPトップのDotsが選択されないのと、Yatsumonjiの選択時間が短い"）。
+ *  ページ最上部からの単純な距離に変え、1件目が読み取り線に届く前
+ *  （実測で scrollY ≒ 250 付近）に解除されるよう 150px にしてある。 */
+const PREVIEW_TOP_HIDE_PX = 150;
+
+/** Txt/Img を切り替えたあと、背景プレビューを再び許す条件 — per direct
+ *  follow-ups（"切り替え時は表示されないようにして" → "まだtxt時に戻った
+ *  とき、スクランブルテキスト後に背景イメージが表示される"）。
+ *
+ *  当初は 700ms の時間窓にしていたが、一覧の行が順に現れる（スクランブル
+ *  テキストが終わる）のは切り替えから1秒以上あとで、そのタイミングで
+ *  MobileProjectList の走査が「いま画面中央にある行」を active として通知し、
+ *  showPreview() が走ってしまう。時間で待っても行の登場のほうが遅いので、
+ *  **次にユーザーが画面に触れるまで**抑制する方式に変えた（レイアウト由来の
+ *  スクロールはいくら起きても解除されない）。時間切れの保険だけ長めに残す。 */
+const TOGGLE_PREVIEW_SUPPRESS_FALLBACK_MS = 6000;
+
+/** FV ステートメントの登場 — per direct request（"pc,spともにWe uncover~の
+ *  コピーはカーテンリビールで表示 / What mattersとA sound~の要素はスライド
+ *  イン+フェードインで表示"）。PC（home-statement.tsx）と同じ値。
+ *  タイミングはヘッダーと同じくイントロ完了待ち（headerRevealed）。 */
+/** コピー本文 — SP は画面幅で折り返しが変わるので改行位置は指定せず、
+ *  CurtainLines 側で実測して1行ずつのマスクに割ってもらう。 */
+const STATEMENT_COPY =
+  "We uncover what truly matters and give purpose a clear form. By making every design decision intentional, we believe each thoughtful choice contributes to work that holds value over time.";
+const STATEMENT_SLIDE_MS = 500;
+const STATEMENT_DELAY_WHAT_MATTERS_MS = 0;
+const STATEMENT_DELAY_COPY_MS = 120;
+/** 「A sound archive〜 / Colors of Sound」はコピーより一拍遅れて（PC と同じ）。 */
+const STATEMENT_DELAY_SOUND_MS = FV_SECOND_BEAT_MS;
+/** 「Who we are」のフェードイン（PC と同値）。カーテンと同時に始める —
+ *  per direct follow-up（"who we areもカーテンリビールと同時にフェードイン
+ *  させて"）。 */
+const STATEMENT_WHO_FADE_MS = 500;
+
 type MobileHomeProps = {
   /** Fetched (or placeholder-fallback) project list — threaded down from
    *  app/page.tsx, which owns the actual microCMS fetch (see that file's own
@@ -376,9 +425,14 @@ type MobileHomeProps = {
   /** Recent announcements — threaded down from app/page.tsx via HomeView,
    *  same as `projects` above. See mobile-recent-news.tsx's own `items`. */
   news: NewsItem[];
+  /** Colors of Sound（背景の色帯）の状態とトグル — 実体は home-view.tsx が
+   *  持っていて、PC（home-statement.tsx）と共有する。SP の FV 右側にも
+   *  同じスイッチを出す（Figma node 1712:1053）。 */
+  colorsOn: boolean;
+  onColorsToggle: () => void;
 };
 
-export function MobileHome({ projects, news }: MobileHomeProps) {
+export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileHomeProps) {
   const pathname = usePathname();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -426,16 +480,22 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
   // render) through both SSR and the client's own first hydration pass, only
   // ever turning `true` on a later, purely client-side mount — i.e. exactly
   // the "returning to '/' from elsewhere" case this was actually meant to fix.
-  const [headerRevealed, setHeaderRevealed] = useState(() => introDefinitelyWontShow());
+  // 常に隠れた状態から始める — per direct follow-up（"下層からトップに
+  // 戻ったときは…スライドイン+フェードインで表示して"）。イントロが出ない
+  // 復帰時も演出を見せたいので、その回はマウント直後の1フレームで true に
+  // する（PC は components/use-intro-reveal.ts が同じことをしている）。
+  const [headerRevealed, setHeaderRevealed] = useState(false);
 
   useEffect(() => {
-    if (!willIntroShow(pathname)) return;
-
-    function handleIntroComplete() {
-      setHeaderRevealed(true);
+    if (willIntroShow(pathname) && !introDefinitelyWontShow()) {
+      function handleIntroComplete() {
+        setHeaderRevealed(true);
+      }
+      window.addEventListener("andmade:intro-complete", handleIntroComplete, { once: true });
+      return () => window.removeEventListener("andmade:intro-complete", handleIntroComplete);
     }
-    window.addEventListener("andmade:intro-complete", handleIntroComplete, { once: true });
-    return () => window.removeEventListener("andmade:intro-complete", handleIntroComplete);
+    const frame = requestAnimationFrame(() => setHeaderRevealed(true));
+    return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately mount-only: `pathname` is intentionally only read at its initial value, matching mobile-menu.tsx's own identical convention.
   }, []);
   // Bumped on every Tx/Th click (regardless of whether the view actually
@@ -497,8 +557,16 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
   // starting from `railRevealed`'s true initial (unrevealed) state, so its
   // own mount-time effect below always has a clean run.
   const [introReplayGeneration, setIntroReplayGeneration] = useState(0);
+  // 「ページに入った瞬間」を記録（lib/entrance.ts 参照）。PC の home-view.tsx
+  // と同じ扱い — Txt/Img の切り替えでは打ち直さないので、切り替え時の一覧は
+  // 遅延なしで即出る。
+  useState(() => {
+    markPageEntered();
+    return true;
+  });
   useEffect(() => {
     function handleIntroComplete() {
+      markPageEntered();
       setIntroReplayGeneration((generation) => generation + 1);
     }
     window.addEventListener("andmade:intro-complete", handleIntroComplete);
@@ -687,6 +755,35 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
   // persistently in app/layout.tsx rather than here (see mobile-menu.tsx's
   // own top-level doc comment on the persistence refactor).
   const [footerReady, setFooterReady] = useState(false);
+  /** ページ上端側でプレビューを引っ込めるフラグ（PREVIEW_TOP_HIDE_PX
+   *  の doc comment 参照）。初期値 true — マウント直後は必ずページ最上部。 */
+  const [nearTop, setNearTop] = useState(true);
+  /** Txt/Img を切り替えた直後の抑制（previewShown の doc comment 参照）。
+   *  レンダー中の前値比較でフラグを立て、少し経ってから解除する。 */
+  const [toggleSuppressed, setToggleSuppressed] = useState(false);
+  const [prevShowImagesForPreview, setPrevShowImagesForPreview] = useState(showImages);
+  if (prevShowImagesForPreview !== showImages) {
+    setPrevShowImagesForPreview(showImages);
+    setToggleSuppressed(true);
+    // 直前の状態も落としておく（解除後にそのまま復活しないように）。
+    setPreviewVisible(false);
+    setActiveIndex(null);
+  }
+  useEffect(() => {
+    if (!toggleSuppressed) return;
+    // 次の「ユーザー操作」で解除（TOGGLE_PREVIEW_SUPPRESS_FALLBACK_MS の
+    // doc comment 参照）。切り替えのタップ自体はこの effect が張られる前に
+    // 終わっているので、これに拾われることはない。
+    const release = () => setToggleSuppressed(false);
+    window.addEventListener("touchstart", release, { passive: true, once: true });
+    window.addEventListener("wheel", release, { passive: true, once: true });
+    const timer = setTimeout(release, TOGGLE_PREVIEW_SUPPRESS_FALLBACK_MS);
+    return () => {
+      window.removeEventListener("touchstart", release);
+      window.removeEventListener("wheel", release);
+      clearTimeout(timer);
+    };
+  }, [toggleSuppressed]);
   // Resets the shared store back to false on unmount — otherwise navigating
   // away mid-footerMode (scrolled to the bottom of Top, then tapping a nav
   // link) would leave MobileMenu's panel grown into footer content for a
@@ -881,6 +978,9 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
       const ready = nearBottom && (showImages || lastProjectActive);
       setFooterReady(ready);
       broadcastFooterReady(ready);
+
+      // 上端側の引っ込め（PREVIEW_TOP_HIDE_PX の doc comment 参照）。
+      setNearTop(window.scrollY < PREVIEW_TOP_HIDE_PX);
     },
     [showPreview, projects.length, showImages],
   );
@@ -1001,10 +1101,27 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
   // ジは表示しない"): this big scroll-triggered bottom-right preview is
   // redundant (and visually competes) with Th mode's own per-row thumbnails
   // now showing behind each row's text as you scroll past it.
-  const previewShown = previewVisible && !footerReady && !returningToTop && !showImages;
+  // !nearTop — per direct follow-up（"背景イメージが…上までいく前にすぐ
+  // 消して"）。footerReady（下端側）と対になる上端側の抑制。
+  //
+  // !toggleSuppressed — per direct follow-up（"SPでtxtに戻る際、スクロール
+  // 位置によって背景イメージが表示されるので、切り替え時は表示されないように
+  // して"）。Img → Txt に戻すと一覧の高さが変わり、Lenis の resize
+  // （home-view.tsx）でスクロール位置が動く → スクロールティックが発火し、
+  // 切り替え前に選択されていた行（activeIndexRef）のプレビューが、指を
+  // 触れてもいないのに出てしまっていた。切り替え直後だけ止める。
+  const previewShown =
+    previewVisible && !toggleSuppressed && !footerReady && !nearTop && !returningToTop && !showImages;
 
   return (
-    <div className="relative w-full bg-(--color-background) lg:hidden">
+    // bg-(--color-background) を外してある — per direct follow-up（"spでも
+    // colors of soundを押したら帯が表示されるようにして"）。この div は
+    // #top（home-view.tsx）の中で position:relative = 配置済み要素なので、
+    // 同じ #top 直下にある背景キャンバス（position:fixed / z-index:auto）
+    // より DOM 順であとに来るぶん前面に描かれる。そこに不透明な背景色が
+    // 乗っていたため、SP では帯が完全に隠れていた。背景色は #top 自身が
+    // 持っているので、ここから外しても見た目は変わらない。
+    <div className="relative w-full lg:hidden">
       {/* "Menu" — per Figma node 1052:660/1052:877 ("sp_index_menu"/"menu")
           — no longer rendered here. MobileMenu is now a persistent
           singleton mounted once in app/layout.tsx (see that component's own
@@ -1051,15 +1168,148 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
             follow-up ("14pxにした箇所を15pxにして")。 */}
         <Link
           href="/"
-          className="block pt-[50px] mix-blend-exclusion text-[15px] leading-[1.5] font-medium text-white transition-opacity ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+          // transform-gpu + willChange — per direct follow-up（"spで帯を
+          // 表示するとヘッダーのANDMADE Incが白になる"）。背景の色帯
+          // キャンバス（position:fixed）が入ると、この要素の
+          // mix-blend-exclusion が合成し直しの巻き添えで効かなくなり、素の
+          // 白文字のままになる。GPU レイヤーに固定しておくと剥がれない —
+          // site-header.tsx（PC の Safari 対策）、一覧のブレンド包み、
+          // Tx-Img レール、Made Here と同じ対策。
+          className="block pt-[50px] mix-blend-exclusion transform-gpu text-[15px] leading-[1.5] font-medium text-white transition-opacity ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
           style={{
             paddingLeft: CONTENT_INDENT,
+            willChange: "transform",
             opacity: headerRevealed ? 1 : 0,
             transitionDuration: `${HEADER_FADE_MS}ms`,
           }}
         >
           ANDMADE Inc.
         </Link>
+
+        {/* FV ステートメント（PC は home-statement.tsx）— per direct request
+            （Figma node 1712:1053 / "spも同様に一覧上を下記の通り変更して"）:
+            What Matters 13px → 40px下に本文 22px → 20px下に Who we are 18px
+            → 30px下に「A sound archive〜」13px → 80px下に Made Here（下の
+            レール1行目）。縦の間隔は PC と同じく [text-box-trim:trim-both]
+            前提（前の要素のベースライン → 次の要素のキャップ上端）。
+            ヘッダーからの余白は 45px（Figma 実測）→ 80px（"spのwhat matters
+            上マージンを80pxに"）。
+
+            `relative` — スクロールで出る背景プレビュー（ProjectPreviewStack、
+            position:fixed / z-index:auto）より前面に出すため per direct
+            follow-up（"コピーより背面になるようにしつつ"）。fixed 要素は
+            「配置済み要素」の層に描かれるので、DOM 順があとでも通常フローの
+            ブロックは必ずその下になる。ここを配置済み要素にすれば、DOM 順が
+            あとであるぶん上に来る（PC 側 home-view.tsx が同じ理由で
+            `relative` を付けているのと同じ手）。
+
+            「What Matters」はページ左マージン（この px-[8px] の内側 = 8px）、
+            本文と Who we are はヘッダーの "ANDMADE Inc." と同じ
+            CONTENT_INDENT に揃える。本文は SP 幅がまちまちなので改行位置は
+            固定せず自然に流す。 */}
+        <div className="relative mt-[80px]">
+          <p
+            className="text-[13px] leading-[1.5] font-normal text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+            style={{
+              opacity: headerRevealed ? 1 : 0,
+              translate: headerRevealed ? "0 0" : "0 24px",
+              transitionProperty: "translate, opacity",
+              transitionDuration: `${STATEMENT_SLIDE_MS}ms`,
+              transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
+              transitionDelay: `${STATEMENT_DELAY_WHAT_MATTERS_MS}ms`,
+            }}
+          >
+            What Matters
+          </p>
+
+          <div style={{ paddingLeft: CONTENT_INDENT }}>
+            <div className="mt-[40px]">
+              <CurtainLines
+                text={STATEMENT_COPY}
+                active={headerRevealed}
+                delayMs={STATEMENT_DELAY_COPY_MS}
+                className="text-[22px] leading-[1.05] font-medium text-black"
+              />
+            </div>
+            <div
+              // 遷移指定はクラス（transition-opacity ease-out）ではなく
+              // インライン — per direct follow-up（"SPでWho we areの
+              // フェードインが効いてない"）。Made Here / Colors of Sound の
+              // 透過と同じで、SP では新規の utility が dev の生成CSSに
+              // 追いつかず効かないことがあるため、確実に効く書き方に寄せる。
+              className="mt-[20px]"
+              style={{
+                opacity: headerRevealed ? 1 : 0,
+                transitionProperty: "opacity",
+                transitionDuration: `${STATEMENT_WHO_FADE_MS}ms`,
+                transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
+                transitionDelay: `${FV_SECOND_BEAT_MS}ms`,
+              }}
+            >
+              <Link
+                href="/about"
+                // data-ink-group — アイドル中のインク差し替えで文字と矢印を
+                // 同色に塗るための目印（lib/album-colors.ts 参照）。
+                data-ink-group
+                className="inline-flex items-center gap-[8px] text-[18px] leading-[1.5] font-medium text-black"
+              >
+                <span className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+                  Who we are
+                </span>
+                <ArrowIcon className="block h-[10px] w-[12px] shrink-0" />
+              </Link>
+            </div>
+          </div>
+
+          <div
+            className="mt-[30px] text-right text-[13px] leading-[1.2] font-normal text-black"
+            style={{
+              opacity: headerRevealed ? 1 : 0,
+              translate: headerRevealed ? "0 0" : "0 24px",
+              transitionProperty: "translate, opacity",
+              transitionDuration: `${STATEMENT_SLIDE_MS}ms`,
+              transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
+              transitionDelay: `${STATEMENT_DELAY_SOUND_MS}ms`,
+            }}
+          >
+            <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+              A sound archive that turns
+              <br />
+              everyday listening into color.
+            </p>
+            <div className="mt-[10px]">
+              <button
+                type="button"
+                onClick={onColorsToggle}
+                aria-pressed={colorsOn}
+                data-ink-group
+                className="font-medium"
+                // 透過はクラス（opacity-50）ではなくインラインで — per direct
+                // follow-up（"SPで帯を表示してるときも、colors of soundの文字は
+                // 透過50%に"）。このコードベースでは新規の arbitrary/utility が
+                // dev の生成CSSに追いつかず一時的に効かないことがあるので、
+                // 状態表示のように「効かないと意味が変わる」ものはインラインに
+                // する慣例（scroll-progress-gauge.tsx などと同じ）。
+                style={{
+                  touchAction: "manipulation",
+                  opacity: colorsOn ? 0.5 : 1,
+                  transitionProperty: "opacity",
+                  transitionDuration: "300ms",
+                }}
+              >
+                <span
+                  className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                  // PC は既定から 2px 上げているが、SP はそこからさらに
+                  // 2px 下げる per direct follow-up（"spのcolors of soundの
+                  // 下線を2px下げ"）＝共有既定値（-0.1em）と同じ位置。
+                  style={{ "--underline-offset": "-0.1em" } as CSSProperties}
+                >
+                  Colors of Sound
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* List section — mt-[170px] directly below the header (was 180px,
             tightened 10px per direct follow-up: "SPのトップヘッダーと一覧の
@@ -1076,7 +1326,53 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
             to-list gap to be this single literal value. This is also
             the sticky containing block for the Tx/Img rail below (see this
             component's own doc comment). */}
-        <div ref={sectionOriginRef} className="relative mt-[170px] pb-[20px]">
+        {/* mt-[170px] → 80px — per direct request（Figma node 1712:1053）。
+            この原点がレール（Made Here / 26 Cases / Tx-Img）とお知らせの
+            上面そのものなので、「A sound archive〜」ブロックの下 80px に
+            Made Here が来る、という指定がそのままこの値になる。 */}
+        <div
+          ref={sectionOriginRef}
+          className="relative pb-[20px]"
+          // mt — 「A sound archive〜」の下 80px にセクション原点（= Made Here /
+          // お知らせの上面）。
+          // pt — その Made Here のベースラインから一覧まで 40px per direct
+          // follow-up（"spのMade hereと一覧のマージンを40pxに"）。absolute な
+          // レール／お知らせ／Made Here はパディングボックスの上端基準なので、
+          // この padding では動かず、フロー内の一覧だけが下がる。
+          style={{ marginTop: 80, paddingTop: MADE_HERE_HEIGHT_PX + 40 }}
+        >
+          {/* 「Made Here」— レール（sticky）の外に出した非固定ラベル per
+              direct follow-up（"spのMade hereは固定しない"）。位置は
+              セクション原点の左上 = お知らせ（MobileRecentNews、topPx=0）の
+              上面と同じ（"お知らせの上面をMade Hereに合わせる"）。
+              左マージンだけレールと同じ -4px 相当に合わせてある。 */}
+          <p
+            // ブレンドモード廃止 + #000 + regular — per direct follow-ups
+            // （"トップのヘッダー以外はブレンドモード無しにして文字色#000に"
+            // ・"spのMade Hereをregularに"）。
+            //
+            // key + インラインの transition — per direct follow-up（"SP時に、
+            // Made Hereもスライドイン+フェードインで表示"）。レール本体と
+            // 同じく世代キーで作り直し、遷移指定もクラス（transition-[…]）
+            // ではなくインラインにしてある。レールは `key` の再マウントと
+            // railRevealed のリセットの2点セットで初めてアニメーションする
+            // （すぐ上の doc comment 参照）ので、その外に出したこの行だけ
+            // 同じ仕掛けが抜けていた。
+            key={`made-here-${introReplayGeneration}`}
+            className="absolute top-0 left-[-4px] text-[13px] leading-[1.5] font-normal text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+            style={{
+              opacity: railRevealed ? 1 : 0,
+              translate: railRevealed ? "0 0" : "0 24px",
+              transitionProperty: "translate, opacity",
+              transitionDuration: "500ms",
+              transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
+              // 一覧・レールと同じく一拍おく（lib/entrance.ts 参照）。
+              transitionDelay: `${LIST_ENTRANCE_DELAY_MS}ms`,
+            }}
+          >
+            Made Here
+          </p>
+
           <div className="absolute inset-0 flex items-start justify-between" style={{ top: RAIL_REST_OFFSET_PX }}>
             {/* Rail (Tx/Th + "33 Cases") is `sticky`; MobileRecentNews below
                 is deliberately its own separate, *non*-sticky sibling again —
@@ -1102,7 +1398,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
               // for a quicker release fade ("フェードアウトの速度をもう少し
               // 速くして"). Matches PC's own case-counter.tsx release-fade
               // duration for consistency.
-              className={`pointer-events-none sticky top-[30px] z-40 w-fit mix-blend-exclusion transition-all ease-out ${
+              className={`pointer-events-none sticky top-[30px] z-40 w-fit transition-all ease-out ${
                 railReleased ? "duration-300" : "duration-500"
               } ${railRevealed ? "translate-y-0" : "translate-y-[24px]"}`}
               // opacity driven by both railRevealed (entrance fade-in) and
@@ -1150,10 +1446,20 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
               // top-[30px] (was 27px, then 24px) — nudged down another 3px
               // per direct follow-up ("お知らせ・Tx-Th/33 Casesをさらに3px
               // 下げて").
+              // marginTop — 「Made Here」がこのレールの外（非固定）へ出た
+              // ぶん、レール本体を1行分 + 20px だけ下げて元の並びを保つ
+              // （per direct follow-up "spのMade hereは固定しない"）。
+              // sticky の停止位置は top-[30px] が決めるので、この margin は
+              // 静止時の位置にだけ効く。
               style={{
                 willChange: "transform",
                 marginLeft: -4,
+                marginTop: MADE_HERE_HEIGHT_PX + 20,
                 opacity: railRevealed && !railReleased ? 1 : 0,
+                // 一覧と足並みを揃えて一拍おいて出す — per direct follow-up
+                // （"Made Hereとcases、お知らせなどもワンテンポ遅らせて表示"）。
+                // 固定解除で消えるときは待たせない。
+                transitionDelay: railReleased ? "0ms" : `${LIST_ENTRANCE_DELAY_MS}ms`,
               }}
             >
               {/* items-start (was items-center) — per direct follow-up
@@ -1169,7 +1475,35 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                   items-start pins every child's own left edge to the same
                   x=0, keeping both flush with the grid regardless of how
                   wide each one's own content happens to measure out to. */}
-              <div className="flex flex-col items-start gap-[40px]">
+              <div className="flex flex-col items-start">
+
+                {/* "26 Cases" — Tx/Img の **上** に移動（per direct request
+                    "26 Cases は txt-img の上に移動"、Figma node 1712:1053）。
+                    以前は Tx/Th の下に gap-[40px] で置いていた。いまは
+                    Made Here の 20px 下、Tx/Img の 40px 上。
+                    以下は当時の経緯メモ: 100px → 80px per an earlier follow-up
+                    ("33casesとのマージンは80pxに"), then 80px → 60px → 40px
+                    per two further direct follow-ups ("SPトップのTxt-Imgと
+                    Casesのマージンを20px詰めて" ×2). ウェイトは
+                    font-medium → font-normal（"33casesのウェイトをregularに
+                    変更"）→ font-medium（"PC,SPのCasesのウェイトをmediumに"、
+                    PC の case-counter.tsx も同時に変更）→ 数字だけ medium で
+                    "Cases" は regular（下の span 参照）。
+                    SlotDigits — same odometer/slot-machine digit roll as
+                    PC's counter (slot-digits.tsx), counting up to the real
+                    project count. */}
+                <VerticalLabel className="mt-[20px] text-[13px] font-normal text-black">
+                  <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+                    {/* 数字だけ medium、"Cases" は regular — 直接の指示
+                        ("SPのcasesの数字はmediumでcasesの文字はregularにして")。
+                        PC (case-counter.tsx) は全体 medium のまま。 */}
+                    <span className="font-medium">
+                      <SlotDigits value={projects.length} digits={String(projects.length).length} extraSpins={2} durationMs={1200} />
+                    </span>{" "}
+                    Cases
+                  </span>
+                </VerticalLabel>
+
                 {/* Tx/Th — each individually rotated (VerticalLabel), per
                     direct follow-up ("tx-thと33casesをそれぞれ180°回転させ
                     て"). Divider 50px long ("Tx-Thの間の線は40pxにして"、その後
@@ -1200,7 +1534,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                 {/* text-[14px] → 12px（"txt-img、26 cases、Contactを12pxに"）
                     → 13px — per direct follow-up ("12pxにした箇所を13pxに")。
                     下の "Cases" と Contact の VerticalLabel も同時に 13px。 */}
-                <div className="flex flex-col items-center gap-[10px] text-[13px] font-medium text-white">
+                <div className="mt-[40px] flex flex-col items-center gap-[10px] text-[13px] font-medium text-black">
                   {/* Tx/Th — now real toggle buttons (see showImages above),
                       previously plain static labels. Dim/bright convention
                       matches PC's own ProjectViewToggle exactly: the
@@ -1239,7 +1573,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                       }}
                       aria-pressed={!showImages}
                       className={`transition-colors [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
-                        !showImages ? "pointer-events-none cursor-default text-white/50" : "pointer-events-auto cursor-pointer text-white"
+                        !showImages ? "pointer-events-none cursor-default text-black/50" : "pointer-events-auto cursor-pointer text-black"
                       }`}
                       style={{ touchAction: "manipulation" }}
                     >
@@ -1249,7 +1583,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                   <span
                     aria-hidden
                     key={dividerSweep.generation}
-                    className={`w-px bg-white/50 ${
+                    className={`w-px ${
                       dividerSweep.generation > 0
                         ? dividerSweep.direction === "down"
                           ? "underline-sweep-vertical-down-play"
@@ -1262,7 +1596,18 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                     // このコードベースでは同じ理由で
                     // scroll-progress-gauge.tsx も z-index をインラインに
                     // している。インラインスタイルはCSSの生成を待たない。
-                    style={{ height: DIVIDER_HEIGHT_PX, transform: "translateX(-5px)" }}
+                    // backgroundColor もインライン — per direct follow-up
+                    // （"SPでtxt-imgの間の線が消えてる"）。ブレンド廃止で
+                    // bg-white/50 → bg-black/50 に変えた際、このコードベース
+                    // で唯一の bg-black/50 になり、dev の生成CSSに現れず
+                    // 背景色が付かない＝線が消えていた。高さを同じ理由で
+                    // インラインにしてある（すぐ上のコメント参照）ので、
+                    // 色も同じ扱いに寄せる。
+                    style={{
+                      height: DIVIDER_HEIGHT_PX,
+                      backgroundColor: "rgba(0, 0, 0, 0.5)",
+                      transform: "translateX(-5px)",
+                    }}
                   />
                   <VerticalLabel>
                     {/* `disabled` while already active — see the Tx button's
@@ -1277,7 +1622,7 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                       }}
                       aria-pressed={showImages}
                       className={`transition-colors [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
-                        showImages ? "pointer-events-none cursor-default text-white/50" : "pointer-events-auto cursor-pointer text-white"
+                        showImages ? "pointer-events-none cursor-default text-black/50" : "pointer-events-auto cursor-pointer text-black"
                       }`}
                       style={{ touchAction: "manipulation" }}
                     >
@@ -1285,30 +1630,6 @@ export function MobileHome({ projects, news }: MobileHomeProps) {
                     </button>
                   </VerticalLabel>
                 </div>
-
-                {/* "33 Cases" — its own VerticalLabel, gap-[40px] below the
-                    Tx/Th group — 100px → 80px per an earlier follow-up
-                    ("33casesとのマージンは80pxに"), then 80px → 60px → 40px
-                    per two further direct follow-ups ("SPトップのTxt-Imgと
-                    Casesのマージンを20px詰めて" ×2). ウェイトは
-                    font-medium → font-normal（"33casesのウェイトをregularに
-                    変更"）→ font-medium（"PC,SPのCasesのウェイトをmediumに"、
-                    PC の case-counter.tsx も同時に変更）→ 数字だけ medium で
-                    "Cases" は regular（下の span 参照）。
-                    SlotDigits — same odometer/slot-machine digit roll as
-                    PC's counter (slot-digits.tsx), counting up to the real
-                    project count. */}
-                <VerticalLabel className="text-[13px] font-normal text-white">
-                  <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-                    {/* 数字だけ medium、"Cases" は regular — 直接の指示
-                        ("SPのcasesの数字はmediumでcasesの文字はregularにして")。
-                        PC (case-counter.tsx) は全体 medium のまま。 */}
-                    <span className="font-medium">
-                      <SlotDigits value={projects.length} digits={String(projects.length).length} extraSpins={2} durationMs={1200} />
-                    </span>{" "}
-                    Cases
-                  </span>
-                </VerticalLabel>
 
                 {/* かつてここに縦書きの "Contact"（/contact への Link）が
                     あったが、per direct follow-up ("SPトップの左にある

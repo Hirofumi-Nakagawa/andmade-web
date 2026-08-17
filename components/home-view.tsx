@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLenis } from "lenis/react";
 import { HeaderSummon } from "@/components/header-summon";
+import { HomeStatement } from "@/components/home-statement";
 import { HoveredProjectTitle } from "@/components/hovered-project-title";
 import { MobileHome } from "@/components/mobile-home";
+import { SoundColorsBackground } from "@/components/sound-colors-background";
 import { PreloadProjectPreviews } from "@/components/preload-project-previews";
 import { ProjectGridSection } from "@/components/project-grid-section";
 import {
@@ -17,6 +19,7 @@ import { ProjectViewToggle } from "@/components/project-view-toggle";
 import { RecentNews } from "@/components/recent-news";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { markPageEntered } from "@/lib/entrance";
 import { getGridScale } from "@/lib/grid-scale";
 import type { NewsItem } from "@/lib/news";
 import {
@@ -50,6 +53,9 @@ const HOVER_PREVIEW_FADE_MS = 300;
 /** How close the footer needs to be to the bottom of the viewport before the
  *  bottom-left title text hides, so it never overlaps the footer. */
 const FOOTER_HIDE_MARGIN_PX = 0;
+/** Colors of Sound を off にしてから実体をアンマウントするまで —
+ *  sound-colors-background.tsx の FADE_OUT_MS と揃えること。 */
+const SOUND_COLORS_EXIT_MS = 260;
 
 /**
  * Per-ratio sizing rules: minimum width in grid columns, and — landscape
@@ -146,6 +152,26 @@ type HomeViewProps = {
 export function HomeView({ initialProjects, news }: HomeViewProps) {
   const [projects] = useState<Project[]>(initialProjects);
 
+  /** Colors of Sound（背景に再生曲の色を溜める帯）の on/off — per direct
+   *  request（貼付モック "Colors of Sound - off（押したら画面下に色の帯を
+   *  表示する。デフォはoff）"）。off の間は SoundColorsBackground を丸ごと
+   *  アンマウントするので、描画ループも fetch も走らない。トグル本体は FV
+   *  右上（home-statement.tsx）。 */
+  const [colorsOn, setColorsOn] = useState(false);
+  /** off にした直後も、左へ畳まれるワイプ（sound-colors-background.tsx の
+   *  REVEAL_MS）が終わるまでは実体を残す。それ以外は本当にアンマウント
+   *  されているので、デフォルト（off）では fetch も描画ループも走らない。 */
+  const [colorsMounted, setColorsMounted] = useState(false);
+  // on にした瞬間のマウントはレンダー中に決める（このコードベースの慣例 —
+  // project-view-toggle.tsx / now-playing-ticker.tsx と同じ「effect ではなく
+  // レンダー中に state を合わせる」パターン）。
+  if (colorsOn && !colorsMounted) setColorsMounted(true);
+  useEffect(() => {
+    if (colorsOn || !colorsMounted) return;
+    const timer = setTimeout(() => setColorsMounted(false), SOUND_COLORS_EXIT_MS);
+    return () => clearTimeout(timer);
+  }, [colorsOn, colorsMounted]);
+
   const footerRef = useRef<HTMLDivElement>(null);
   // Every project title's own DOM element — used only to play the
   // underline-sweep animation on all of them when the Tx/Th toggle is
@@ -168,8 +194,18 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
   // 丸ごと再マウントする — トグルの reveal 状態はトグル自身が持っている
   // ので、再マウント＝初期状態からのやり直しになる。
   const [toggleReplayGeneration, setToggleReplayGeneration] = useState(0);
+  // 「ページに入った瞬間」を記録する（lib/entrance.ts 参照）。マウント時と
+  // イントロ完了時だけ打ち直すので、Txt/Img の切り替えでは一覧の登場遅延が
+  // 付かない — per direct follow-up（"img時からtxtを押して戻るとき、一拍
+  // あく感じがあるので、すぐ表示するようにして"）。
+  useState(() => {
+    markPageEntered();
+    return true;
+  });
+
   useEffect(() => {
     function handleIntroComplete() {
+      markPageEntered();
       setToggleReplayGeneration((generation) => generation + 1);
     }
     window.addEventListener("andmade:intro-complete", handleIntroComplete);
@@ -204,6 +240,27 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
     const frame = requestAnimationFrame(() => lenis?.resize());
     return () => cancelAnimationFrame(frame);
   }, [showImages, lenis]);
+
+  // マウント直後とフォント確定後にも measure し直す — per direct follow-up
+  // （"pcのフッター下までスクロールがいかない"）。Lenis はスクロール可能な
+  // 高さを自前でキャッシュしていて、測ったあとに本文の高さが変わっても
+  // 自動では追随しない。FV のステートメント（home-statement.tsx）が入って
+  // ページが数百px伸びたうえ、Adobe Fonts が入れ替わると行の高さも動く
+  // （ProjectGridSection も同じ理由で document.fonts.ready を待って測り
+  // 直している）。上限が古いままだと、実際のページ末尾まで行く手前で
+  // スクロールが止まる＝フッターに届かない。
+  useEffect(() => {
+    if (!lenis) return;
+    let cancelled = false;
+    const frame = requestAnimationFrame(() => lenis.resize());
+    document.fonts.ready.then(() => {
+      if (!cancelled) lenis.resize();
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [lenis]);
 
   const registerTitleRef = useCallback((index: number, el: HTMLElement | null) => {
     titleEls.current[index] = el;
@@ -457,6 +514,12 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
   // elements exactly.
   return (
     <div id="top" className="relative w-full flow-root bg-(--color-background) lg:pb-[28px]">
+      {/* 今日聴いた曲の色が左（朝）から右（夜）へ溜まっていく背景 —
+          components/sound-colors-background.tsx の doc comment 参照。
+          #top の最初の子なので、#top 自身の背景色の上・以降の兄弟
+          （ホバープレビューや本文）の下に描かれる（どれも z-index:auto
+          なので DOM 順で前後が決まる）。PC/SP 共通。 */}
+      {colorsMounted && <SoundColorsBackground active={colorsOn} />}
       {/* PC-only tree, split from SP's own (mobile-home.tsx) at Tailwind's
           default `lg` breakpoint (1024px) — see mobile-home.tsx's own doc
           comment for why this is a plain CSS split, not a JS viewport
@@ -479,9 +542,17 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
         <div className="relative">
           <SiteHeader fadeIn />
 
-        <div className="relative mt-[calc(280px*var(--scale))]">
+          {/* FV のステートメント帯（home-statement.tsx の doc comment 参照）。 */}
+          <HomeStatement colorsOn={colorsOn} onColorsToggle={() => setColorsOn((on) => !on)} />
+
+        {/* 280 → 180 → 175 → 165 — per direct requests（貼付モック → "一覧上に
+            5px詰める" → "一覧を上に10px移動"）。以前はヘッダー
+            直下からの距離だったが、いまは FV ステートメントの最終行
+            （"Who we are"）からの距離。 */}
+        <div className="relative mt-[calc(165px*var(--scale))]">
           <ProjectViewToggle
             key={toggleReplayGeneration}
+            count={projects.length}
             showImages={showImages}
             onShowImagesChange={setShowImages}
             onToggleClick={handleToggleClick}
@@ -563,7 +634,12 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
         </div>
       </div>
 
-      <MobileHome projects={projects} news={news} />
+      <MobileHome
+        projects={projects}
+        news={news}
+        colorsOn={colorsOn}
+        onColorsToggle={() => setColorsOn((on) => !on)}
+      />
 
       {/* Renders nothing — warms the preview images while the intro plays.
           Mounted here, outside both the PC tree above and MobileHome, because

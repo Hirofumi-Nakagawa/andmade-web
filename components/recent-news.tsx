@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { introDefinitelyWontShow, willIntroShow } from "@/components/site-intro";
+import { LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
 import type { NewsItem } from "@/lib/news";
 
 /**
@@ -200,12 +201,14 @@ export function RecentNews({ items, hidden = false }: RecentNewsProps) {
           version was simply missing it.
       */}
       <div
-        className={`absolute z-40 flex items-center justify-center mix-blend-exclusion transition-[translate,opacity] duration-500 ease-out ${
+        className={`absolute z-40 flex items-center justify-center transition-[translate,opacity] duration-500 ease-out ${
           revealed ? "translate-y-0" : "translate-y-[24px]"
         } ${revealed && !hidden ? "opacity-100" : "opacity-0"}`}
         style={{
           top: 0,
           right: "var(--edge-right-inset)",
+          // 一覧・左レールと足並みを揃えて一拍おく（lib/entrance.ts 参照）。
+          transitionDelay: `${LIST_ENTRANCE_DELAY_MS}ms`,
           // Swapped — see this component's own doc comment above for why the
           // rotated content's true visual width/height are the pre-rotation
           // content's own height/width respectively.
@@ -231,7 +234,7 @@ export function RecentNews({ items, hidden = false }: RecentNewsProps) {
           >
             {items.map((item) => (
               <div key={item.id} className="flex flex-col items-start" style={{ gap: "calc(8px*var(--scale))" }}>
-                <p className="font-(family-name:--font-courier) text-[rgba(255,255,255,0.5)] tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+                <p className="font-(family-name:--font-courier) text-black/50 tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                   {item.date}
                 </p>
                 {item.url ? (
@@ -273,14 +276,14 @@ export function RecentNews({ items, hidden = false }: RecentNewsProps) {
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-normal text-white underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                    className="font-normal text-black underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
                     style={{ marginTop: -1, "--underline-offset": "calc(-0.1em - 1px)" } as React.CSSProperties}
                   >
                     {item.text}
                   </a>
                 ) : (
                   <p
-                    className="font-normal text-white [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                    className="font-normal text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
                     style={{ marginTop: -1 }}
                   >
                     {item.text}

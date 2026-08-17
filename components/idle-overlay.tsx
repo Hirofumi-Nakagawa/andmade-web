@@ -1053,6 +1053,26 @@ export function IdleOverlay() {
         ))}
       </div>
 
+      {/* 再生中の曲が無いときだけ、アイドルレイヤーの背面に敷く薄い面 —
+          per direct request（"トップでアイドルレイヤーがかかるとき、再生中の
+          曲がないときは、アイドルレイヤー背面に#F6F6F4透過0.3を敷く" → 0.4）。
+          曲が鳴っていればジャケの色（applyRandomInk / インク差し替え）で
+          画面が変化するが、無音のときは何も起きず素の一覧がそのまま透けて
+          見えるので、そのぶんをこの面で落ち着かせる。
+          z-[149] — レイヤー本体（z-[150]）のすぐ下。pointer-events-none な
+          ので、クリックでの解除は従来どおりレイヤー側が受ける。 */}
+      {showOverlay && isTopPage && !nowPlaying.isPlaying && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 z-[149] transition-opacity ease-out"
+          style={{
+            backgroundColor: "#F6F6F4",
+            opacity: exiting ? 0 : 0.4,
+            transitionDuration: `${EXIT_FADE_MS}ms`,
+          }}
+        />
+      )}
+
       {showOverlay && (
         <>
           {/* hidden lg:block — PC only now; see SP_PANEL_MARGIN_PX's own doc

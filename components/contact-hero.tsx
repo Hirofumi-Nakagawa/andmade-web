@@ -13,7 +13,9 @@ const TEXT = "Get in touch.";
  */
 export function ContactHero() {
   return (
-    <p className="ml-[calc(198px*var(--grid-scale))] text-[length:calc(60px*var(--scale))] leading-[1.75] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+    // ウェイトは medium → regular に戻した（"AboutのDesign with clarity~の
+    // 3行と、ContactのGet in touchをregularに戻す"）。
+    <p className="ml-[calc(198px*var(--grid-scale))] text-[length:calc(60px*var(--scale))] leading-[1.75] font-normal text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
       <ScrambleText text={TEXT} active />
     </p>
   );
