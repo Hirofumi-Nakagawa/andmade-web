@@ -3,8 +3,9 @@
 import { useState, type CSSProperties } from "react";
 import { ArrowBlankIcon } from "@/components/arrow-blank-icon";
 
-/** テキストと矢印の間隔。 */
-const ARROW_GAP = "8px";
+/** テキストと矢印の間隔（SP の既定）。PC は呼び出し側が --scale 追従の
+ *  8px を渡す。 */
+const ARROW_GAP = "6px";
 /** 表示サイズ。支給 SVG の viewBox は 7x7 だが、8px で使う。 */
 const ARROW_SIZE = "8px";
 /** 出入りのスライド — トップの「Who we are →」（home-statement.tsx）と
@@ -30,7 +31,7 @@ type ViewWebsiteLinkProps = {
   /** 矢印の一辺。PC は `calc(8px*var(--scale))` のように --scale 追従で
    *  渡す。既定は SP 用の literal px。 */
   arrowSize?: string;
-  /** テキストと矢印の間隔。既定 8px。 */
+  /** テキストと矢印の間隔。既定は SP 用の 6px。 */
   gap?: string;
   children?: React.ReactNode;
 };
