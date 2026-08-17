@@ -175,11 +175,11 @@ const LABEL_FADE_MS = 260;
  *  （改行）アーティスト名にして" → "pcの帯上のアーティスト名上に表示するのは
  *  日付じゃなく時間にして"）。
  *
- *  PLACEHOLDER_TIME は仮表示。時刻は public/recently-played.php が返す
- *  `time`（日本時間 HH:MM）から来るが、その PHP はまだ本番サーバーに
- *  上がっていないので、いまは必ずこの文字列が出る。デプロイ後は実データに
- *  切り替わるので、そうしたらこの定数は消してよい。 */
-const PLACEHOLDER_TIME = "21:34";
+ *  時刻は public/recently-played.php が返す `time`（日本時間 HH:MM）。
+ *  デプロイ前は空だったので仮の文字列（"21:34"）を出していたが、本番で
+ *  実データが出ることを確認したので撤去した — 欠けているときに嘘の時刻を
+ *  出すより、その行を出さないほうが安全（下の `label.time &&` で単に
+ *  アーティスト名だけになる）。 */
 
 /** 帯の出入り — per direct follow-up（"帯の表示をマスクじゃなく、aboutで
  *  スクロールしたときと同じように少し自然な感じでグラデが表示されるように
@@ -477,7 +477,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
             {
               image,
               artist: typeof artist === "string" ? artist : "",
-              time: typeof time === "string" && time ? time : PLACEHOLDER_TIME,
+              time: typeof time === "string" ? time : "",
             },
           ];
         });
