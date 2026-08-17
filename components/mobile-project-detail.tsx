@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useLenis } from "lenis/react";
 import { ScrambleText } from "@/components/scramble-text";
 import { ProjectHeroParallax } from "@/components/project-hero-parallax";
 import { ProjectDetailReveal } from "@/components/project-detail-reveal";
 import { StatusBarMaskColor } from "@/components/status-bar-mask";
+import { ViewWebsiteLink } from "@/components/view-website-link";
 import { setFooterReady as broadcastFooterReady } from "@/lib/footer-mode-store";
 import { setLightMenuPill } from "@/lib/menu-theme-store";
 import { useNowPlaying } from "@/components/now-playing-provider";
@@ -625,14 +626,11 @@ export function MobileProjectDetail({
            15px shared between title/meta). */}
         {detail?.websiteUrl &&
           (isLinkableWebsiteUrl(detail.websiteUrl) ? (
-            <a
+            <ViewWebsiteLink
               href={detail.websiteUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`underline-sweep mt-[25px] text-[13px] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
-            >
-              View Website
-            </a>
+              className={`mt-[25px] text-[13px] whitespace-nowrap ${headerText}`}
+              textClassName="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+            />
           ) : (
             // URL でない値（"Archived" など）はリンクにせず、書かれた文字を
             // そのまま出す — isLinkableWebsiteUrl の doc comment 参照。
@@ -775,14 +773,13 @@ export function MobileProjectDetail({
                     Link
                   </p>
                   {isLinkableWebsiteUrl(detail.websiteUrl) ? (
-                    <a
+                    <ViewWebsiteLink
                       href={detail.websiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-                    >
-                      View Website
-                    </a>
+                      textClassName="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                      // 共有既定値（-0.1em）から 1px 下げる（PC の同じ
+                      // Link フィールドと同値）。
+                      style={{ "--underline-offset": "calc(-0.1em - 1px)" } as CSSProperties}
+                    />
                   ) : (
                     <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                       {detail.websiteUrl}

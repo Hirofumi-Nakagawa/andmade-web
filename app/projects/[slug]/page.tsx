@@ -7,6 +7,7 @@ import { ProjectDetailReveal } from "@/components/project-detail-reveal";
 import { ProjectTitleScramble } from "@/components/project-title-scramble";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { ViewWebsiteLink } from "@/components/view-website-link";
 import { ProjectHeroParallax } from "@/components/project-hero-parallax";
 import { OGP_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_URL, TWITTER_HANDLE } from "@/lib/site";
 import {
@@ -1320,15 +1321,13 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
               // link moves; the later recap row's own "View Website" (Link
               // field) keeps the shared default, unaffected.
               (isLinkableWebsiteUrl(websiteUrl) ? (
-                <a
+                <ViewWebsiteLink
                   href={websiteUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline-sweep shrink-0 whitespace-nowrap"
+                  className="shrink-0 whitespace-nowrap"
+                  arrowSize="calc(8px*var(--scale))"
+                  gap="calc(8px*var(--scale))"
                   style={{ "--underline-offset": "calc(-0.1em + 5px)" } as React.CSSProperties}
-                >
-                  View Website
-                </a>
+                />
               ) : (
                 // URL でない値（"Archived" など）はリンクにせず、書かれた
                 // 文字をそのまま出す — isLinkableWebsiteUrl の doc comment 参照。
@@ -1505,16 +1504,18 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
               {detail.websiteUrl && (
                 <MetaField label="Link" alignRight dark={headerDark}>
                   {isLinkableWebsiteUrl(detail.websiteUrl) ? (
-                    <a
+                    <ViewWebsiteLink
                       href={detail.websiteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`underline-sweep text-[length:calc(14px*var(--scale))] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+                      textClassName="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                      // 共有既定値（-0.1em）から 1px 下げる。FV 側は逆に
+                      // 上げてあり（上の doc comment 参照）、両者は独立。
+                      style={{ "--underline-offset": "calc(-0.1em - 1px)" } as React.CSSProperties}
+                      arrowSize="calc(8px*var(--scale))"
+                      gap="calc(8px*var(--scale))"
+                      className={`text-[length:calc(14px*var(--scale))] whitespace-nowrap ${
                         headerDark ? "text-black" : "text-white"
                       }`}
-                    >
-                      View Website
-                    </a>
+                    />
                   ) : (
                     <p
                       className={`text-[length:calc(14px*var(--scale))] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
