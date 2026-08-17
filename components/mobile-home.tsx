@@ -1172,7 +1172,7 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
         </Link>
 
         {/* FV ステートメント（PC は home-statement.tsx、Figma node 1712:1053）:
-            What Matters 13px → 40px下に本文 22px → 17px下に Who we are 15px
+            What Matters 13px → 40px下に本文 22px → 15px下に Who we are 15px
             → 30px下に「A sound archive〜」13px → 80px下に Made Here（下の
             レール1行目）。縦の間隔は PC と同じく [text-box-trim:trim-both]
             前提（前の要素のベースライン → 次の要素のキャップ上端）。
@@ -1219,8 +1219,8 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
               // インライン。Made Here / Colors of Sound の
               // 透過と同じで、SP では新規の utility が dev の生成CSSに
               // 追いつかず効かないことがあるため、確実に効く書き方に寄せる。
-              // 20px → 17px（本文のベースラインから 3px 詰める）。
-              className="mt-[17px]"
+              // 20px → 17px → 15px（本文のベースラインからの距離）。
+              className="mt-[15px]"
               style={{
                 // 出るきっかけはコピーの最終行（STATEMENT_WHO_FADE_MS の
                 // doc comment 参照）。遅延はそちらで持っているのでここは 0。
