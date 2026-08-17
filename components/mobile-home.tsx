@@ -1323,7 +1323,9 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
         >
           {/* 「Made Here」— レール（sticky）の外に出した非固定ラベル。位置は
               セクション原点の左上 = お知らせ（MobileRecentNews、topPx=0）の
-              上面と同じ。左マージンだけレールと同じ -4px 相当に合わせてある。 */}
+              上面と同じ。左は -4px（＝画面左から 4px）でレールに合わせて
+              いたが、ページ左マージンと同じ 8px へ。この段落だけの指定で、
+              下のレール（Tx-Img / N Cases）は -4px のまま。 */}
           <p
             // ブレンドモード廃止 + #000 + regular。
             //
@@ -1334,7 +1336,7 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
             // （すぐ上の doc comment 参照）ので、その外に出したこの行だけ
             // 同じ仕掛けが抜けていた。
             key={`made-here-${introReplayGeneration}`}
-            className="absolute top-0 left-[-4px] text-[13px] leading-[1.5] font-normal text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+            className="absolute top-0 left-0 text-[13px] leading-[1.5] font-normal text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
             style={{
               opacity: railRevealed ? 1 : 0,
               translate: railRevealed ? "0 0" : "0 24px",
