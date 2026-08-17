@@ -1162,7 +1162,7 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
         </Link>
 
         {/* FV ステートメント（PC は home-statement.tsx、Figma node 1712:1053）:
-            What Matters 13px → 40px下に本文 22px → 20px下に Who we are 18px
+            What Matters 13px → 40px下に本文 22px → 20px下に Who we are 16px
             → 30px下に「A sound archive〜」13px → 80px下に Made Here（下の
             レール1行目）。縦の間隔は PC と同じく [text-box-trim:trim-both]
             前提（前の要素のベースライン → 次の要素のキャップ上端）。
@@ -1222,7 +1222,7 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
                 // data-ink-group — アイドル中のインク差し替えで文字と矢印を
                 // 同色に塗るための目印（lib/album-colors.ts 参照）。
                 data-ink-group
-                className="inline-flex items-center gap-[8px] text-[18px] leading-[1.5] font-medium text-black"
+                className="inline-flex items-center gap-[8px] text-[16px] leading-[1.5] font-medium text-black"
               >
                 <span className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                   Who we are
