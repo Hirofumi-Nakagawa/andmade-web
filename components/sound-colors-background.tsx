@@ -140,20 +140,32 @@ const GRAIN_OPACITY = 0.12;
 const GRAIN_FPS = 12;
 
 /** 帯に添えるラベル（再生時刻 + アーティスト名）。
- *  1つだけを出し、LABEL_HOLD_MS 見せて消え、LABEL_GAP_MS 後に別の曲へ。
+ *  1本を LABEL_HOLD_MS 見せて消し、LABEL_GAP_MS 後に別の曲へ。
  *  横位置は、その曲の縦線の現在位置（＝流れに追従）。 */
 const LABEL_FONT_PX = 12;
 /** 24 → 22。 */
 const LABEL_BOTTOM_PX = 22;
 const LABEL_HOLD_MS = 4200;
 const LABEL_GAP_MS = 900;
-/** 消えるときのフェード（600 → 260 "消えるときの
- *  フェードはもう少し速く"）。出るときはフェードせず、ScrambleText の
- *  文字の立ち上がりそのものが登場演出になる（
- *  "スクランブルテキストで表示して"）。 */
-const LABEL_FADE_MS = 260;
-/** 1行目に再生時刻、2行目にアーティスト名アーティスト名にして" → "pcの帯上のアーティスト名上に表示するのは
- *  日付じゃなく時間にして"）。
+/** 消えるときのフェード（600 → 260 → 160）。出るときはフェードせず、
+ *  ScrambleText の文字の立ち上がりそのものが登場演出になる。 */
+const LABEL_FADE_MS = 160;
+/** ラベルの本数（＝同時に出得る上限）。
+ *
+ *  スロット0は常時、スロット1は自分のサイクルごとに LABEL_SECOND_CHANCE で
+ *  出る/出ないを引き直す。両者は独立に回っていて出入りの時刻も揃えていない
+ *  ので、「1本のときもあれば、途中から2本目が増える／先に片方が消える」
+ *  という見え方になる。 */
+const LABEL_SLOT_COUNT = 2;
+/** スロット1がそのサイクルで出る確率。 */
+const LABEL_SECOND_CHANCE = 0.45;
+/** スロット1の出だしをスロット0からずらす量（ms）。以降は「出ない回」の
+ *  待ち時間がサイクル長と違うぶん、自然に位相がずれ続ける。 */
+const LABEL_SECOND_OFFSET_MS = 2400;
+/** 2本が重なって読めなくならないための最小の横間隔（px）。近すぎる札は
+ *  引き直す。 */
+const LABEL_MIN_SEPARATION_PX = 260;
+/** 1行目に再生時刻、2行目にアーティスト名。
  *
  *  時刻は public/recently-played.php が返す `time`（日本時間 HH:MM）。
  *  デプロイ前は空だったので仮の文字列を出していたが、本番で
@@ -355,9 +367,10 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
    *  ≒21.7px/s）が全体の流れ（画面幅 / 90s ≒ 21.3px/s）を上回る瞬間が
    *  あり、ラベルが左へ戻って見えていた。揺らぎを抜くと単調に右へ流れる。 */
   const lineDriftXRef = useRef<number[]>([]);
-  /** いま出しているラベル（null = 非表示）。 */
-  const [label, setLabel] = useState<{ index: number; time: string; artist: string } | null>(null);
-  const [labelShown, setLabelShown] = useState(false);
+  /** いま出しているラベル（スロットごと。null = そのスロットは非表示）。 */
+  const [labels, setLabels] = useState<
+    ({ index: number; time: string; artist: string; shown: boolean } | null)[]
+  >(() => Array.from({ length: LABEL_SLOT_COUNT }, () => null));
   /** 左からのワイプ（REVEAL_MS の doc comment 参照）。マウント直後の1フレーム
    *  だけ閉じた状態で描いてから開く — 最初から開いた状態だと transition が
    *  走らない。 */
@@ -411,7 +424,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
    *  デコードに1秒以上かかることがあり、マウント基準だと何も描けないうちに
    *  開き終わって、色が出た瞬間ポンと出てしまうため。 */
   const revealStartRef = useRef<number | null>(null);
-  const labelRef = useRef<HTMLDivElement>(null);
+  const labelRefs = useRef<(HTMLDivElement | null)[]>([]);
   /** ラベル用の山札（shuffledArtistDeck 参照）。前から1枚ずつ引き、尽きたら
    *  引き直す。lastArtistRef は継ぎ目（一巡の最後と次の一巡の最初）で同じ
    *  アーティストが連続しないようにするためだけの控え。 */
@@ -478,53 +491,116 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
   }, []);
 
   // ラベルの出し入れ（LABEL_* の doc comment 参照）。曲が読み込まれるまで
-  // 何も出さない。1つ見せて消し、少し間を置いて別の曲へ。
+  // 何も出さない。スロットごとに独立したサイクルが回っていて、山札
+  // （deckRef）だけを共有する — 同じ曲が同時に2箇所へ出ることはない。
   useEffect(() => {
     if (!isDesktop) return;
-    let timer: number;
+    const timers = new Set<number>();
     let cancelled = false;
+    const after = (ms: number, fn: () => void) => {
+      const id = window.setTimeout(() => {
+        timers.delete(id);
+        if (!cancelled) fn();
+      }, ms);
+      timers.add(id);
+    };
 
-    const showNext = () => {
+    /** いま各スロットが掴んでいる曲。近すぎる札を弾くために見る。 */
+    const activeIndexBySlot: (number | null)[] = Array.from(
+      { length: LABEL_SLOT_COUNT },
+      () => null,
+    );
+
+    const drawIndex = (slot: number): number | null => {
+      const tracks = tracksRef.current;
+      // 近すぎて弾いた札はそのまま捨てる（山札は尽きたら引き直される）。
+      // 何度も弾かれ続けないよう試行回数に上限を置く。
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (deckRef.current.length === 0) {
+          const deck = shuffledArtistDeck(tracks);
+          // 継ぎ目の重複回避 — 引き直した山札の1枚目が、いま出したばかりの
+          // アーティストと同じなら後ろの1枚と入れ替える。
+          if (deck.length > 1 && tracks[deck[0]].artist === lastArtistRef.current) {
+            const swapWith = 1 + Math.floor(Math.random() * (deck.length - 1));
+            [deck[0], deck[swapWith]] = [deck[swapWith], deck[0]];
+          }
+          deckRef.current = deck;
+        }
+        const index = deckRef.current.shift();
+        if (index === undefined) return null;
+        const tooClose = activeIndexBySlot.some((other, otherSlot) => {
+          if (otherSlot === slot || other === null) return false;
+          const a = lineDriftXRef.current[index];
+          const b = lineDriftXRef.current[other];
+          if (typeof a !== "number" || typeof b !== "number") return false;
+          return Math.abs(a - b) < LABEL_MIN_SEPARATION_PX;
+        });
+        if (!tooClose) return index;
+      }
+      return null;
+    };
+
+    const setSlot = (
+      slot: number,
+      value: { index: number; time: string; artist: string; shown: boolean } | null,
+    ) => {
+      setLabels((prev) => {
+        const next = [...prev];
+        next[slot] = value;
+        return next;
+      });
+    };
+
+    const runSlot = (slot: number) => {
       const tracks = tracksRef.current;
       if (tracks.length === 0) {
-        timer = window.setTimeout(showNext, 1000);
+        after(1000, () => runSlot(slot));
         return;
       }
-      if (deckRef.current.length === 0) {
-        const deck = shuffledArtistDeck(tracks);
-        // 継ぎ目の重複回避 — 引き直した山札の1枚目が、いま出したばかりの
-        // アーティストと同じなら後ろの1枚と入れ替える。
-        if (deck.length > 1 && tracks[deck[0]].artist === lastArtistRef.current) {
-          const swapWith = 1 + Math.floor(Math.random() * (deck.length - 1));
-          [deck[0], deck[swapWith]] = [deck[swapWith], deck[0]];
-        }
-        deckRef.current = deck;
+      // スロット0以外は毎回は出さない（「たまに2本並ぶ」くらいの頻度）。
+      // 待ち時間をサイクル長と揃えないので、位相も少しずつずれていく。
+      if (slot > 0 && Math.random() > LABEL_SECOND_CHANCE) {
+        after(LABEL_HOLD_MS + LABEL_GAP_MS + Math.random() * 1500, () => runSlot(slot));
+        return;
       }
-      const index = deckRef.current.shift() ?? 0;
+      const index = drawIndex(slot);
+      if (index === null) {
+        after(LABEL_GAP_MS, () => runSlot(slot));
+        return;
+      }
       const track = tracks[index];
       lastArtistRef.current = track.artist;
       if (!track.artist && !track.time) {
-        timer = window.setTimeout(showNext, LABEL_GAP_MS);
+        after(LABEL_GAP_MS, () => runSlot(slot));
         return;
       }
-      if (cancelled) return;
-      setLabel({ index, time: track.time, artist: track.artist });
+      activeIndexBySlot[slot] = index;
       // 出るときは opacity を最初から 1 に（＝フェードイン無し）。登場は
       // ScrambleText が担う。
-      setLabelShown(true);
-      timer = window.setTimeout(() => {
-        setLabelShown(false);
-        timer = window.setTimeout(() => {
-          setLabel(null);
-          timer = window.setTimeout(showNext, LABEL_GAP_MS);
-        }, LABEL_FADE_MS);
-      }, LABEL_HOLD_MS);
+      setSlot(slot, { index, time: track.time, artist: track.artist, shown: true });
+      after(LABEL_HOLD_MS, () => {
+        setLabels((prev) => {
+          const current = prev[slot];
+          if (!current) return prev;
+          const next = [...prev];
+          next[slot] = { ...current, shown: false };
+          return next;
+        });
+        after(LABEL_FADE_MS, () => {
+          activeIndexBySlot[slot] = null;
+          setSlot(slot, null);
+          after(LABEL_GAP_MS, () => runSlot(slot));
+        });
+      });
     };
 
-    timer = window.setTimeout(showNext, 1500);
+    for (let slot = 0; slot < LABEL_SLOT_COUNT; slot++) {
+      after(1500 + slot * LABEL_SECOND_OFFSET_MS, () => runSlot(slot));
+    }
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
+      timers.forEach((id) => window.clearTimeout(id));
+      timers.clear();
     };
   }, [isDesktop]);
 
@@ -848,11 +924,11 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       // 縁の帯だけを残すマスク（EDGE_BAND_PX の doc comment 参照）。
       // 低解像度の ImageData で1枚作り、キャッシュして拡大描画する。
       // ラベルを帯に追従させる（LABEL_* の doc comment 参照）。
-      const labelEl = labelRef.current;
-      if (labelEl && labelEl.dataset.index) {
+      labelRefs.current.forEach((labelEl) => {
+        if (!labelEl || !labelEl.dataset.index) return;
         const x = lineDriftXRef.current[Number(labelEl.dataset.index)];
         if (typeof x === "number") labelEl.style.transform = `translate3d(${x.toFixed(1)}px, 0, 0)`;
-      }
+      });
 
       // 波形の出入りをなめらかに（WAVE_LERP 参照）。
       waveRef.current += ((playingRef.current ? 1 : 0) - waveRef.current) * WAVE_LERP;
@@ -914,39 +990,45 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       />
       {/* 帯に添えるラベル（LABEL_* の doc comment 参照）。位置は rAF が
           transform で直接書く（React の再レンダーを挟まない）。 */}
-      {label && isDesktop && (
-        <div
-          ref={labelRef}
-          data-index={label.index}
-          aria-hidden
-          className="pointer-events-none fixed left-0 font-normal"
-          style={{
-            bottom: LABEL_BOTTOM_PX,
-            fontSize: LABEL_FONT_PX,
-            lineHeight: 1.2,
-            letterSpacing: "0.02em",
-            whiteSpace: "nowrap",
-            color: "var(--color-background)",
-            mixBlendMode: "difference",
-            opacity: labelShown && shown ? 1 : 0,
-            transition: `opacity ${shown ? LABEL_FADE_MS : FADE_OUT_MS}ms ease-out`,
-          }}
-        >
-          {/* 日付 → 改行 → アーティスト名。ScrambleText は1行単位なので
-              2つ並べる（key に本文を含めているので、曲が変わるたび最初から
-              組み上がる）。 */}
-          {label.time && (
-            <div>
-              <ScrambleText key={`${label.index}:t:${label.time}`} text={label.time} active />
+      {isDesktop &&
+        labels.map((label, slot) =>
+          label ? (
+            <div
+              key={slot}
+              ref={(el) => {
+                labelRefs.current[slot] = el;
+              }}
+              data-index={label.index}
+              aria-hidden
+              className="pointer-events-none fixed left-0 font-normal"
+              style={{
+                bottom: LABEL_BOTTOM_PX,
+                fontSize: LABEL_FONT_PX,
+                lineHeight: 1.2,
+                letterSpacing: "0.02em",
+                whiteSpace: "nowrap",
+                color: "var(--color-background)",
+                mixBlendMode: "difference",
+                opacity: label.shown && shown ? 1 : 0,
+                transition: `opacity ${shown ? LABEL_FADE_MS : FADE_OUT_MS}ms ease-out`,
+              }}
+            >
+              {/* 時刻 → 改行 → アーティスト名。ScrambleText は1行単位なので
+                  2つ並べる（key に本文を含めているので、曲が変わるたび最初から
+                  組み上がる）。 */}
+              {label.time && (
+                <div>
+                  <ScrambleText key={`${label.index}:t:${label.time}`} text={label.time} active />
+                </div>
+              )}
+              {label.artist && (
+                <div>
+                  <ScrambleText key={`${label.index}:a:${label.artist}`} text={label.artist} active />
+                </div>
+              )}
             </div>
-          )}
-          {label.artist && (
-            <div>
-              <ScrambleText key={`${label.index}:a:${label.artist}`} text={label.artist} active />
-            </div>
-          )}
-        </div>
-      )}
+          ) : null,
+        )}
     </>
   );
 }
