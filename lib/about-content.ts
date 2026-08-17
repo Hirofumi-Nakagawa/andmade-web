@@ -60,8 +60,7 @@ export const HERO_LEAD_JA = [
 /** 同じくリード文（英語）。HERO_LEAD_JA と同様に改行位置を固定。 */
 export const HERO_LEAD_EN = [
   // トップ FV（components/home-statement.tsx の COPY_LINES）と同一の文言に
-  // 揃えた — per direct follow-up（"Aboutのfvのwe uncover what~をトップと
-  // 同じ以下に変更"）。片方だけ直すとズレるので、変更時は両方を見ること。
+  // 揃えた。片方だけ直すとズレるので、変更時は両方を見ること。
   "We uncover what truly matters and give purpose a clear form.",
   "By making every design decision intentional, we believe each thoughtful",
   "choice contributes to work that holds value over time.",

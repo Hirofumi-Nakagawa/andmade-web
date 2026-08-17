@@ -8,7 +8,7 @@ import { useIntroReveal } from "@/components/use-intro-reveal";
 import { FV_SECOND_BEAT_MS } from "@/lib/entrance";
 
 /**
- * トップ FV のステートメント帯 — per direct request（貼付モックの通り）:
+ * トップ FV のステートメント帯:
  *
  *   ・ヘッダー下 100px の位置に「What Matters」（12px / 画面左 24px）
  *   ・ステートメント本文は「ANDMADE Inc.」の左面（198px * --grid-scale）
@@ -25,9 +25,7 @@ import { FV_SECOND_BEAT_MS } from "@/lib/entrance";
  * 組みなので、緩めたい場合は leading-[1.05] を触ればよい。
  */
 
-/** コピー（"We uncover 〜"）のカーテンリビール — per direct follow-up
- *  （"カーテンリビールはイントロの3行と同じように順に下からマスクで表示
- *  される仕様だけど"）。実体は components/curtain-lines.tsx（イントロの
+/** コピーのカーテンリビール。実体は components/curtain-lines.tsx（イントロの
  *  3行タグラインと同じ作り・同じ値）。PC は改行位置がデザイン指定なので
  *  行をそのまま渡す。 */
 const COPY_LINES = [
@@ -35,9 +33,7 @@ const COPY_LINES = [
   "By making every design decision intentional, we believe each thoughtful",
   "choice contributes to work that holds value over time.",
 ];
-/** 1200px 以下用の、行を短くしたセット — per direct follow-up（"ウィンドウ幅
- *  1200px以下だとwe uncover~とa sound archive~が被るので、被らないように
- *  we uncoverのほうを改行して"）。
+/** 1200px 以下用の、行を短くしたセット。
  *
  *  本文の文字サイズ（28px * --scale）は 1440px 未満では縮まない（--scale の
  *  下限は 1）のに、左マージン（198px * --grid-scale）と右の説明文は幅なりに
@@ -52,19 +48,16 @@ const COPY_LINES_NARROW = [
 ];
 /** 上の切り替えしきい値。 */
 const NARROW_QUERY = "(max-width: 1200px)";
-/** 「What Matters」と「A sound archive〜」のスライドイン＋フェードイン —
- *  per direct request。値はこのサイト共通の登場演出（project-view-toggle.tsx
- *  など）と同じ translate-y 24px / 500ms / ease-out。 */
+/** 「What Matters」と「A sound archive〜」のスライドイン＋フェードイン。
+ *  値はこのサイト共通の登場演出（project-view-toggle.tsx など）と同じ
+ *  translate-y 24px / 500ms / ease-out。 */
 const SLIDE_MS = 500;
 /** 3つの要素が同時に動くと忙しないので、わずかにずらす。 */
 const DELAY_WHAT_MATTERS_MS = 0;
 const DELAY_COPY_MS = 120;
-/** 「A sound archive〜 / Colors of Sound」はコピーより一拍遅れて —
- *  per direct follow-up（"Who we areボタンとA sound archive~もワンテンポ
- *  遅らせて表示"）。 */
+/** 「A sound archive〜 / Colors of Sound」はコピーより一拍遅れて出す。 */
 const DELAY_SOUND_MS = FV_SECOND_BEAT_MS;
-/** 「Who we are」のフェードイン。コピーと同時 → 一拍遅れへ — per direct
- *  follow-up（"Who we areボタンとA sound archive~もワンテンポ遅らせて表示"）。 */
+/** 「Who we are」のフェードイン。コピーと同時 → 一拍遅れへ。 */
 const WHO_FADE_MS = 500;
 
 type HomeStatementProps = {
@@ -136,18 +129,16 @@ export function HomeStatement({ colorsOn, onColorsToggle }: HomeStatementProps) 
             <span className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
               Who we are
             </span>
-            {/* ホバーで矢印が右へ抜け、同じ矢印が左から入ってくる — per
-                direct request（"→はホバーで右にスライドして左から現れる仕様
-                に"）。ボックスは矢印1つぶんちょうどで overflow-hidden なので、
-                抜けた矢印はその場で切れて見えなくなる。 */}
+            {/* ホバーで矢印が右へ抜け、同じ矢印が左から入ってくる。ボックスは
+                矢印1つぶんちょうどで overflow-hidden なので、抜けた矢印は
+                その場で切れて見えなくなる。 */}
             <span
               className="relative block shrink-0 overflow-hidden"
               style={{ width: "calc(12px * var(--scale))", height: "calc(10px * var(--scale))" }}
             >
               {/* duration-0 + group-hover:duration-500 — ホバーアウトは
-                  アニメーション無しで即座に戻す per direct follow-up（"→の
-                  ホバーアウトはアニメーション無し"）。ホバーが外れると
-                  duration も 0 に戻るので、逆再生されずスナップする。 */}
+                  アニメーション無しで即座に戻す。ホバーが外れると duration も
+                  0 に戻るので、逆再生されずスナップする。 */}
               <ArrowIcon style={{ width: "calc(12px * var(--scale))", height: "calc(10px * var(--scale))" }} className="block transition-transform duration-0 ease-out group-hover:translate-x-[200%] group-hover:duration-500" />
               <ArrowIcon style={{ width: "calc(12px * var(--scale))", height: "calc(10px * var(--scale))" }} className="absolute inset-0 -translate-x-[200%] transition-transform duration-0 ease-out group-hover:translate-x-0 group-hover:duration-500" />
             </span>
@@ -171,16 +162,14 @@ export function HomeStatement({ colorsOn, onColorsToggle }: HomeStatementProps) 
             onClick={onColorsToggle}
             aria-pressed={colorsOn}
             data-ink-group
-            // on の間は透過50% — per direct follow-up（"on offの文字は無しに
-            // して / onのときは透過を50%にして"）。ラベル自体は
+            // on の間は透過50%。ラベル自体は
             // "Colors of Sound" 固定で、状態は濃さだけで示す。
             className={`cursor-pointer font-medium transition-opacity hover:opacity-50 ${
               colorsOn ? "opacity-50" : "opacity-100"
             }`}
           >
             {/* --underline-offset — 共有の .underline-sweep 既定値（-0.1em）
-                から 2px 上げる per direct follow-up（"colors of soundの下線
-                位置を2px上に移動"）。bottom は負のオフセットなので、負の量を
+                から 2px 上げる。bottom は負のオフセットなので、負の量を
                 減らす＝文字に近づく＝上がる。globals.css の該当ルール参照。 */}
             <span
               className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"

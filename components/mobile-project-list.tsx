@@ -115,8 +115,7 @@ const ROW_REVEAL_STAGGER_MS = 90;
  *  to already be visible together. */
 const MAX_STAGGER_ROWS = 8;
 
-/** 一覧全体を「ワンテンポ」遅らせる — per direct follow-up（"一覧はワン
- *  テンポ遅らせて表示して"）。PC（project-card.tsx の
+/** 一覧全体を「ワンテンポ」遅らせる。PC（project-card.tsx の
  *  LIST_ENTRANCE_DELAY_MS）と同値・同じ考え方で、効かせるのはマウント直後
  *  に既に画面内にあった行だけ。スクロールで入ってくる行に足すと、ただ
  *  反応が鈍く感じるため。 */

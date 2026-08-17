@@ -62,8 +62,7 @@ export function ProjectList({
       style={{
         gridTemplateColumns: "repeat(3, calc(220px * var(--grid-scale)))",
         columnGap: "calc(128px * var(--grid-scale))",
-        // 100px → 95px → 90px → 85px → 80px — per direct follow-ups（最後は
-        // "一覧の行間を80pxに"）。
+        // 100px → 95px → 90px → 85px → 80px。
         rowGap: "calc(80px * var(--grid-scale))",
       }}
     >

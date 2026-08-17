@@ -233,8 +233,7 @@ export function NowPlayingTicker({
         <img
           src={albumImageUrl}
           alt=""
-          // z-20 — per direct follow-up（"右上再生曲にホバーしたときに表示
-          // するジャケをA sound archive that turns~の文言より上に表示して"）。
+          // z-20。
           // トップ FV 右上の説明文（home-statement.tsx）はこの img より後の
           // DOM 順で、どちらも z-index:auto だったため文言のほうが前面に来て
           // ジャケに重なっていた。ここだけ明示的に持ち上げる（この img の

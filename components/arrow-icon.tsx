@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 /**
  * 「Who we are →」の矢印 — ユーザー支給の Vector.svg（12x10）をそのまま
- * パス化したもの（per direct request "→はこれを使って"）。塗り1本のパスなので
+ * パス化したもの。塗り1本のパスなので
  * 線幅の調整は不要で、色は currentColor で親のテキスト色に追従する。
  *
  * PC（home-statement.tsx）と SP（mobile-home.tsx）で共有。サイズは呼び出し側

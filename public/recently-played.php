@@ -14,8 +14,7 @@
  * 失敗時も常に 200 + 空配列（呼び出し側は「何も表示しない」だけで済む。
  * components/recently-played-flip.tsx 参照）。
  *
- * artist はジャケット下に出すため（per direct follow-up "ジャケ下には
- * アーティスト名を入れて"）。複数アーティストはカンマ区切りで連結
+ * artist はジャケット下に出すため。複数アーティストはカンマ区切りで連結
  * （now-playing.php と同じ扱い）。
  *
  * ── セットアップ ───────────────────────────────────────────────
@@ -54,8 +53,7 @@ function cache_path(): string
     return sys_get_temp_dir() . '/andmade-recently-played.json';
 }
 
-/** 再生ログの置き場所 — per direct follow-up（"colors of soundは後々
- *  アーカイブを作れるようにログを残して"）。
+/** 再生ログの置き場所。
  *
  *  Spotify の「直近再生」は最大50曲しか遡れないので、あとから
  *  「Colors of Sound」のアーカイブ（日ごとの色）を作ろうとしても、過去は
@@ -66,8 +64,7 @@ function cache_path(): string
  *  置き場所は **www の外**（このファイルの1つ上 = ドキュメントルートの親、
  *  さくらなら /home/andmade/colors-of-sound-logs）。理由は2つ —
  *   ・一時ディレクトリ（sys_get_temp_dir）はサーバー側の掃除で消え得るので
- *     アーカイブの保存先には使えない per direct follow-up（"これから再生する
- *     曲は今後アーカイブページを作る上ですべてログとして残るようにして"）。
+ *     アーカイブの保存先には使えない。
  *   ・www の下に置くと URL で直接読めてしまう（デプロイの rsync --delete で
  *     消える危険もある）。
  *  書き込みできない環境では黙って諦める（append_play_log 参照）。環境変数
@@ -326,12 +323,11 @@ foreach ($data['items'] as $entry) {
         }
     }
     // time — 再生時刻（HH:MM、日本時間）。トップ背景の帯に添えるラベルで
-    // 使う（components/sound-colors-background.tsx）— per direct follow-up
-    // ("再生曲の時間とアーティスト名を…表示して")。API の played_at は
+    // 使う（components/sound-colors-background.tsx）。API の played_at は
     // ISO8601 の UTC。
     $time = '';
     // date — 再生日（Aug.15,2026 形式、日本時間）。トップ背景の帯の
-    // ラベル1行目 per direct follow-up（"日付（改行）アーティスト名にして"）。
+    // ラベル1行目（2行目がアーティスト名）。
     $date = '';
     if (!empty($entry['played_at'])) {
         $playedAt = new DateTime($entry['played_at'], new DateTimeZone('UTC'));

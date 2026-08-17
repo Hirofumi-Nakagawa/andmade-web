@@ -46,8 +46,7 @@ const RELEASE_ZONE_PX = 40;
 export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
   const pathname = usePathname();
   const [released, setReleased] = useState(false);
-  /** 少しでもスクロールしたら即座に消す — per direct follow-up（"Scrollは
-   *  スクロールしたらすぐ消す"）。最終行に到達したら消える従来の `released`
+  /** 少しでもスクロールしたら即座に消す。最終行に到達したら消える従来の `released`
    *  はそのまま（スクロールを戻したときに戻ってこないよう、こちらが先に
    *  効く）。 */
   const [scrolled, setScrolled] = useState(false);
@@ -146,8 +145,7 @@ export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
           transitionDelay: revealed && !released && !scrolled ? `${LIST_ENTRANCE_DELAY_MS}ms` : "0ms",
         }}
       >
-        {/* 「N Cases」→「Scroll」— per direct request（貼付モック "画面右下の
-           cases は Scroll に変更"）。件数の表示は左レール（Made Here / N
+        {/* 「N Cases」→「Scroll」。件数の表示は左レール（Made Here / N
            Cases、project-view-toggle.tsx）へ移した。出す/引っ込めるタイミング
            （イントロ待ち・最終行に到達したらフェードアウト）はそのまま。 */}
         Scroll

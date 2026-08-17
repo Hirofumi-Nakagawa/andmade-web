@@ -7,13 +7,10 @@ import { ScrambleText } from "@/components/scramble-text";
 import { useNowPlaying } from "@/components/now-playing-provider";
 
 /**
- * トップページの「今日聴いた曲の色が溜まっていく」背景 — per direct
- * follow-up ("画面左から、朝→夜の順で再生曲の色が蓄積される / 色は一曲に
- * つき特徴的な色を3色（できるだけ明るく発色の良い色を選ぶこと）/ About
- * 同様、画面上部から背景色のグラデを被せる / About同様グレインを乗せる /
- * About、Contactと同じような質感にする / 色が汚く濁らないようにする /
- * about、contact同様カーソルにも反応")。将来の Colors of Sound
- * （アーカイブページ）の下敷きでもある。
+ * トップページの「今日聴いた曲の色が溜まっていく」背景。画面左から
+ * 朝→夜の順に再生曲の色が蓄積され、About / Contact と揃えた質感
+ * （カーソル追従・濁らない発色）で下辺に帯として出る。将来の
+ * Colors of Sound（アーカイブページ）の下敷きでもある。
  *
  * データ:
  *   いまは public/recently-played.php（直近再生。最大50曲・新しい順）を
@@ -22,7 +19,7 @@ import { useNowPlaying } from "@/components/now-playing-provider";
  *   （cron + JSON）はまだ無いので、実質「直近50曲ぶんの足跡」。貯め始めた
  *   ら、同じ描画のまま入力の配列だけ差し替えればよい。
  *
- * 濁らせない工夫（直接の指示）:
+ * 濁らせない工夫:
  *   1. ジャケから拾った色をそのまま使わず、HSL に変換して彩度・明度を
  *      VIVID_* の帯にクランプする。くすんだ色・暗い色も必ず発色の良い色に
  *      引き上がる。
@@ -30,32 +27,29 @@ import { useNowPlaying } from "@/components/now-playing-provider";
  *      （通常の alpha 合成だと補色同士が灰色に沈む）。
  *
  * 質感（About / Contact と揃える）:
- *   （上部から背景色を被せるグラデは per direct follow-up "画面上からの
- *     背景色グラデは無し" で撤去。）
- *   （グレインは per direct follow-up "ノイズは無しで" で撤去。）
+ *   （上部から背景色を被せるグラデは撤去済み。）
+ *   （グレインも撤去済み。）
  *   - カーソル位置へゆっくり追従して色の塊が押し出される（About の
  *     cursorStrength と同じ読み味。lerp でスムージング）。
  */
 
-/** 1曲から拾う色数（直接の指示）。 */
+/** 1曲から拾う色数。 */
 const COLORS_PER_TRACK = 3;
 /** 発色のクランプ幅 — この帯に入れることで濁りと沈みを構造的に防ぐ。
- *  0.90–1.00 → 0.82–0.92 — per direct follow-up（"帯の色の発色が良すぎるので、
- *  ほんの少しだけ抑えて"）。彩度の上限だけを下げているので、濁り対策
+ *  0.90–1.00 → 0.82–0.92。彩度の上限だけを下げているので、濁り対策
  *  （下限を高く保つ）はそのまま効いている。 */
 const VIVID_SATURATION = [0.82, 0.92] as const;
 /** 明度は加算合成（下の描画部の doc comment 参照）の前提で暗めに —
  *  そのままだと2枚重なった時点で白へ抜けてしまう。単独では深い発色、
- *  重なった所で明るく光る、という配分。0.40–0.50 → 0.34–0.42 — per
- *  direct follow-up ("ちょっと一部が明るすぎかも")。 */
+ *  重なった所で明るく光る、という配分。0.40–0.50 → 0.34–0.42（一部が
+ *  明るすぎたため）。 */
 const VIVID_LIGHTNESS = [0.34, 0.42] as const;
 /** 縦線1本の広がり（曲どうしの間隔に対する倍率・下限 px）と不透明度。
  *  「広がり」は線の左右へのグラデの伸び — この値が大きいほど隣の線と
- *  混ざり合う領域が広くなる（per direct follow-up "玉じゃなくて縦線に
- *  したい"）。
+ *  混ざり合う領域が広くなる。
  *
- *  半径を「画面高の割合」から「隣の曲との間隔の倍率」に変えた理由 — per
- *  direct follow-up ("画面中央近辺が白くなって見えない")。帯は高さ 70px
+ *  半径を「画面高の割合」から「隣の曲との間隔の倍率」に変えた理由 —
+ *  画面中央近辺が白くなって見えなくなっていた。帯は高さ 70px
  *  ほどしかないのに半径が画面高の 30%（数百 px）あったため、画面中央では
  *  10曲以上が同じ場所に重なっていた。lighten（各チャンネルの最大値）は
  *  補色どうしが重なると (255,255,255) = 白になるので、重なりの多い中央
@@ -64,41 +58,34 @@ const VIVID_LIGHTNESS = [0.34, 0.42] as const;
 const BLOB_SPREAD = 2.8;
 const BLOB_MIN_RADIUS_PX = 70;
 const BLOB_ALPHA = 0.34;
-/** 縁の色帯の形（EDGE_*）— per direct follow-ups ("四隅50px…" →
- *  "4隅！って感じが強すぎる" → "背景に線？マス目が出てる" → "幅の形状は
- *  もっと自然に / グラデの縁もカーソルで反応 / 色の幅はもっとせまく、
- *  背景色との馴染みは自然に / 角の色の重なり形ももっと自然に")。
+/** 縁の色帯の形（EDGE_*）。
  *
  *  形の作り方:
  *  - 各画素で「画面下辺までの距離」を測り、band まで不透明・そこから
- *    feather かけて透明へ落とす（四辺 → 下辺のみ。per direct follow-up
- *    "画面下にだけ出して"）。
+ *    feather かけて透明へ落とす（四辺 → 下辺のみに変更済み）。
  *  - その距離を **2オクターブの値ノイズ**で揺らす。単純な sin の重ねより
  *    起伏が不規則になり、短冊にも額縁にも見えない有機的な輪郭になる。
  *  - フェードは smoothstep を2回かけた曲線。内側の裾がより長く薄く伸びる
  *    ので、背景のクリームへ自然に溶ける。
  *  - マスクはカーソルにも反応する（距離場をカーソル方向へ押し出す）ので、
  *    色の塊だけでなく縁の輪郭そのものが動く。 */
-// EDGE_BAND_PX: 6 → 1 → 6 → 20 → 6（"帯の高さを5px縮めて" → "戻して" →
-// "帯の下の長さをもう少し伸ばして" → "6に戻して"）。不透明のまま残る厚み。
+// EDGE_BAND_PX: 6 → 1 → 6 → 20 → 6。不透明のまま残る厚み。
 //
-// EDGE_FEATHER_PX: 98 → 350（"グラデ自体を350pxに伸ばして"）。帯の見た目の
+// EDGE_FEATHER_PX: 98 → 350。帯の見た目の
 // 高さはほぼこの裾の長さで決まる — band の上端から上へ、この距離をかけて
 // 透明へ落ちていく。
 const EDGE_BAND_PX = 6;
-// 98 → 350 → 120 → 110（"グラデ自体を350pxに" → "120に" → "110px"）。
+// 98 → 350 → 120 → 110。
 const EDGE_FEATHER_PX = 110;
 
-/** 帯の基準線を可視下端よりさらに下げる量。22 → 0（"表示位置を22px下げる"
- *  → "帯の基準線を元の位置に戻す"）。0 のときは基準線＝いま見えている画面の
+/** 帯の基準線を可視下端よりさらに下げる量。22 → 0。0 のときは基準線＝いま見えている画面の
  *  下端そのもの。 */
 const BAND_OFFSET_PX = 0;
 /** 輪郭を揺らすノイズの振幅（px）と粗さ（大きいほど緩い起伏）。 */
 const EDGE_NOISE_PX = 21;
 const EDGE_NOISE_SCALE = 340;
 /** カーソルが縁の輪郭を押し出す量（px）と、効きの広さ（画面比）。 */
-/** 24 → 44 → 34 → 28 / 0.06 → 0.13 → 0.095 → 0.07（最後は直接の指定） — per direct
- *  follow-ups（"帯のカーソル反応をもう少し強く" → "もう少し弱く" ×2）。
+/** 24 → 44 → 34 → 28 / 0.06 → 0.13 → 0.095 → 0.07（最後は直接の指定）。
  *  EDGE_* は縁の輪郭そのものの押し出し、CURSOR_* は色の塊の横移動。両方を
  *  同じ比率で上げ下げしている（いまは元の 1.15 倍あたり）。 */
 const EDGE_CURSOR_PUSH_PX = 28;
@@ -111,9 +98,7 @@ const MASK_RESOLUTION = 128;
  *  ギザギザをやめて波長を長くしたので、以前ほどは要らない（96 → 32）。 */
 const MASK_RESOLUTION_WAVE_BOOST = 32;
 
-/** 再生中の「うねり」— per direct request（"再生中は帯が…波打って波形の
- *  ようにする"）→ per direct follow-up（"ギザギザは無しで少し波打つ程度に
- *  して"）。
+/** 再生中の「うねり」。
  *
  *  帯の縁（下辺からの距離）に、波長の違う正弦2本 + ゆっくりした値ノイズを
  *  重ねた変位を足す。当初は角のある三角波でギザギザにしていたが、うるさい
@@ -137,15 +122,13 @@ const WAVE_LERP = 0.04;
 const CURSOR_PUSH = 0.07;
 const CURSOR_FALLOFF = 0.16;
 /** 帯全体が左→右へ流れる速さ（画面幅ぶんを何秒かけて一周するか）と、
- *  1曲ごとの揺らぎ — per direct follow-up ("グラデを左→右にゆっくり
- *  ループでかつランダムに動かして")。
+ *  1曲ごとの揺らぎ。
  *
  *  流れは「配置そのものを右へずらして画面幅で剰余を取る」方式。左端から
  *  出ていったものが右端から入り直すので、継ぎ目なく無限にループする。
  *  そこに曲ごとの位相の違う遅い正弦を足して、全体が一様に平行移動して
  *  見えないようにしている（＝ランダムな揺らぎ）。 */
-/** グレインの濃さと更新頻度 — per direct follow-ups ("グラデ箇所にだけ
- *  ノイズをのせて" → "ノイズがきつすぎる / aboutと同じにもっと細かくして")。
+/** グレインの濃さと更新頻度。
  *  マスクのアルファを掛けるので、色のない場所には一切乗らない。
  *
  *  粒が粗く・きつく見えていた原因は解像度だった: マスクと同じ 128px 長辺で
@@ -156,34 +139,29 @@ const CURSOR_FALLOFF = 0.16;
 const GRAIN_OPACITY = 0.12;
 const GRAIN_FPS = 12;
 
-/** 帯に添えるラベル（再生時刻 + アーティスト名）— per direct follow-up
- *  ("12pxで再生曲の時間とアーティスト名を画面下から24pxの位置にランダムに
- *  表示してグラデに追従するようにして、数秒で消えてまた別が表示")。
+/** 帯に添えるラベル（再生時刻 + アーティスト名）。
  *  1つだけを出し、LABEL_HOLD_MS 見せて消え、LABEL_GAP_MS 後に別の曲へ。
  *  横位置は、その曲の縦線の現在位置（＝流れに追従）。 */
 const LABEL_FONT_PX = 12;
-/** 24 → 22 — per direct follow-up（"帯のアーティスト名と日付を2px下げて"）。 */
+/** 24 → 22。 */
 const LABEL_BOTTOM_PX = 22;
 const LABEL_HOLD_MS = 4200;
 const LABEL_GAP_MS = 900;
-/** 消えるときのフェード（600 → 260 — per direct follow-up "消えるときの
+/** 消えるときのフェード（600 → 260 "消えるときの
  *  フェードはもう少し速く"）。出るときはフェードせず、ScrambleText の
- *  文字の立ち上がりそのものが登場演出になる（per direct follow-up
+ *  文字の立ち上がりそのものが登場演出になる（
  *  "スクランブルテキストで表示して"）。 */
 const LABEL_FADE_MS = 260;
-/** 1行目に再生時刻、2行目にアーティスト名 — per direct follow-ups（"日付
- *  （改行）アーティスト名にして" → "pcの帯上のアーティスト名上に表示するのは
+/** 1行目に再生時刻、2行目にアーティスト名アーティスト名にして" → "pcの帯上のアーティスト名上に表示するのは
  *  日付じゃなく時間にして"）。
  *
  *  時刻は public/recently-played.php が返す `time`（日本時間 HH:MM）。
- *  デプロイ前は空だったので仮の文字列（"21:34"）を出していたが、本番で
+ *  デプロイ前は空だったので仮の文字列を出していたが、本番で
  *  実データが出ることを確認したので撤去した — 欠けているときに嘘の時刻を
  *  出すより、その行を出さないほうが安全（下の `label.time &&` で単に
  *  アーティスト名だけになる）。 */
 
-/** 帯の出入り — per direct follow-up（"帯の表示をマスクじゃなく、aboutで
- *  スクロールしたときと同じように少し自然な感じでグラデが表示されるように
- *  してほしい / 消えるときはフェードアウトですぐ消して"）。
+/** 帯の出入り。
  *
  *  やめたもの: clip-path の左→右ワイプ（＝マスク）。境目が直線で動くので、
  *  どうしても「幕が開く」機械的な見え方になっていた。
@@ -199,8 +177,7 @@ const LABEL_FADE_MS = 260;
 const FADE_IN_MS = 450;
 const FADE_OUT_MS = 260;
 const REVEAL_MS = 1150;
-/** 登場中の「濁り」対策 — per direct follow-up（"帯の出現時の色をもう少しだけ
- *  綺麗にできない？"）。
+/** 登場中の「濁り」対策。
  *
  *  なぜ濁るか: 帯は加算合成（lighter）で重ねている。1枚あたりの濃度が高い
  *  ときは重なった所が白へ飽和して光って見えるが、濃度が低いと合計が「白の
@@ -219,8 +196,7 @@ const REVEAL_MS = 1150;
 const BAND_ALPHA_FLOOR = 0.45;
 const MASK_REVEAL_GAIN = 1.6;
 
-/** 画面が狭いときの密度補正 — per direct follow-up（"spの帯の横幅がまだ
- *  狭いのと黄色しか表示されてない"）。
+/** 画面が狭いときの密度補正。
  *
  *  帯の半径には下限（BLOB_MIN_RADIUS_PX）があるので、画面が狭いほど
  *  「1点に重なる帯の本数」が増える（PC 1440px で約4.4本、SP 390px では
@@ -229,8 +205,7 @@ const MASK_REVEAL_GAIN = 1.6;
  *  割り戻し、どの画面幅でも合計の濃さが PC と同じくらいになるようにする。 */
 const REFERENCE_OVERLAP = 4.4;
 
-/** キャンバスを画面の実測高さより下へどれだけはみ出させるか — per direct
- *  follow-up（"帯（SP Safari）はまだ切れてる"）。
+/** キャンバスを画面の実測高さより下へどれだけはみ出させるか。
  *
  *  About の背面グラデと同じ `screen.height` 方式にしてもまだ下端で切れる、
  *  という報告が続いているので、そもそも「正しい高さを当てにいく」のを
@@ -335,8 +310,7 @@ type SoundColorsBackgroundProps = {
 };
 
 /**
- * ラベルに出す曲の「山札」を作る — per direct follow-up（"アーティスト名は
- * シャッフルして一巡するまで重複させないようにして"）。404 の背景
+ * ラベルに出す曲の「山札」を作る。404 の背景
  * （scenic-map-background.tsx）と同じ考え方。
  *
  * 直近再生は同じアーティストが何度も入る（実測 39曲 / ユニーク30組）ので、
@@ -377,8 +351,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
   /** 各曲の縦線の現在の x（描画のたびに更新）。 */
   const lineXRef = useRef<number[]>([]);
   /** ラベル追従用の x — 縦線と同じだが「曲ごとの揺らぎ（wobble）」を
-   *  含まない。per direct follow-up ("テキストの流れは右に移動するように
-   *  して"): wobble は振幅 90px / 周期 26s なので、その速さ（最大
+   *  含まない。: wobble は振幅 90px / 周期 26s なので、その速さ（最大
    *  ≒21.7px/s）が全体の流れ（画面幅 / 90s ≒ 21.3px/s）を上回る瞬間が
    *  あり、ラベルが左へ戻って見えていた。揺らぎを抜くと単調に右へ流れる。 */
   const lineDriftXRef = useRef<number[]>([]);
@@ -388,8 +361,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
   /** 左からのワイプ（REVEAL_MS の doc comment 参照）。マウント直後の1フレーム
    *  だけ閉じた状態で描いてから開く — 最初から開いた状態だと transition が
    *  走らない。 */
-  /** ラベル（日付 + アーティスト名）は PC のみ — per direct follow-up
-   *  （"その際のアーティスト名と日付は表示無し"、SP について）。判定は
+  /** ラベル（日付 + アーティスト名）は PC のみ。判定は
    *  PC/SP ツリーの分岐と同じ lg（1024px）。 */
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
@@ -409,9 +381,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
   //
   // 併せて canvas の style.height にも直接同じ値を書く。CSS 変数だけに頼ると
   // 「変数が入る前の最初の1フレームは 100dvh（＝ツールバーを除いた高さ）」に
-  // なり、その高さでバッファが確保された状態が残り得るため（per direct
-  // follow-up "Aboutページの背面グラデと同じように画面下までなぜ伸ばせない
-  // の？"）。実寸を直接入れておけば変数の適用タイミングに依存しない。
+  // なり、その高さでバッファが確保された状態が残り得るため。実寸を直接入れておけば変数の適用タイミングに依存しない。
   useEffect(() => {
     const uninstall = installViewportHeightVar();
     const apply = () => {
@@ -451,8 +421,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
   /** 縁マスク用のオフスクリーン canvas（毎フレーム作り直さないよう保持）。 */
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   /** マスクのアルファ（色が乗っている度合い）— グレインを「色のある所だけ」
-   *  に乗せるために保持する（per direct follow-up "グラデ箇所にだけノイズ
-   *  をのせて"）。 */
+   *  に乗せるために保持する。 */
   const maskAlphaRef = useRef<Float32Array | null>(null);
   /** グレイン層のオフスクリーン canvas。 */
   const grainCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -487,8 +456,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         // 無い状態で描くことになる — 帯の半径は「隣の曲との間隔 ×
         // BLOB_SPREAD」なので（BLOB_SPREAD の doc comment 参照）、曲数が
         // 少ないほど半径が極端に大きくなり、画面全体が数色の薄いベタで
-        // 覆われる。これも出だしの濁りの一因だったので（per direct
-        // follow-up "最初の一瞬、色が濁って表示される"）、全曲ぶんの色が
+        // 覆われる。これも出だしの濁りの一因だったので、全曲ぶんの色が
         // 揃ってから一度に差し込む。登場アニメの起点も「最初に描けた
         // フレーム」なので、結果として完成した配色のまま開いていく。
         const collected: { colors: string[]; artist: string; time: string }[] = [];
@@ -644,8 +612,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         for (let x = 0; x < mw; x++) {
           const px = (x / mw) * width;
           const py = (y / mh) * height;
-          // 画面下辺からの距離だけを見る — per direct follow-up ("画面下に
-          // だけ出して")。四辺だと縁取りになってしまうので、下端に溜まる
+          // 画面下辺からの距離だけを見る。四辺だと縁取りになってしまうので、下端に溜まる
           // 形にする（左右・上には色が出ない）。
           let distance = bottomY + BAND_OFFSET_PX - py;
           // 有機的な揺らぎ。
@@ -672,7 +639,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
           else {
             const t = (distance - band) / feather;
             // smoothstep を3回 + 指数の裾 — 上端がさらに長く薄く伸びて、
-            // 背景のクリームへ境目なく溶ける（per direct follow-up
+            // 背景のクリームへ境目なく溶ける（
             // "グラデの上端をもっと自然に馴染むようにして"）。
             const e1 = t * t * (3 - 2 * t);
             const e2 = e1 * e1 * (3 - 2 * e1);
@@ -748,10 +715,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       // あるので、実寸は canvas 自身から読む。
       const width = canvas.clientWidth || window.innerWidth;
       const height = canvas.clientHeight || window.innerHeight;
-      // 帯の基準線は「いま見えている画面の下端」= window.innerHeight — per
-      // direct follow-up（"帯は元の高さの見え感のほうがいいんだけど、
-      // アドレスバー下に帯が表示されてないのが気になる / window.innerHeight
-      // の実測値を取得でいけない？"）。
+      // 帯の基準線は「いま見えている画面の下端」= window.innerHeight。
       //
       // キャンバスの下端を基準にすると、iOS Safari ではアドレスバーの裏
       // （見えていない領域）に帯の濃い部分が入ってしまい、見えている範囲には
@@ -762,8 +726,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       const visibleBottom = Math.min(height, window.innerHeight);
       // 背景は動きが緩いので dpr は 1.5 で十分（スクロール中の負荷対策）。
       const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-      // 高さも条件に入れる — per direct follow-up（"アドレスバーの背面
-      // （画面一番下まで）帯を表示したい"）。以前は幅の変化しか見ておらず、
+      // 幅だけでなく高さも再確保の条件に入れる。以前は幅の変化しか見ておらず、
       // iOS Safari でアドレスバーが伸縮して**高さだけ**変わったとき（＝まさに
       // 帯を出したい状況）に描画バッファが古い高さのままだった。バッファが
       // 足りない下側は描いても出ないので、アドレスバー裏に色が乗らない。
@@ -794,21 +757,19 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       const radius = Math.max(BLOB_MIN_RADIUS_PX, gap * BLOB_SPREAD);
       // 帯全体の流れ（DRIFT_* の doc comment 参照）。
       //
-      // ここで `% 1` を取らない — per direct follow-up（"帯のループが途中で
-      // 途切れることがある"）。以前は drift を 0〜width で周回させていたが、
+      // ここで `% 1` を取らない。以前は drift を 0〜width で周回させていたが、
       // 位置の折り返しは下の `% wrap`（wrap = width + margin*2）で行っている。
       // 周期が width と wrap で食い違うので、drift が width から 0 に戻る
       // 瞬間に全部の帯が `width mod wrap` ぶんまとめて飛んでいた。単調増加
       // させて折り返しを一箇所に任せれば、継ぎ目は原理的に発生しない。
       const drift = (t / DRIFT_CYCLE_SEC) * width;
 
-      // 加算合成（lighter）— per direct follow-up ("もう少しブレンドモード
-      // とかで色の重なりを綺麗に見せれないかな / 一部明るい箇所があってもOK")。
+      // 加算合成（lighter）。
       //
       // 光を重ねる方式なので、色どうしが「混ざって濁る」のではなく
       // 「足されて発光する」。赤+緑が黄、青+赤がマゼンタというふうに、
       // 重なった場所に第三の色が生まれるのがこの方式の見どころ。
-      // 重なりが深い所は白へ抜けるが、それは許容（直接の指示）。
+      // 重なりが深い所は白へ抜けるが、それは許容。
       // 白飛びしすぎないよう、下の VIVID_LIGHTNESS を暗めに、1枚あたりの
       // 濃度（BLOB_ALPHA）も控えめにしてある。
       ctx.globalCompositeOperation = "lighter";
@@ -823,9 +784,8 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         const margin = radius * 1.5 + 24;
         const wrap = width + margin * 2;
         const spacing = wrap / tracks.length;
-        // 揺らぎは「曲どうしの間隔」に対する相対量で頭打ちにする — per
-        // direct follow-up（"spの帯の横幅がまだ狭いのと黄色しか表示されて
-        // ない"）。固定 90px は PC の間隔（約46px）なら2つ隣ぶんだが、SP の
+        // 揺らぎは「曲どうしの間隔」に対する相対量で頭打ちにする。
+        // 固定 90px は PC の間隔（約46px）なら2つ隣ぶんだが、SP の
         // 間隔（約17px）では5つ隣ぶんになり、等間隔に置いたはずの帯が
         // 大きく寄り集まる。結果、団子になった所だけが飽和して黄色〜白に
         // なり、空いた所には何も出ない＝「狭く」見えていた。
@@ -833,8 +793,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         const wobble =
           Math.sin((t / DRIFT_WOBBLE_SEC) * Math.PI * 2 + i * 1.7) * wobbleAmplitude;
         // 曲を「画面幅の 94%」ではなく **折り返し周期（wrap）いっぱい**に
-        // 等間隔で置く — per direct follow-up（"spで画面下の帯が左端にしか
-        // 表示されない"）。
+        // 等間隔で置く。
         //
         // 以前は画面幅ベースの帯（span）を、それより広い wrap の中で回して
         // いたため、wrap - span ぶんの「曲が1本も無い空白」が周期の中に
@@ -844,8 +803,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         // いた）。周期いっぱいに等間隔で置けば、どの瞬間も画面内の密度が
         // 一定になり、空白そのものが存在しなくなる。 */
         const rawX = i * spacing;
-        // 折り返しは必ず画面外で起きるように余白（margin）を取る — per
-        // direct follow-up（"帯のループが途中で途切れることがある"）。3色は
+        // 折り返しは必ず画面外で起きるように余白（margin）を取る。3色は
         // 下で ±radius*0.5 だけ横にずらして描くので、余白が radius ちょうど
         // だと、折り返し直前の帯の一番外側の色がまだ画面内に残っている状態で
         // 反対側へ飛ぶ（右端で色が1本だけ消える、として見えていた）。
@@ -854,8 +812,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         lineXRef.current[i] = baseX;
         // ラベル用は揺らぎ抜き（lineDriftXRef の doc comment 参照）。
         lineDriftXRef.current[i] = (((rawX + drift + margin) % wrap) + wrap) % wrap - margin;
-        // 玉ではなく縦線で描く — per direct follow-up ("今は色の玉が複数
-        // 連なってるけど、玉じゃなくて縦線にしたい")。1色 = 画面の高さ
+        // 玉ではなく縦線で描く。1色 = 画面の高さ
         // いっぱいに伸びる1本の帯で、横方向にだけグラデーションで消える
         // （縦は一定）。3色は横に少しずつずらして並べ、加算合成で隣と
         // 重なった所に第三の色が生まれる。縦の可視範囲は下辺のマスクが
@@ -872,8 +829,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
           gradient.addColorStop(0, color.replace(")", " / 0)"));
           // 登場中は曲ごとの帯を薄いところから立ち上げる — 加算合成なので
           // 濃くなるにつれ重なりが一気に白へ飽和し、「ブワッ」と開く見え方に
-          // なる（per direct follow-up "帯の登場感は一つ前のほうが良かった。
-          // ブワ！って出てくる感じが"）。一度これを合成後の一律減光に置き
+          // なる。一度これを合成後の一律減光に置き
           // 換えたが、それだと均一に濃くなるだけで勢いが出なかったので戻した。
           gradient.addColorStop(
             0.5,
@@ -932,8 +888,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         aria-hidden
         className="pointer-events-none fixed top-0 left-0 w-full"
         style={{
-          // var(--viewport-height) — per direct follow-up（"まだ画面下まで
-          // 表示されない" / "Aboutページの背面グラデと同じように"）。
+          // var(--viewport-height)。
           //
           // iOS Safari のツールバーが占める領域はページの座標系の外にあり、
           // svh / dvh / lvh のどれを使っても届かない（100lvh を指定した
@@ -943,8 +898,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
           // （about-blend-background.tsx）と同じくその実測値を使う。
           height: `calc(var(--viewport-height, 100dvh) + ${CANVAS_OVERSHOOT_PX}px)`,
           display: "block",
-          // 自前の合成レイヤーへ昇格させる — per direct follow-up（"まだ帯が
-          // 切れてる"）。高さは（実測値 + 240px の余裕で）確実に足りている
+          // 自前の合成レイヤーへ昇格させる。高さは（実測値 + 240px の余裕で）確実に足りている
           // のに下端で切れる、という状況が続いていたので、残る違いは
           // 「描画レイヤーがビューポートでクリップされるかどうか」しかない。
           // About の背面グラデが同じ手法で届いているのは、あちらが WebGL

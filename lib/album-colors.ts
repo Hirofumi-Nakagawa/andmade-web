@@ -153,9 +153,7 @@ export function applyRandomInk(colors: string[]): () => void {
   };
   const paint = (el: HTMLElement) => paintWith(el, pickColor());
 
-  // 「ひとかたまりで1色にしたい」要素 — per direct follow-up（"今回追加した
-  // what mattersと、who we are、→、colors of soundの文言もアイドル時に
-  // 文字色が変わるようにして"）。data-ink-group を付けた要素とその配下
+  // 「ひとかたまりで1色にしたい」要素。data-ink-group を付けた要素とその配下
   // すべてを同じ色で塗る。
   //
   // これが必要なのは、後段の「末端要素だけ塗る」走査では拾えないものが
@@ -195,8 +193,7 @@ export function applyRandomInk(colors: string[]): () => void {
   });
 
   root.querySelectorAll<HTMLElement>("*").forEach((el) => {
-    // 子が <br> だけの要素も「末端」とみなす — per direct follow-up（"…
-    // A sound~ …もアイドル時に文字色が変わるようにして"）。<br> で改行した
+    // 子が <br> だけの要素も「末端」とみなす。<br> で改行した
     // だけの段落（FV 右上の "A sound archive that turns / everyday listening
     // into color."）は children.length > 0 になるので、以前はここで丸ごと
     // スキップされ、色が変わらなかった。<br> はテキストを持たないので、

@@ -198,6 +198,15 @@ export function ScrambleText({
         const sinceStart = elapsed - startDelays[i];
         if (sinceStart < 0) {
           allSettled = false;
+          // 順番待ちは空文字のまま。
+          //
+          // 一時期ここを nbsp にしていた（空文字だと全員まだ始まっていない
+          // 最初の数十msに文字列全体が空になり、行ボックスが消えて高さが
+          // 潰れるため）。ただし nbsp は幅を持つので、下線を引いている
+          // .underline-sweep のボックスが最初からほぼ最終幅になり、下線だけ
+          // 先に伸びきってしまう。高さの潰れは project-card.tsx 側で
+          // 「確定後の高さを測って min-height にする」ようにしたので、
+          // ここは空文字に戻してよい（下線がテキストと一緒に伸びる）。
           return holdWidth ? placeholderChars[i] : "";
         }
         if (sinceStart < settleDuration) {

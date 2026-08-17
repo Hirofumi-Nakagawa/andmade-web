@@ -152,9 +152,8 @@ type HomeViewProps = {
 export function HomeView({ initialProjects, news }: HomeViewProps) {
   const [projects] = useState<Project[]>(initialProjects);
 
-  /** Colors of Sound（背景に再生曲の色を溜める帯）の on/off — per direct
-   *  request（貼付モック "Colors of Sound - off（押したら画面下に色の帯を
-   *  表示する。デフォはoff）"）。off の間は SoundColorsBackground を丸ごと
+  /** Colors of Sound（背景に再生曲の色を溜める帯）の on/off。デフォルトは
+   *  off。off の間は SoundColorsBackground を丸ごと
    *  アンマウントするので、描画ループも fetch も走らない。トグル本体は FV
    *  右上（home-statement.tsx）。 */
   const [colorsOn, setColorsOn] = useState(false);
@@ -196,8 +195,7 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
   const [toggleReplayGeneration, setToggleReplayGeneration] = useState(0);
   // 「ページに入った瞬間」を記録する（lib/entrance.ts 参照）。マウント時と
   // イントロ完了時だけ打ち直すので、Txt/Img の切り替えでは一覧の登場遅延が
-  // 付かない — per direct follow-up（"img時からtxtを押して戻るとき、一拍
-  // あく感じがあるので、すぐ表示するようにして"）。
+  // 付かない。
   useState(() => {
     markPageEntered();
     return true;
@@ -241,8 +239,7 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
     return () => cancelAnimationFrame(frame);
   }, [showImages, lenis]);
 
-  // マウント直後とフォント確定後にも measure し直す — per direct follow-up
-  // （"pcのフッター下までスクロールがいかない"）。Lenis はスクロール可能な
+  // マウント直後とフォント確定後にも measure し直す。Lenis はスクロール可能な
   // 高さを自前でキャッシュしていて、測ったあとに本文の高さが変わっても
   // 自動では追随しない。FV のステートメント（home-statement.tsx）が入って
   // ページが数百px伸びたうえ、Adobe Fonts が入れ替わると行の高さも動く
@@ -545,8 +542,7 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
           {/* FV のステートメント帯（home-statement.tsx の doc comment 参照）。 */}
           <HomeStatement colorsOn={colorsOn} onColorsToggle={() => setColorsOn((on) => !on)} />
 
-        {/* 280 → 180 → 175 → 165 — per direct requests（貼付モック → "一覧上に
-            5px詰める" → "一覧を上に10px移動"）。以前はヘッダー
+        {/* 280 → 180 → 175 → 165。以前はヘッダー
             直下からの距離だったが、いまは FV ステートメントの最終行
             （"Who we are"）からの距離。 */}
         <div className="relative mt-[calc(165px*var(--scale))]">

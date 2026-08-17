@@ -27,8 +27,7 @@ type ProjectCardProps = {
 
 /** Delay step between columns in the same row, so they reveal left-to-right. */
 const COLUMN_STAGGER_MS = 120;
-/** 一覧全体を「ワンテンポ」遅らせる — per direct follow-up（"一覧はワン
- *  テンポ遅らせて表示して"）。FV のコピー（カーテンリビール）が動き出して
+/** 一覧全体を「ワンテンポ」遅らせる。FV のコピー（カーテンリビール）が動き出して
  *  から一拍おいて一覧が続く、という順番にするための待ち。
  *
  *  効かせるのは**初回表示ぶんだけ**（ページに入った直後に既に画面内に
@@ -152,6 +151,9 @@ export function ProjectCard({
   const router = useRouter();
   const cardRef = useRef<HTMLLIElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
+  /** 確定後のタイトルの高さを測る影（下の JSX の doc comment 参照）。 */
+  const titleMeasureRef = useRef<HTMLSpanElement>(null);
+  const [titleMinHeight, setTitleMinHeight] = useState<number>();
   const [revealed, setRevealed] = useState(false);
   /** 初回表示ぶんか（lib/entrance.ts の pageEnteredAt 参照）。 */
   const [initialReveal, setInitialReveal] = useState(false);
@@ -200,12 +202,30 @@ export function ProjectCard({
     return () => observer.disconnect();
   }, []);
 
+  // 影の高さ＝確定後のタイトルの高さ。列幅の変化（リサイズ）と、Adobe Fonts
+  // が入れ替わって折り返しが変わる瞬間の両方で測り直す。
+  useEffect(() => {
+    const el = titleMeasureRef.current;
+    if (!el) return;
+    const update = () => setTitleMinHeight(el.offsetHeight);
+    const frame = requestAnimationFrame(update);
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    let cancelled = false;
+    document.fonts.ready.then(() => {
+      if (!cancelled) update();
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [project.title]);
+
   const baseDelay = (initialReveal ? LIST_ENTRANCE_DELAY_MS : 0) + column * COLUMN_STAGGER_MS;
 
   /**
-   * スクランブルの開始も baseDelay ぶん待つ — per direct follow-up（"pcで
-   * txt一覧が表示される際、右のほうの列はフェードインする前にスクランブルが
-   * 走ってるせいか、テキストが普通にフェードインしてるように見える"）。
+   * スクランブルの開始も baseDelay ぶん待つ。
    *
    * カード自体のスライド＋フェードは列ごとに遅らせている（baseDelay）のに、
    * ScrambleText だけは `revealed` で即スタートしていた。右の列ほど待ち時間が
@@ -283,19 +303,49 @@ export function ProjectCard({
           isDimmed ? "opacity-25" : "opacity-100"
         }`}
       >
-        <span
-          ref={(el) => {
-            titleRef.current = el;
-            onTitleRef?.(el);
-          }}
-          className="underline-sweep text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-        >
-          <HoverPlate active={hovered} inset={TITLE_PLATE_INSET} />
-          {/* `relative` so the text paints above the plate behind it — the
-             plate is absolutely positioned, which would otherwise stack it
-             over this static inline content. */}
-          <span className="relative">
-            <ScrambleText text={project.title} active={scrambleActive} />
+        {/* タイトルの高さをあらかじめ確保する箱。
+
+            スクランブル中は順番待ちの文字が空欄なので文字列が短く、長い
+            タイトルだと折り返しが1行 → 確定時に2行になり、その瞬間に高さが
+            跳ねていた（＝上下のガタツキ）。確定後の高さを先に測って
+            min-height にしておけば、見た目（空欄から順に埋まる）を一切変えずに
+            ガタツキだけ消える。
+            
+            w-full — 高さを測る影は「列の幅で折り返したときの高さ」でなければ
+            意味がない。カードは flex の items-start（＝中身の幅に縮む）なので、
+            この箱だけ明示的に列いっぱいに広げる。下線を引く span 自体は
+            従来どおり中身の幅のままなので、下線がテキストと一緒に伸びる
+            挙動は変わらない。 */}
+        <span className="relative block w-full" style={{ minHeight: titleMinHeight }}>
+          <span
+            ref={titleMeasureRef}
+            aria-hidden
+            className="invisible absolute inset-x-0 top-0 text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+          >
+            {project.title}
+          </span>
+          <span
+            ref={(el) => {
+              titleRef.current = el;
+              onTitleRef?.(el);
+            }}
+            // block w-fit。この span は元々
+            // カード（flex 列）の直接の子で、フレックスアイテムは
+            // ブロック化されるので text-box-trim が効いていた。上の箱で
+            // 包んだ結果ふつうのインラインに戻り、trim が効かなくなって
+            // ボックスが行ボックス（1.5em）の高さになっていた — 下線は
+            // その下端基準なので離れ、下マージンも広がる。block で
+            // ブロック化して trim を戻し、w-fit で幅は中身なりのまま
+            // （＝下線がテキストと同じ長さ）にする。
+            className="underline-sweep block w-fit text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] text-black"
+          >
+            <HoverPlate active={hovered} inset={TITLE_PLATE_INSET} />
+            {/* `relative` so the text paints above the plate behind it — the
+               plate is absolutely positioned, which would otherwise stack it
+               over this static inline content. */}
+            <span className="relative">
+              <ScrambleText text={project.title} active={scrambleActive} />
+            </span>
           </span>
         </span>
         <div

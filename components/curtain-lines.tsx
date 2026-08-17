@@ -3,9 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 /**
- * 「1行ずつ、下からマスクで上がってくる」テキスト — per direct follow-up
- * （"カーテンリビールはイントロの3行と同じように順に下からマスクで表示される
- * 仕様だけど"）。site-intro.tsx の3行タグラインと同じ作り（各行が
+ * 「1行ずつ、下からマスクで上がってくる」テキスト。site-intro.tsx の3行タグラインと同じ作り（各行が
  * overflow-hidden の窓を持ち、中身が translateY(下) → 0 へ上がる）を、
  * トップ FV のコピー用に切り出したもの。値もイントロと揃えてある。
  *
@@ -17,8 +15,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
  */
 
 /** 出だしはイントロ（site-intro.tsx の TAGLINE_*）と同じ 700ms / 150ms /
- *  同じイージングだったが、per direct follow-up（"ここのカーテンリビールが
- *  ちょっと大味な感じがする"）で全体を落ち着かせている:
+ *  同じイージングだったが、以下の調整で全体を落ち着かせている:
  *   ・1行の時間を長く（700 → 900ms）
  *   ・行どうしの間隔を詰める（150 → 110ms）— 数行が緩やかに追いかける
  *   ・イージングを expo 寄りの滑らかなものへ（止まり際がより静か）
@@ -98,9 +95,7 @@ export function CurtainLines({
 
   /**
    * 実際にカーテンを動かすフラグ。`active` をそのまま使わないのは、SP のよう
-   * に**行が実測であとから差し替わる**場合に備えるため — per direct
-   * follow-up（"SPのときも下層からトップに戻ったら、pc同様we uncoverは
-   * カーテンリビールのアニメーションを付ける"）。
+   * に**行が実測であとから差し替わる**場合に備えるため。
    *
    * 行が変わると下の各行 div は key ごと作り直される。そのとき既に
    * `active` が true だと、新しい div は「最初から表示済み」の状態で
@@ -165,8 +160,7 @@ export function CurtainLines({
           値ちょうどになる。 */}
       <div className={`flex flex-col ${className ?? ""}`}>
         {lines.map((line, i) => {
-          // 上端・下端だけ text-box-trim を効かせる — per direct follow-up
-          // （"we un coverの位置を目視でWhat Mattersの上面にそろえて"）。
+          // 上端・下端だけ text-box-trim を効かせる。
           // 元の 1枚の <p> は trim-both で「1行目のキャップ上端＝ボックス
           // 上端」になっていたが、行ごとに分けた際にそれが外れ、ハーフ
           // レディング（行送り 1.05 に対するフォントの content 高さの差）
