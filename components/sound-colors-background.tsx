@@ -363,9 +363,10 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
   /** 各曲の縦線の現在の x（描画のたびに更新）。 */
   const lineXRef = useRef<number[]>([]);
   /** ラベル追従用の x — 縦線と同じだが「曲ごとの揺らぎ（wobble）」を
-   *  含まない。: wobble は振幅 90px / 周期 26s なので、その速さ（最大
+   *  含まない。wobble は振幅 90px / 周期 26s なので、その速さ（最大
    *  ≒21.7px/s）が全体の流れ（画面幅 / 90s ≒ 21.3px/s）を上回る瞬間が
-   *  あり、ラベルが左へ戻って見えていた。揺らぎを抜くと単調に右へ流れる。 */
+   *  あり、ラベルが流れと逆へ戻って見えていた。揺らぎを抜けば、流れの
+   *  向き（いまは左→右）に単調に進む。 */
   const lineDriftXRef = useRef<number[]>([]);
   /** いま出しているラベル（スロットごと。null = そのスロットは非表示）。 */
   const [labels, setLabels] = useState<
@@ -833,11 +834,15 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       const radius = Math.max(BLOB_MIN_RADIUS_PX, gap * BLOB_SPREAD);
       // 帯全体の流れ（DRIFT_* の doc comment 参照）。
       //
+      // 符号がプラス＝左から右へ流れる（＝古い曲から新しい曲へ、時間の
+      // 並びと同じ向き）。マイナスにすれば右→左になる。折り返しは下の
+      // `% wrap` が二重剰余なので、どちらの向きでもそのまま繋がる。
+      //
       // ここで `% 1` を取らない。以前は drift を 0〜width で周回させていたが、
       // 位置の折り返しは下の `% wrap`（wrap = width + margin*2）で行っている。
       // 周期が width と wrap で食い違うので、drift が width から 0 に戻る
-      // 瞬間に全部の帯が `width mod wrap` ぶんまとめて飛んでいた。単調増加
-      // させて折り返しを一箇所に任せれば、継ぎ目は原理的に発生しない。
+      // 瞬間に全部の帯が `width mod wrap` ぶんまとめて飛んでいた。単調に
+      // 変化させて折り返しを一箇所に任せれば、継ぎ目は原理的に発生しない。
       const drift = (t / DRIFT_CYCLE_SEC) * width;
 
       // 加算合成（lighter）。

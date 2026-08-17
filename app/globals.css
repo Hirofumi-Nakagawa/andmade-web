@@ -252,15 +252,41 @@ body::-webkit-scrollbar {
  * or translateX's own displacement would be zeroed out by a subsequent
  * scaleX(0).
  */
+/*
+ * イージングは区間ごとにキーフレーム側で持たせている（キーフレームに
+ * animation-timing-function を書くと、そのキーフレームから次までに
+ * 適用される）。全体の timing-function は linear なので、区間の長さは
+ * キーフレームの割合（50:50）どおりになる。
+ *
+ * 以前は cubic-bezier(0.16, 1, 0.55, 1) を**全体**に1本かけていた。
+ * ease-out 系は序盤で一気に進むので、50:50 で分けたはずの「抜ける」
+ * 「入ってくる」が実時間では 1:7 ほどに偏り、抜けはほぼ瞬間、入りだけ
+ * 終わりまでダラダラ伸びる読み味になっていた。
+ *
+ * いまの曲線は justgowiththeflow.com のグロナビ下線の実測から。画面収録
+ * （60fps）の下線の端の座標をフレームごとに拾って、進み具合（0→1）を
+ * 三次ベジェで当てたもの:
+ *   ・前半（描き足される側 / 消える側の縁）とも同じ性格で、
+ *     出だしは遅い（時間の 20% でまだ 1割弱）
+ *   ・時間の 30〜50% で一気に走る（20% → 64%）
+ *   ・残りは長い尾。距離が少ないので「もう着いた」ように見える
+ * ＝「最初ゆっくり、途中で速く、最後は静かに詰める」。
+ * 端が1本ぶん走りきるのに約 0.48s（＝この2区間で約 0.95s）だったが、
+ * それだとこのサイトには少し重いので 0.7s まで詰めてある。
+ */
 @keyframes underline-sweep {
   0% {
     transform: translateX(0%) scaleX(1);
+    animation-timing-function: cubic-bezier(0.6, 0.18, 0.17, 0.72);
   }
   50% {
     transform: translateX(100%) scaleX(0);
+    /* 幅0のまま原点へ戻すだけの瞬間移動。補間させない。 */
+    animation-timing-function: steps(1, end);
   }
   50.01% {
     transform: translateX(0%) scaleX(0);
+    animation-timing-function: cubic-bezier(0.6, 0.18, 0.17, 0.72);
   }
   100% {
     transform: translateX(0%) scaleX(1);
@@ -303,8 +329,9 @@ body::-webkit-scrollbar {
 
 .underline-sweep:hover::after,
 .group:hover .underline-sweep::after {
-  /* Exaggerated ease-out: near-instant start, extra-long slow settle at the end. */
-  animation: underline-sweep 0.6s cubic-bezier(0.16, 1, 0.55, 1);
+  /* linear — 実際のイージングはキーフレーム側が区間ごとに持っている
+     （@keyframes underline-sweep の doc comment 参照）。 */
+  animation: underline-sweep 0.7s linear;
 }
 
 /*
@@ -316,7 +343,7 @@ body::-webkit-scrollbar {
  * CSS animation on its own.
  */
 .underline-sweep-play::after {
-  animation: underline-sweep 0.6s cubic-bezier(0.16, 1, 0.55, 1);
+  animation: underline-sweep 0.7s linear;
 }
 
 /*
@@ -351,7 +378,8 @@ body::-webkit-scrollbar {
 }
 
 .underline-bar-play {
-  animation: underline-sweep 0.6s cubic-bezier(0.16, 1, 0.55, 1);
+  /* SP の一覧タイトル下線。PC の .underline-sweep-play と同じ動き。 */
+  animation: underline-sweep 0.7s linear;
 }
 
 /*

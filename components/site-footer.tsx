@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useLenis } from "lenis/react";
 import { CopyEmail } from "@/components/copy-email";
 import Image from "next/image";
@@ -38,7 +39,14 @@ export function SiteFooter({
   const hoverMuted = theme === "dark" ? "hover:text-black/50" : "hover:text-white/50";
 
   return (
-    <footer className="relative h-[calc(52px*var(--scale))] w-full">
+    <footer
+      className="relative h-[calc(52px*var(--scale))] w-full"
+      // --underline-offset — このフッターの下線（.underline-sweep）だけ
+      // 共有既定値（-0.1em）から 1px 下げる。カスタムプロパティは継承
+      // するので、中の4つ（メアド / Instagram / X / Back to top）に
+      // まとめて効く。globals.css の .underline-sweep::after 参照。
+      style={{ "--underline-offset": "calc(-0.1em - 1px)" } as CSSProperties}
+    >
       <div
         className={`absolute bottom-0 left-0 text-[length:calc(30px*var(--scale))] leading-[0] font-medium ${text} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
       >
@@ -87,7 +95,7 @@ export function SiteFooter({
           {/* mailto → クリックでコピー＋"Copied" 表示（copy-email.tsx）。 */}
           <CopyEmail
             offsetY={2}
-            className={`font-medium ${text} underline transition-colors ${hoverMuted} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+            className={`underline-sweep font-medium ${text} transition-colors ${hoverMuted} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
           />
         </div>
         <div className="flex w-[calc(72px*var(--scale))] flex-col items-start gap-[calc(12px*var(--scale))] whitespace-nowrap">
@@ -99,7 +107,7 @@ export function SiteFooter({
           <div className={`flex items-center gap-[calc(4px*var(--scale))] font-medium ${text}`}>
             <a
               href="https://www.instagram.com/andmade_inc"
-              className={`underline transition-colors ${hoverMuted} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+              className={`underline-sweep transition-colors ${hoverMuted} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -108,7 +116,7 @@ export function SiteFooter({
             <span className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">,</span>
             <a
               href="https://x.com/ANDMADE_jp"
-              className={`underline transition-colors ${hoverMuted} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+              className={`underline-sweep transition-colors ${hoverMuted} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -125,10 +133,25 @@ export function SiteFooter({
             onBackToTopStart?.();
             lenis?.scrollTo(0, { onComplete: () => onBackToTopEnd?.() });
           }}
-          className={`absolute bottom-0 cursor-pointer whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.4] font-medium ${text} underline transition-colors ${hoverMuted} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
-          style={{ left: "calc(696px * var(--grid-scale))" }}
+          // group — 下線のスイープは中の span が持つ（.underline-sweep は
+          // position:relative を付けるので、絶対配置のこのボタン自身には
+          // 当てられない）。.group:hover .underline-sweep::after の側で
+          // 拾わせる。
+          className={`group absolute cursor-pointer whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.4] font-medium ${text} transition-colors ${hoverMuted}`}
+          // bottom を負に＝4px 下げる。中の span を inline-block にして
+          // text-box-trim を効かせたぶん（行ボックスの下側のハーフ
+          // レディング）箱が縮み、bottom-0 のままだと左の
+          // Instagram / X より上に浮いていた。その差を戻して下面を揃える。
+          style={{ left: "calc(696px * var(--grid-scale))", bottom: "calc(-4px * var(--scale))" }}
         >
-          Back to top
+          {/* inline-block — text-box-trim はブロック化された要素にしか
+              効かない。素のインラインのままだと箱が行ボックス（1.4em）の
+              高さになり、下端基準の下線がテキストから離れる。他の3つは
+              button（メアド）と flex アイテム（Instagram / X）で自動的に
+              ブロック化されていて、ここだけ抜けていた。 */}
+          <span className="underline-sweep inline-block [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+            Back to top
+          </span>
         </button>
       )}
     </footer>
