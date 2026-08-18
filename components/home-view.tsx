@@ -50,6 +50,13 @@ const HOVER_CLEAR_DELAY_MS = 2000;
  *  て / 他でフェードアウト使ってる箇所で500msより速くしてる箇所があったらそ
  *  れに合わせて"). */
 const HOVER_PREVIEW_FADE_MS = 300;
+/** スクロールが止まってから、ホバー抑制（suppressHoverFromScroll）を
+ *  解くまでの待ち。Lenis は減速中も細かいスクロールイベントを出し続ける
+ *  ので、最後の1発からこの時間で解除される。150 → 90ms（止まりぎわの
+ *  ホバーが拾われにくかったため）。取りこぼし自体は
+ *  pendingHoverIndexRef で拾い直すので、ここは「カーソル静止のまま行が
+ *  流れてきて誤爆する」のを防げる最小限でよい。 */
+const SCROLL_SUPPRESS_TAIL_MS = 90;
 /** How close the footer needs to be to the bottom of the viewport before the
  *  bottom-left title text hides, so it never overlaps the footer. */
 const FOOTER_HIDE_MARGIN_PX = 0;
@@ -323,6 +330,20 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
   // actually stops rather than staying suppressed the whole time like the
   // Back-to-top case does.
   const [suppressHoverFromScroll, setSuppressHoverFromScroll] = useState(false);
+  /**
+   * いまカーソルが乗っているタイトルの index（抑制中でも記録する）。
+   *
+   * mouseenter は「乗った瞬間」の1回しか飛ばない。スクロールが止まりきる
+   * 直前にタイトルへ乗ると、その1回が suppressHoverFromScroll に弾かれて
+   * 終わり、抑制が解けても誰も再実行しないので、カーソルを一度外して
+   * 乗せ直すまで背景イメージが出なかった（報告: "スクロールして止まる瞬間
+   * くらいにホバーすると表示されない"）。
+   *
+   * 乗っている対象はここに覚えておき、抑制が解けた時点でまだ乗っていれば
+   * その場で本来の処理を流す（下の effect）。判定を緩めるのではなく、
+   * 取りこぼしを拾い直す形。
+   */
+  const pendingHoverIndexRef = useRef<number | null>(null);
   const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unmountTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -353,6 +374,9 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
 
   const handleHoverTitle = useCallback(
     (index: number) => {
+      // カーソルがどのタイトルの上に居るかは、抑制中かどうかに関わらず
+      // 覚えておく（pendingHoverIndexRef の doc comment 参照）。
+      pendingHoverIndexRef.current = index;
       if (suppressHoverPreview || suppressHoverFromScroll) return;
       if (dimClearTimeoutRef.current) clearTimeout(dimClearTimeoutRef.current);
       setActiveIndex(index);
@@ -420,7 +444,7 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
         setHoverIdle(false);
       }, HOVER_PREVIEW_FADE_MS);
       if (idleTimeout) clearTimeout(idleTimeout);
-      idleTimeout = setTimeout(() => setSuppressHoverFromScroll(false), 150);
+      idleTimeout = setTimeout(() => setSuppressHoverFromScroll(false), SCROLL_SUPPRESS_TAIL_MS);
     };
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
@@ -429,11 +453,25 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
     };
   }, [cancelPendingClear]);
 
+  // スクロール由来の抑制が解けた瞬間、まだタイトルに乗ったままなら
+  // ホバーを流し直す（pendingHoverIndexRef の doc comment 参照）。
+  useEffect(() => {
+    if (suppressHoverFromScroll || suppressHoverPreview) return;
+    const index = pendingHoverIndexRef.current;
+    if (index === null) return;
+    // effect 本体での同期 setState を避けるため rAF 経由（このコードベースの
+    // 通例）。handleHoverTitle は「同じ index なら何もしない」ので、
+    // 既に出ているときに呼んでも二重には出ない。
+    const frame = requestAnimationFrame(() => handleHoverTitle(index));
+    return () => cancelAnimationFrame(frame);
+  }, [suppressHoverFromScroll, suppressHoverPreview, handleHoverTitle]);
+
   // Leaving a title without hovering another one within 3s fades the
   // preview out, then removes it — rather than leaving the last one
   // showing forever, or cutting it instantly with no transition. The card
   // dimming and big title text, by contrast, clear immediately (activeIndex).
   const handleHoverEnd = useCallback(() => {
+    pendingHoverIndexRef.current = null;
     // 即時ではなく DIM_CLEAR_DELAY_MS 後に戻す（doc comment 参照）。
     if (dimClearTimeoutRef.current) clearTimeout(dimClearTimeoutRef.current);
     dimClearTimeoutRef.current = setTimeout(() => setActiveIndex(null), DIM_CLEAR_DELAY_MS);
