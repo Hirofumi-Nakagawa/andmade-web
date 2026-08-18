@@ -121,10 +121,10 @@ const WAVE_LERP = 0.04;
 /** カーソル追従の強さ（押し出し量の割合）と減衰の広さ。 */
 const CURSOR_PUSH = 0.07;
 const CURSOR_FALLOFF = 0.16;
-/** 帯全体が左→右へ流れる速さ（画面幅ぶんを何秒かけて一周するか）と、
- *  1曲ごとの揺らぎ。
+/** 帯全体が右→左へ流れる速さ（画面幅ぶんを何秒かけて一周するか）と、
+ *  1曲ごとの揺らぎ。向きの理由は描画部の drift の doc comment 参照。
  *
- *  流れは「配置そのものを右へずらして画面幅で剰余を取る」方式。左端から
+ *  流れは「配置そのものをずらして周期で剰余を取る」方式。左端から
  *  出ていったものが右端から入り直すので、継ぎ目なく無限にループする。
  *  そこに曲ごとの位相の違う遅い正弦を足して、全体が一様に平行移動して
  *  見えないようにしている（＝ランダムな揺らぎ）。 */
@@ -165,6 +165,28 @@ const LABEL_SECOND_OFFSET_MS = 2400;
 /** 2本が重なって読めなくならないための最小の横間隔（px）。近すぎる札は
  *  引き直す。 */
 const LABEL_MIN_SEPARATION_PX = 260;
+
+/** 引き出し線（貼付デザイン）。
+ *
+ *  帯の上のその曲の位置に 3px の■を置き、そこから縦に線を伸ばし、
+ *  角で右へ折れて、その先にテキストを出す。テキストの2行は角の高さに
+ *  対して縦中央に来る。
+ *
+ *  ■だけ不透明で、線は 40%。数値は貼付（2倍解像度のスクリーンショット）の
+ *  実測から: ■ 3px / 線 1px / 上へ 20px（→ 15px）/ 右へ 20px /
+ *  線の先からテキストまで 8px。 */
+const LEADER_SQUARE_PX = 3;
+const LEADER_LINE_PX = 1;
+/** ■の中心に線を合わせるための左オフセット。 */
+const LEADER_LINE_INSET_PX = (LEADER_SQUARE_PX - LEADER_LINE_PX) / 2;
+const LEADER_UP_PX = 15;
+const LEADER_RIGHT_PX = 20;
+const LEADER_TEXT_GAP_PX = 8;
+const LEADER_OPACITY = 0.4;
+/** 線が伸びる時間。縦 → 横の順に引かれ、引き終わってから文字が
+ *  スクランブルで組み上がる。 */
+const LEADER_UP_MS = 240;
+const LEADER_RIGHT_MS = 240;
 /** 1行目に再生時刻、2行目にアーティスト名。
  *
  *  時刻は public/recently-played.php が返す `time`（日本時間 HH:MM）。
@@ -231,6 +253,9 @@ const CANVAS_OVERSHOOT_PX = 240; // 240 → 420 → 350 → 240 → 500 → 240�
 const DRIFT_CYCLE_SEC = 90;
 const DRIFT_WOBBLE_PX = 90;
 const DRIFT_WOBBLE_SEC = 26;
+/** 揺らぎの最大速度を、全体の流れの何倍まで許すか（描画部の
+ *  wobbleSpeedCap 参照）。1 未満なら帯が流れと逆へ戻ることはない。 */
+const WOBBLE_SPEED_RATIO = 0.6;
 
 const DEV_ENDPOINT = "https://andmade.jp/recently-played.php";
 const ENDPOINT =
@@ -347,6 +372,109 @@ function shuffledArtistDeck(tracks: { artist: string }[]): number[] {
   return deck;
 }
 
+/**
+ * ラベル本体 — ■ → 縦線 → 横線 → 文字の順に出る（LEADER_* の doc comment
+ * 参照）。位置はすべて呼び出し側の fixed な箱（左下＝帯の上のその曲の位置）
+ * からの絶対指定。
+ *
+ * 曲が変わると呼び出し側が key を変えてこれごと作り直すので、毎回この
+ * 順番の最初から再生される。文字は「線を引き終わってから mount する」形に
+ * している — ScrambleText は active=false のとき本文をそのまま出す仕様
+ * なので、フラグで待たせると線を引いている間ずっと完成形が見えてしまう。
+ */
+function LabelLeader({ time, artist }: { time: string; artist: string }) {
+  const [drawn, setDrawn] = useState(false);
+  const [textMounted, setTextMounted] = useState(false);
+
+  useEffect(() => {
+    // 1フレーム置いてから伸ばす（最初から伸びた状態だと transition が
+    // 走らない）。
+    const frame = requestAnimationFrame(() => setDrawn(true));
+    const timer = window.setTimeout(() => setTextMounted(true), LEADER_UP_MS + LEADER_RIGHT_MS);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  /** 角（縦線の上端 = 横線）の高さ。■の上端から LEADER_UP_PX 上。 */
+  const cornerBottom = LEADER_SQUARE_PX + LEADER_UP_PX - LEADER_LINE_PX;
+
+  return (
+    <>
+      <span
+        style={{
+          position: "absolute",
+          left: 0,
+          bottom: 0,
+          width: LEADER_SQUARE_PX,
+          height: LEADER_SQUARE_PX,
+          backgroundColor: "currentColor",
+        }}
+      />
+      <span
+        style={{
+          position: "absolute",
+          left: LEADER_LINE_INSET_PX,
+          bottom: LEADER_SQUARE_PX,
+          width: LEADER_LINE_PX,
+          height: LEADER_UP_PX,
+          backgroundColor: "currentColor",
+          opacity: LEADER_OPACITY,
+          transformOrigin: "bottom",
+          transform: `scaleY(${drawn ? 1 : 0})`,
+          transitionProperty: "transform",
+          transitionDuration: `${LEADER_UP_MS}ms`,
+          transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
+        }}
+      />
+      <span
+        style={{
+          position: "absolute",
+          left: LEADER_LINE_INSET_PX,
+          bottom: cornerBottom,
+          width: LEADER_RIGHT_PX,
+          height: LEADER_LINE_PX,
+          backgroundColor: "currentColor",
+          opacity: LEADER_OPACITY,
+          transformOrigin: "left",
+          transform: `scaleX(${drawn ? 1 : 0})`,
+          transitionProperty: "transform",
+          transitionDuration: `${LEADER_RIGHT_MS}ms`,
+          // 縦を引き終わってから折れる。
+          transitionDelay: `${LEADER_UP_MS}ms`,
+          transitionTimingFunction: "cubic-bezier(0, 0, 0.2, 1)",
+        }}
+      />
+      {textMounted && (
+        // 2行の箱を横線の高さに対して縦中央に置く（bottom で線の中心に
+        // 合わせ、translateY(50%) で箱の中心をそこへ）。
+        <div
+          style={{
+            position: "absolute",
+            left: LEADER_LINE_INSET_PX + LEADER_RIGHT_PX + LEADER_TEXT_GAP_PX,
+            bottom: cornerBottom + LEADER_LINE_PX / 2,
+            transform: "translateY(50%)",
+          }}
+        >
+          {/* 時刻 → 改行 → アーティスト名。ScrambleText は1行単位なので
+              2つ並べる。 */}
+          {time && (
+            <div>
+              <ScrambleText text={time} active />
+            </div>
+          )}
+          {artist && (
+            <div>
+              <ScrambleText text={artist} active />
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function SoundColorsBackground({ active = true }: SoundColorsBackgroundProps) {
   /** 再生中かどうか（WAVE_* の doc comment 参照）。描画ループからは ref
    *  経由で読む — 毎フレーム再レンダーさせないため。 */
@@ -366,7 +494,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
    *  含まない。wobble は振幅 90px / 周期 26s なので、その速さ（最大
    *  ≒21.7px/s）が全体の流れ（画面幅 / 90s ≒ 21.3px/s）を上回る瞬間が
    *  あり、ラベルが流れと逆へ戻って見えていた。揺らぎを抜けば、流れの
-   *  向き（いまは左→右）に単調に進む。 */
+   *  向き（いまは右→左）に単調に進む。 */
   const lineDriftXRef = useRef<number[]>([]);
   /** いま出しているラベル（スロットごと。null = そのスロットは非表示）。 */
   const [labels, setLabels] = useState<
@@ -834,16 +962,21 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       const radius = Math.max(BLOB_MIN_RADIUS_PX, gap * BLOB_SPREAD);
       // 帯全体の流れ（DRIFT_* の doc comment 参照）。
       //
-      // 符号がプラス＝左から右へ流れる（＝古い曲から新しい曲へ、時間の
-      // 並びと同じ向き）。マイナスにすれば右→左になる。折り返しは下の
-      // `% wrap` が二重剰余なので、どちらの向きでもそのまま繋がる。
+      // 符号がマイナス＝右から左へ流れる。
+      //
+      // 位置は左＝朝・右＝いまの並びなので、時間が進むほど各曲は「過去の
+      // 側」＝左へ下がり、右端がつねに「いま」になる（時系列のグラフが
+      // 新しい値を右端から入れて全体を左へ送るのと同じ）。ヘッダー右上の
+      // 再生中ティッカーも左送りなので、画面の上端と下端で流れが逆になる
+      // こともない。プラスにすれば左→右に戻る。折り返しは下の `% wrap` が
+      // 二重剰余なので、どちらの向きでもそのまま繋がる。
       //
       // ここで `% 1` を取らない。以前は drift を 0〜width で周回させていたが、
       // 位置の折り返しは下の `% wrap`（wrap = width + margin*2）で行っている。
       // 周期が width と wrap で食い違うので、drift が width から 0 に戻る
       // 瞬間に全部の帯が `width mod wrap` ぶんまとめて飛んでいた。単調に
       // 変化させて折り返しを一箇所に任せれば、継ぎ目は原理的に発生しない。
-      const drift = (t / DRIFT_CYCLE_SEC) * width;
+      const drift = -(t / DRIFT_CYCLE_SEC) * width;
 
       // 加算合成（lighter）。
       //
@@ -865,12 +998,25 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         const margin = radius * 1.5 + 24;
         const wrap = width + margin * 2;
         const spacing = wrap / tracks.length;
-        // 揺らぎは「曲どうしの間隔」に対する相対量で頭打ちにする。
-        // 固定 90px は PC の間隔（約46px）なら2つ隣ぶんだが、SP の
-        // 間隔（約17px）では5つ隣ぶんになり、等間隔に置いたはずの帯が
-        // 大きく寄り集まる。結果、団子になった所だけが飽和して黄色〜白に
-        // なり、空いた所には何も出ない＝「狭く」見えていた。
-        const wobbleAmplitude = Math.min(DRIFT_WOBBLE_PX, spacing * 1.5);
+        // 揺らぎの頭打ちは2つ。
+        //
+        // ① 「曲どうしの間隔」に対する相対量 — 固定 90px は PC の間隔
+        //    （約46px）なら2つ隣ぶんだが、SP の間隔（約17px）では5つ隣ぶんに
+        //    なり、等間隔に置いたはずの帯が大きく寄り集まる。結果、団子に
+        //    なった所だけが飽和して黄色〜白になり、空いた所には何も出ない
+        //    ＝「狭く」見えていた。
+        //
+        // ② 揺らぎの最大速度が全体の流れを超えない上限 — 正弦の最大速度は
+        //    A×2π/T。全体の流れ（width / DRIFT_CYCLE_SEC）は画面幅に比例
+        //    するので、SP では 4.3px/s しかない。①だけだと揺らぎの
+        //    4.7px/s がそれを上回り、帯が周期的に流れと逆へ戻って、
+        //    向きが曖昧に見えていた（PC は 16px/s 対 12.5px/s で問題が
+        //    出ていなかった）。流れの WOBBLE_SPEED_RATIO 倍で抑えて
+        //    おけば、どの画面幅でも必ず流れの向きに単調に進む。
+        const driftSpeed = width / DRIFT_CYCLE_SEC;
+        const wobbleSpeedCap =
+          (driftSpeed * WOBBLE_SPEED_RATIO * DRIFT_WOBBLE_SEC) / (Math.PI * 2);
+        const wobbleAmplitude = Math.min(DRIFT_WOBBLE_PX, spacing * 1.5, wobbleSpeedCap);
         const wobble =
           Math.sin((t / DRIFT_WOBBLE_SEC) * Math.PI * 2 + i * 1.7) * wobbleAmplitude;
         // 曲を「画面幅の 94%」ではなく **折り返し周期（wrap）いっぱい**に
@@ -1018,19 +1164,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
                 transition: `opacity ${shown ? LABEL_FADE_MS : FADE_OUT_MS}ms ease-out`,
               }}
             >
-              {/* 時刻 → 改行 → アーティスト名。ScrambleText は1行単位なので
-                  2つ並べる（key に本文を含めているので、曲が変わるたび最初から
-                  組み上がる）。 */}
-              {label.time && (
-                <div>
-                  <ScrambleText key={`${label.index}:t:${label.time}`} text={label.time} active />
-                </div>
-              )}
-              {label.artist && (
-                <div>
-                  <ScrambleText key={`${label.index}:a:${label.artist}`} text={label.artist} active />
-                </div>
-              )}
+              <LabelLeader key={label.index} time={label.time} artist={label.artist} />
             </div>
           ) : null,
         )}
