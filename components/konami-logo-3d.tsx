@@ -73,6 +73,61 @@ const LINE_OPACITY = 0.45;
 // 0.22 → 0.17（直接の指示 "もう少しだけ奥を薄くして"）。
 const LINE_OPACITY_BACK = 0.17;
 
+/** 側面（押し出しの壁）のうっすらした白 — per direct request（"全側面に
+ *  うっすら白のグラデが角度によってつくように / 手前が濃い白（40%くらい）
+ *  奥のほうは0%"）。
+ *
+ *  これまで側面は「線が無い」だけでなく面も無かった（中空の押し出し）。
+ *  輪郭を折れ線に展開して、隣り合う頂点どうしを結ぶ短冊（幅 = 線分の長さ、
+ *  高さ = 厚み）を Z 方向へ寝かせて並べ、それをグラデーションで塗ることで
+ *  面にしている。曲線（D の椀）は三次ベジェを CURVE_STEPS で折る。
+ *
+ *  色が黒なのは輪郭線と同じ理由 — このロゴは反転レイヤーの下にあるので、
+ *  黒の半透明が白に見える。
+ *
+ *  濃さは 0.4 → 0.2 → 0.1。
+ *  手前 → 奥のフェードは輪郭線（--logo-line-a/b）と同じ仕組みで、Y 回転が
+ *  半周を跨げば向きも入れ替わる。真横（90°）では両端が同じ値に寄るので、
+ *  面がいちばん広く見える角度でいちばん均一に光る。 */
+const WALL_OPACITY_FRONT = 0.1;
+const WALL_OPACITY_BACK = 0;
+/** ロゴ全体の奥行きによる減光 — per direct follow-up（"カーソル位置に
+ *  よって角度が付いたとき、手前の大きく見えてるほうが濃くて奥の小さい
+ *  ほうが薄くなるように / カーソルを右にもっていくと A が大きくなるから
+ *  A のほうが濃く、左にもっていくと E が濃くなるように"）。
+ *
+ *  上の FRONT/BACK は短冊1枚の中（＝厚み方向）のグラデで、ロゴ全体では
+ *  一様だった。Y 回転が付くとロゴの左右で奥行きが変わる（パースで手前側が
+ *  大きく見える）ので、その差も濃さに乗せる。
+ *
+ *  各短冊は自分の x 位置を `--qx`（-1 = 左端の A 側, +1 = 右端の E 側）と
+ *  して持ち、毎フレーム更新される sin(yaw) と掛けて「どれだけ視点側か」を
+ *  出す。この定数はいちばん奥の短冊に残す割合で、0 にすると奥が完全に
+ *  消える。 */
+const WALL_FAR_DIM = 0.15;
+/** 上の向き。実機での見え方はカーソルを右へ振ると A 側（左端）が手前に
+ *  出て大きくなる ＝ そちらが濃い、なので -1。+1 にすると逆になる。 */
+const WALL_DEPTH_SIGN = -1;
+/** 短冊1枚の中（厚み方向）のグラデの向き。ローカル +y が奥へ写るなら
+ *  "to bottom" が手前 → 奥。手前と奥が入れ替わって見えるならここを
+ *  "to top" にする。 */
+const WALL_THICKNESS_GRADIENT = "to bottom";
+/** 手前の面（文字そのものの面）に乗せるグラデ — per direct follow-up
+ *  （"ロゴの手前の面にもグラデつけて"）。
+ *
+ *  輪郭だけだった前後の面に、うっすら塗りを足す。文字の形は元の SVG を
+ *  そのまま `mask-image` にして抜く（穴＝A や D のカウンターも SVG の
+ *  塗り規則のまま正しく抜ける）ので、パスを再現する必要がない。
+ *
+ *  濃さの左右差は側面と同じ規則（WALL_FAR_DIM / WALL_DEPTH_SIGN 参照）。
+ *  面ごとの濃さは輪郭と同じ frontness で、視点側の面だけが読める。 */
+const FACE_OPACITY = 0.1;
+/** 三次ベジェを何本の直線に割るか。 */
+const CURVE_STEPS = 10;
+/** 角で短冊どうしが割れて見えないよう、線分をこのぶん（viewBox 単位）
+ *  だけ長めに取る。 */
+const WALL_OVERLAP = 0.8;
+
 /** ロゴの表示幅（ビューポート幅に対する割合）。背景の主役なので大きめ。
  *  62 → 74 → 80 → 82 → 84 → 85（いずれも直接の指示）。 */
 const LOGO_WIDTH_VW = 85;
@@ -180,10 +235,92 @@ function parsePathVertices(d: string): { x: number; y: number }[] {
   return vertices;
 }
 
+/**
+ * 同じパス文字列を、側面の短冊を張るための**折れ線**に展開する
+ * （WALL_OPACITY_FRONT の doc comment 参照）。
+ *
+ * parsePathVertices との違いは2点だけ:
+ *   ・サブパス（M で始まり Z で閉じる単位）ごとに配列を分ける — 別々の
+ *     文字・穴の間を短冊で繋いでしまわないため。
+ *   ・C は終点だけでなく CURVE_STEPS 本の直線に折る — 終点だけだと椀の
+ *     内側を短冊が突っ切ってしまう。
+ * Z は始点へ戻る線分を1本足して閉じる。
+ */
+function parsePathPolylines(d: string): { x: number; y: number }[][] {
+  const polylines: { x: number; y: number }[][] = [];
+  const tokens = d.match(/[MLHVCZ]|-?[\d.]+/g) ?? [];
+  let current: { x: number; y: number }[] = [];
+  let x = 0;
+  let y = 0;
+  let startX = 0;
+  let startY = 0;
+  let i = 0;
+  const num = () => Number.parseFloat(tokens[i++]);
+  const push = () => {
+    const last = current[current.length - 1];
+    if (!last || Math.abs(last.x - x) > 0.01 || Math.abs(last.y - y) > 0.01) {
+      current.push({ x, y });
+    }
+  };
+  const flush = () => {
+    if (current.length > 1) polylines.push(current);
+    current = [];
+  };
+  while (i < tokens.length) {
+    const cmd = tokens[i++];
+    if (cmd === "M") {
+      flush();
+      x = num();
+      y = num();
+      startX = x;
+      startY = y;
+      current = [{ x, y }];
+    } else if (cmd === "L") {
+      x = num();
+      y = num();
+      push();
+    } else if (cmd === "H") {
+      x = num();
+      push();
+    } else if (cmd === "V") {
+      y = num();
+      push();
+    } else if (cmd === "C") {
+      const x0 = x;
+      const y0 = y;
+      const x1 = num();
+      const y1 = num();
+      const x2 = num();
+      const y2 = num();
+      const x3 = num();
+      const y3 = num();
+      for (let s = 1; s <= CURVE_STEPS; s++) {
+        const t = s / CURVE_STEPS;
+        const u = 1 - t;
+        x = u * u * u * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t * x3;
+        y = u * u * u * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t * y3;
+        push();
+      }
+      x = x3;
+      y = y3;
+    } else if (cmd === "Z") {
+      x = startX;
+      y = startY;
+      push();
+      flush();
+    }
+  }
+  flush();
+  return polylines;
+}
+
 export function KonamiLogo3D() {
   const stageRef = useRef<HTMLDivElement>(null);
   const svgHostRefs = useRef<(HTMLDivElement | null)[]>([]);
   const edgesHostRef = useRef<HTMLDivElement>(null);
+  const wallsHostRef = useRef<HTMLDivElement>(null);
+  /** 前後の面の塗り（FACE_OPACITY の doc comment 参照）。 */
+  const facePlateRefs = useRef<(HTMLDivElement | null)[]>([]);
   /** カーソル位置の目標値と現在値（[-1, 1] 正規化）。 */
   const cursorTargetRef = useRef({ x: 0, y: 0 });
   const cursorRef = useRef({ x: 0, y: 0 });
@@ -487,6 +624,61 @@ export function KonamiLogo3D() {
         // 頂点はコマンドの終点 = 輪郭の角。曲線（D の椀）は終点のみなので
         // 角の無い区間には線が付かない — ワイヤーフレームの結線としては
         // それが正しい見え方。
+        // 側面（押し出しの壁）— WALL_OPACITY_FRONT の doc comment 参照。
+        //
+        // 短冊1枚の作り方: 幅 = その線分の長さ（ステージ幅に対する %。
+        // viewBox は縦横同スケールなので、長さも 1410 で割れば % になる）、
+        // 高さ = 厚み（px）。これを
+        //   rotateZ(線分の角度) rotateX(-90deg)
+        // で寝かせると、ローカル +x が線分の向き、ローカル +y が -z（奥）に
+        // 写る（rotateY(90deg) がローカル +x を -z に写すのと同じ理屈の別軸
+        // 版）。translate(-50%,-50%) と合わせて、線分の中点を軸に厚みの
+        // 中心へ置かれる＝前面から背面までちょうど塞ぐ。
+        // グラデーションは "to top" が手前 → 奥（ローカル +y が手前側に
+        // 写るので、"to bottom" だと奥が濃くなって逆になる）。
+        const wallsHost = wallsHostRef.current;
+        if (wallsHost) {
+          const quads: string[] = [];
+          paths.forEach((d) => {
+            parsePathPolylines(d).forEach((points) => {
+              for (let k = 0; k < points.length - 1; k++) {
+                const a = points[k];
+                const b = points[k + 1];
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const len = Math.hypot(dx, dy);
+                if (len < 0.2) continue;
+                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+                const midX = (a.x + b.x) / 2;
+                const left = ((midX / LOGO_VIEWBOX.w) * 100).toFixed(3);
+                const top = (((a.y + b.y) / 2 / LOGO_VIEWBOX.h) * 100).toFixed(3);
+                const widthPct = (((len + WALL_OVERLAP) / LOGO_VIEWBOX.w) * 100).toFixed(4);
+                // --qx: この短冊の x 位置（-1 = 左端, +1 = 右端）。opacity は
+                // それと毎フレームの sin(yaw) から「視点側の度合い」を出す
+                // （WALL_FAR_DIM の doc comment 参照）。JS から152枚に
+                // style を書く代わりに、変数1つの更新で全部が追従する。
+                const qx = ((midX / LOGO_VIEWBOX.w) * 2 - 1).toFixed(4);
+                quads.push(
+                  `<div style="position:absolute;left:${left}%;top:${top}%;width:${widthPct}%;height:${THICKNESS_PX}px;` +
+                    `--qx:${qx};` +
+                    `opacity:calc(var(--logo-wall-dim) + (1 - var(--logo-wall-dim)) * (1 + var(--qx) * var(--logo-wall-yaw)) / 2);` +
+                    `background:linear-gradient(${WALL_THICKNESS_GRADIENT}, rgba(0,0,0,var(--logo-wall-a)), rgba(0,0,0,var(--logo-wall-b)));` +
+                    `transform:translate(-50%,-50%) rotateZ(${angle.toFixed(3)}deg) rotateX(-90deg);"></div>`
+                );
+              }
+            });
+          });
+          wallsHost.innerHTML = quads.join("");
+          // 面は輪郭・エッジ線が描き終わってから、まとめて薄く浮かび上がる
+          // （1枚ずつ描き込むと「線が走る」演出とぶつかる）。
+          wallsHost.animate([{ opacity: 0 }, { opacity: 1 }], {
+            delay: DRAW_DELAY_MAX_MS + DRAW_EDGE_EXTRA_DELAY_MS,
+            duration: DRAW_DURATION_MAX_MS,
+            easing: "ease-out",
+            fill: "backwards",
+          });
+        }
+
         const edgesHost = edgesHostRef.current;
         if (edgesHost) {
           edgesHost.innerHTML = paths
@@ -598,6 +790,37 @@ export function KonamiLogo3D() {
         const b = LINE_OPACITY + (LINE_OPACITY_BACK - LINE_OPACITY) * frontness;
         stage.style.setProperty("--logo-line-a", a.toFixed(3));
         stage.style.setProperty("--logo-line-b", b.toFixed(3));
+        // 側面のグラデも同じ frontness で入れ替える（WALL_OPACITY_FRONT の
+        // doc comment 参照）。真横（frontness 0.5）では両端が同じ値になり、
+        // 面がいちばん広く見える角度で一様に光る。
+        const wa = WALL_OPACITY_BACK + (WALL_OPACITY_FRONT - WALL_OPACITY_BACK) * frontness;
+        const wb = WALL_OPACITY_FRONT + (WALL_OPACITY_BACK - WALL_OPACITY_FRONT) * frontness;
+        stage.style.setProperty("--logo-wall-a", wa.toFixed(3));
+        stage.style.setProperty("--logo-wall-b", wb.toFixed(3));
+        // ロゴ全体の奥行き（左右どちらが視点側か）。各短冊が自分の --qx と
+        // 掛けて濃さを決める（WALL_FAR_DIM / WALL_DEPTH_SIGN の doc comment
+        // 参照）。
+        const depth = WALL_DEPTH_SIGN * Math.sin((yawDeg * Math.PI) / 180);
+        stage.style.setProperty("--logo-wall-yaw", depth.toFixed(4));
+        // 面の塗りは同じ規則を「左端 / 右端」の2点だけで表したもの
+        // （FACE_OPACITY の doc comment 参照）。
+        const nearMix = (q: number) => WALL_FAR_DIM + (1 - WALL_FAR_DIM) * ((1 + q * depth) / 2);
+        stage.style.setProperty("--logo-face-l", (FACE_OPACITY * nearMix(-1)).toFixed(4));
+        stage.style.setProperty("--logo-face-r", (FACE_OPACITY * nearMix(1)).toFixed(4));
+        // 面ごとの濃さ（視点側だけが読める）。登場は輪郭・エッジ線のあとに
+        // 薄く浮かび上がる — 側面（wallsHost）と同じタイミング。
+        const sinceStart = entranceStartAt === null ? 0 : performance.now() - entranceStartAt;
+        const faceIn = Math.min(
+          1,
+          Math.max(0, (sinceStart - (DRAW_DELAY_MAX_MS + DRAW_EDGE_EXTRA_DELAY_MS)) / DRAW_DURATION_MAX_MS)
+        );
+        facePlateRefs.current.forEach((plate, i) => {
+          if (!plate) return;
+          // i の大きいほうが z 正（＝元の前面）。SLICE_COUNT=2 なので
+          // i=1 が前面、i=0 が背面。
+          const isFront = i / (SLICE_COUNT - 1) - 0.5 > 0;
+          plate.style.opacity = (faceIn * (isFront ? frontness : 1 - frontness)).toFixed(3);
+        });
         // 輪郭 canvas は JS 直書き（sliceCanvasInfo の doc comment 参照）。
         for (const info of sliceCanvasInfo) {
           info.el.style.opacity = (info.isFront ? a : b).toFixed(3);
@@ -638,8 +861,22 @@ export function KonamiLogo3D() {
           // フォールバック（初期姿勢 = 正面向き）。
           ["--logo-line-a" as string]: String(LINE_OPACITY),
           ["--logo-line-b" as string]: String(LINE_OPACITY_BACK),
+          ["--logo-wall-a" as string]: String(WALL_OPACITY_FRONT),
+          ["--logo-wall-b" as string]: String(WALL_OPACITY_BACK),
+          ["--logo-wall-dim" as string]: String(WALL_FAR_DIM),
+          ["--logo-wall-yaw" as string]: "0",
+          ["--logo-face-l" as string]: "0",
+          ["--logo-face-r" as string]: "0",
         }}
       >
+        {/* 側面（押し出しの壁）のホスト。エッジ線と同じ理由で preserve-3d
+            が要る。DOM 順で先に置いてあるが、preserve-3d の中では前後は
+            z で決まるので、面が線を隠すことはない。 */}
+        <div
+          ref={wallsHostRef}
+          className="absolute inset-0"
+          style={{ transformStyle: "preserve-3d" }}
+        />
         {/* Z方向のエッジ線のホスト。子の rotateY(90°) が平面に潰されない
             よう、ここにも preserve-3d が要る（既定の flat だと子の 3D
             transform が親平面へ投影されてエッジが消える）。 */}
@@ -648,6 +885,34 @@ export function KonamiLogo3D() {
           className="absolute inset-0"
           style={{ transformStyle: "preserve-3d" }}
         />
+        {/* 前後の面の塗り（FACE_OPACITY の doc comment 参照）。文字の形は
+            元の SVG をそのまま mask にして抜く。濃さは tick() が毎フレーム
+            opacity に書く（視点側の面だけが読める）。 */}
+        {Array.from({ length: SLICE_COUNT }, (_, i) => {
+          const z = (i / (SLICE_COUNT - 1) - 0.5) * THICKNESS_PX;
+          const maskUrl = `url(${withBasePath("/andmade-logo.svg")})`;
+          return (
+            <div
+              key={`face-${i}`}
+              ref={(el) => {
+                facePlateRefs.current[i] = el;
+              }}
+              className="absolute inset-0"
+              style={{
+                transform: `translateZ(${z.toFixed(1)}px)`,
+                maskImage: maskUrl,
+                WebkitMaskImage: maskUrl,
+                maskSize: "100% 100%",
+                WebkitMaskSize: "100% 100%",
+                maskRepeat: "no-repeat",
+                WebkitMaskRepeat: "no-repeat",
+                background:
+                  "linear-gradient(to right, rgba(0,0,0,var(--logo-face-l)), rgba(0,0,0,var(--logo-face-r)))",
+                opacity: 0,
+              }}
+            />
+          );
+        })}
         {Array.from({ length: SLICE_COUNT }, (_, i) => {
           const z = (i / (SLICE_COUNT - 1) - 0.5) * THICKNESS_PX;
           return (
