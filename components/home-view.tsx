@@ -40,8 +40,9 @@ const PREVIEW_START_COLUMN = 4;
 const PREVIEW_VERTICAL_MARGIN_PX = 15;
 /** How close to the very bottom of the page counts as "reached the bottom". */
 const BOTTOM_OF_PAGE_TOLERANCE_PX = 2;
-/** Clears the preview if you leave a title and don't hover another within this long. */
-const HOVER_CLEAR_DELAY_MS = 2000;
+/** Clears the preview if you leave a title and don't hover another within
+ *  this long. 2000 → 1500（直接の指示）。 */
+const HOVER_CLEAR_DELAY_MS = 1500;
 /** Matches ProjectHoverPreview's own opacity transition duration (see its
  *  own duration-300 class) — sped up from the original 500ms to match the
  *  faster 300ms fade used elsewhere for this kind of dismiss-fade (e.g.
@@ -485,6 +486,26 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
       }, HOVER_PREVIEW_FADE_MS);
     }, HOVER_CLEAR_DELAY_MS);
   }, [cancelPendingClear]);
+
+  // カーソルがブラウザの外へ出たときも「ホバーを抜けた」として扱う。
+  //
+  // タイトルの上に居るままウィンドウの外へ抜けると、その要素の mouseleave
+  // が飛ばないことがある（ブラウザのクロームや画面端へ素早く抜けた場合）。
+  // すると消すためのタイマーが一度も動かず、戻ってきても別のタイトルに
+  // 乗るまで背景イメージが出っぱなしになっていた。
+  //
+  // document の mouseleave はカーソルがビューポートから出た瞬間に飛ぶので、
+  // 要素側の取りこぼしに関係なく拾える。blur は別ウィンドウ・別タブへ
+  // 移った場合（この場合 mouseleave すら飛ばない）用。
+  useEffect(() => {
+    const handleWindowLeave = () => handleHoverEnd();
+    document.addEventListener("mouseleave", handleWindowLeave);
+    window.addEventListener("blur", handleWindowLeave);
+    return () => {
+      document.removeEventListener("mouseleave", handleWindowLeave);
+      window.removeEventListener("blur", handleWindowLeave);
+    };
+  }, [handleHoverEnd]);
 
   useEffect(() => cancelPendingClear, [cancelPendingClear]);
 
