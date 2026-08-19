@@ -222,8 +222,11 @@ export function MobileAbout() {
         {/* mt-[170px] — originally 180px, same header-to-content gap as
             mobile-home.tsx's own mt-[180px] to its project list (Figma node
             1067:4 spec's this same 180px gap here too, independently),
-            tightened 10px, then a further 20px (180 → 170 → 150) per two
-            direct follow-ups — this page only, mobile-home.tsx's own
+            tightened 10px, then 20px, then 10px more（180 → 170 → 150 →
+            140）— 最後は SP 実績詳細（mobile-project-detail.tsx の
+            mt-[140px]）に目視で揃えるため。基準点は両ページとも同じで、
+            ヘッダーの "ANDMADE Inc."（text-box-trim:trim-both）の
+            ベースラインからの距離。this page only, mobile-home.tsx's own
             180px is untouched. Shared `relative` containing block for
             MobileAboutSideNav's own `absolute inset-0` sticky wrapper,
             mirroring AboutSideNav/AboutSection's identical PC-side
@@ -241,7 +244,7 @@ export function MobileAbout() {
             spacer below) makes this container's own bottom coincide exactly
             with the Outline line, so the nav's native sticky release now
             lands exactly there with no extra JS needed. */}
-        <div className="relative mt-[150px]">
+        <div className="relative mt-[140px]">
           <MobileAboutSideNav />
 
           {/* FV — PC (app/about/page.tsx) と同じ内容の SP 版。per direct
@@ -272,12 +275,25 @@ export function MobileAbout() {
                 同じ比率。PC 側を触るときは合わせて見直すこと。 */}
             <CurtainRevealLines
               lines={HERO_LINES}
-              // relative top-[-4px] — 直接の指示（2px → 3px → さらに1px上へ）。
-              // カーテンリビールのために text-box-trim を外した結果、1行目の
-              // 上にハーフレディング（(36*1.12-36)/2 ≒ 2px）が残るぶんの
-              // 打ち消し。マージンではなく relative なので、下のリード文の
-              // 位置は動かない。
-              className="relative top-[-4px] font-normal [font-kerning:normal] text-black"
+              // 1行目だけ trim-start — 左ナビ（MobileAboutSideNav）の頭に
+              // ある飾り線と上面を揃えるため（直接の指示）。
+              //
+              // あの線はちょうどこのセクションの原点（`relative mt-[140px]`
+              // の上端）に乗っている: 線を包む VerticalLabel は中身の左上を
+              // 軸に90°回して自分の高さぶん右へ送る作りなので、回転前の
+              // x = 0〜1px（w-px の線）が回転後の y = 0〜1px、つまり
+              // コンテナ上端そのものになる。
+              //
+              // 一方こちらはカーテンリビールのため text-box-trim を外して
+              // あり、1行目のキャップ上端までに余白（ハーフレディング等）が
+              // 残る。以前はその見込みぶんを relative top-[-4px] で目分量に
+              // 打ち消していたが、フォントサイズが min(32px, 8.5vw) で端末に
+              // よって変わるので固定 px ではズレる。1行目だけ trim-start に
+              // すればボックス上端＝キャップ上端になり、どの幅でも線と厳密に
+              // 揃う。trim-end は付けない（下を詰めると "purpose." の p の
+              // ディセンダが窓に切られる）。
+              lineClassNames={["[text-box-edge:cap_alphabetic] [text-box-trim:trim-start]"]}
+              className="font-normal [font-kerning:normal] text-black"
               style={{ fontSize: "min(32px, 8.5vw)", lineHeight: 1.12, letterSpacing: "-0.02em" }}
             />
 
