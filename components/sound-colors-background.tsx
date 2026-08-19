@@ -143,25 +143,33 @@ const GRAIN_FPS = 12;
  *  1本を LABEL_HOLD_MS 見せて消し、LABEL_GAP_MS 後に別の曲へ。
  *  横位置は、その曲の縦線の現在位置（＝流れに追従）。 */
 const LABEL_FONT_PX = 12;
+/** 1行目（日付 + 時刻）だけ小さく（直接の指示）。2行目のアーティスト名は
+ *  LABEL_FONT_PX のまま。 */
+const LABEL_STAMP_FONT_PX = 10;
 /** 24 → 22。 */
 const LABEL_BOTTOM_PX = 22;
 const LABEL_HOLD_MS = 4200;
-const LABEL_GAP_MS = 900;
+// 900 → 700（表示の頻度を少し上げる）。
+const LABEL_GAP_MS = 700;
 /** 消えるときのフェード（600 → 260 → 160）。出るときはフェードせず、
  *  ScrambleText の文字の立ち上がりそのものが登場演出になる。 */
 const LABEL_FADE_MS = 160;
-/** ラベルの本数（＝同時に出得る上限）。
+/** ラベルの本数（＝同時に出得る上限）。2 → 3（直接の指示）。
  *
- *  スロット0は常時、スロット1は自分のサイクルごとに LABEL_SECOND_CHANCE で
- *  出る/出ないを引き直す。両者は独立に回っていて出入りの時刻も揃えていない
- *  ので、「1本のときもあれば、途中から2本目が増える／先に片方が消える」
- *  という見え方になる。 */
-const LABEL_SLOT_COUNT = 2;
-/** スロット1がそのサイクルで出る確率。 */
-const LABEL_SECOND_CHANCE = 0.45;
-/** スロット1の出だしをスロット0からずらす量（ms）。以降は「出ない回」の
+ *  スロット0は常時、それ以外は自分のサイクルごとに LABEL_EXTRA_CHANCE で
+ *  出る/出ないを引き直す。各スロットは独立に回っていて出入りの時刻も
+ *  揃えていないので、「1本のときもあれば、途中から2本目・3本目が増える／
+ *  先に1本だけ消える」という見え方になる。 */
+const LABEL_SLOT_COUNT = 3;
+/** スロット1以降がそのサイクルで出る確率（配列の index = slot - 1）。
+ *  後ろのスロットほど低くして、3本揃うのは時々にとどめる。 */
+const LABEL_EXTRA_CHANCE = [0.6, 0.4];
+/** 各スロットの出だしを1つ前からずらす量（ms）。以降は「出ない回」の
  *  待ち時間がサイクル長と違うぶん、自然に位相がずれ続ける。 */
 const LABEL_SECOND_OFFSET_MS = 2400;
+/** 曲データが揃うのを待つ間隔（ms）。1000 → 100 — runSlot の該当箇所の
+ *  コメント参照。 */
+const TRACKS_POLL_MS = 100;
 /** 2本が重なって読めなくならないための最小の横間隔（px）。近すぎる札は
  *  引き直す。 */
 const LABEL_MIN_SEPARATION_PX = 260;
@@ -187,13 +195,27 @@ const LEADER_OPACITY = 0.4;
  *  スクランブルで組み上がる。 */
 const LEADER_UP_MS = 240;
 const LEADER_RIGHT_MS = 240;
-/** 1行目に再生時刻、2行目にアーティスト名。
+/** 1行目に再生日 + 時刻、2行目にアーティスト名。
  *
- *  時刻は public/recently-played.php が返す `time`（日本時間 HH:MM）。
- *  デプロイ前は空だったので仮の文字列を出していたが、本番で
- *  実データが出ることを確認したので撤去した — 欠けているときに嘘の時刻を
- *  出すより、その行を出さないほうが安全（下の `label.time &&` で単に
- *  アーティスト名だけになる）。 */
+ *  時刻は public/recently-played.php が返す `time`（日本時間 HH:MM）、
+ *  日付は同じく `date`（"Aug.15,2026" 形式）。どちらも欠けていれば、
+ *  その部分は単に出ない（嘘の値を出すより出さないほうが安全）。 */
+/** ラベルの日付と時刻のあいだ。半角スペースは HTML で連続すると1つに
+ *  畳まれるので、2つめは nbsp にする（ScrambleText は nbsp も空白として
+ *  そのまま通す）。 */
+const STAMP_SEPARATOR = " \u00a0";
+
+/**
+ * "Aug.15,2026" → "Aug.15"。
+ *
+ * 日付は時刻と同じ1行に置くので、横幅をできるだけ増やさない形にする
+ * （直接の指示）。年は落とす — 帯が扱うのは直近50曲ぶんで、年が変わる幅は
+ * 見ない。想定外の形式なら空文字を返して、時刻だけの表示に落とす。
+ */
+function shortDate(date: string): string {
+  const match = /^([A-Za-z]{3}\.\d{1,2}),/.exec(date);
+  return match ? match[1] : "";
+}
 
 /** 帯の出入り。
  *
@@ -382,7 +404,7 @@ function shuffledArtistDeck(tracks: { artist: string }[]): number[] {
  * している — ScrambleText は active=false のとき本文をそのまま出す仕様
  * なので、フラグで待たせると線を引いている間ずっと完成形が見えてしまう。
  */
-function LabelLeader({ time, artist }: { time: string; artist: string }) {
+function LabelLeader({ time, date, artist }: { time: string; date: string; artist: string }) {
   const [drawn, setDrawn] = useState(false);
   const [textMounted, setTextMounted] = useState(false);
 
@@ -399,6 +421,8 @@ function LabelLeader({ time, artist }: { time: string; artist: string }) {
 
   /** 角（縦線の上端 = 横線）の高さ。■の上端から LEADER_UP_PX 上。 */
   const cornerBottom = LEADER_SQUARE_PX + LEADER_UP_PX - LEADER_LINE_PX;
+  /** 1行目。日付・時刻のどちらか片方が欠けていればある方だけを出す。 */
+  const stamp = [shortDate(date), time].filter(Boolean).join(STAMP_SEPARATOR);
 
   return (
     <>
@@ -457,11 +481,12 @@ function LabelLeader({ time, artist }: { time: string; artist: string }) {
             transform: "translateY(50%)",
           }}
         >
-          {/* 時刻 → 改行 → アーティスト名。ScrambleText は1行単位なので
-              2つ並べる。 */}
-          {time && (
-            <div>
-              <ScrambleText text={time} active />
+          {/* 「日付 + 時刻」→ 改行 → アーティスト名。ScrambleText は
+              1行単位なので2つ並べる。日付は年を落とした "Aug.15" 形式
+              （shortDate）。 */}
+          {stamp && (
+            <div style={{ fontSize: LABEL_STAMP_FONT_PX }}>
+              <ScrambleText text={stamp} active />
             </div>
           )}
           {artist && (
@@ -487,7 +512,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
   const waveRef = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** 曲ごとの3色 + ラベル用メタ（古い順 = 左から右）。 */
-  const tracksRef = useRef<{ colors: string[]; artist: string; time: string }[]>([]);
+  const tracksRef = useRef<{ colors: string[]; artist: string; time: string; date: string }[]>([]);
   /** 各曲の縦線の現在の x（描画のたびに更新）。 */
   const lineXRef = useRef<number[]>([]);
   /** ラベル追従用の x — 縦線と同じだが「曲ごとの揺らぎ（wobble）」を
@@ -498,7 +523,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
   const lineDriftXRef = useRef<number[]>([]);
   /** いま出しているラベル（スロットごと。null = そのスロットは非表示）。 */
   const [labels, setLabels] = useState<
-    ({ index: number; time: string; artist: string; shown: boolean } | null)[]
+    ({ index: number; time: string; date: string; artist: string; shown: boolean } | null)[]
   >(() => Array.from({ length: LABEL_SLOT_COUNT }, () => null));
   /** 左からのワイプ（REVEAL_MS の doc comment 参照）。マウント直後の1フレーム
    *  だけ閉じた状態で描いてから開く — 最初から開いた状態だと transition が
@@ -582,13 +607,19 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
             : [];
         const items = raw.flatMap((entry) => {
           if (typeof entry !== "object" || entry === null) return [];
-          const { image, artist, time } = entry as { image?: unknown; artist?: unknown; time?: unknown };
+          const { image, artist, time, date } = entry as {
+            image?: unknown;
+            artist?: unknown;
+            time?: unknown;
+            date?: unknown;
+          };
           if (typeof image !== "string" || !image) return [];
           return [
             {
               image,
               artist: typeof artist === "string" ? artist : "",
               time: typeof time === "string" ? time : "",
+              date: typeof date === "string" ? date : "",
             },
           ];
         });
@@ -601,11 +632,11 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
         // 覆われる。これも出だしの濁りの一因だったので、全曲ぶんの色が
         // 揃ってから一度に差し込む。登場アニメの起点も「最初に描けた
         // フレーム」なので、結果として完成した配色のまま開いていく。
-        const collected: { colors: string[]; artist: string; time: string }[] = [];
+        const collected: { colors: string[]; artist: string; time: string; date: string }[] = [];
         for (const item of items) {
           if (cancelled) return;
           const colors = await vividColorsFromImage(item.image);
-          if (colors) collected.push({ colors, artist: item.artist, time: item.time });
+          if (colors) collected.push({ colors, artist: item.artist, time: item.time, date: item.date });
         }
         if (cancelled) return;
         tracksRef.current = collected;
@@ -644,7 +675,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       const tracks = tracksRef.current;
       // 近すぎて弾いた札はそのまま捨てる（山札は尽きたら引き直される）。
       // 何度も弾かれ続けないよう試行回数に上限を置く。
-      for (let attempt = 0; attempt < 4; attempt++) {
+      for (let attempt = 0; attempt < 6; attempt++) {
         if (deckRef.current.length === 0) {
           const deck = shuffledArtistDeck(tracks);
           // 継ぎ目の重複回避 — 引き直した山札の1枚目が、いま出したばかりの
@@ -671,7 +702,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
 
     const setSlot = (
       slot: number,
-      value: { index: number; time: string; artist: string; shown: boolean } | null,
+      value: { index: number; time: string; date: string; artist: string; shown: boolean } | null,
     ) => {
       setLabels((prev) => {
         const next = [...prev];
@@ -683,12 +714,17 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
     const runSlot = (slot: number) => {
       const tracks = tracksRef.current;
       if (tracks.length === 0) {
-        after(1000, () => runSlot(slot));
+        // 曲が揃うのを待つ。帯は揃った瞬間に出るので、ここが粗いとその
+        // ぶんだけ「帯は出ているのに文字が来ない」時間になる。1000ms は
+        // 粒度として粗すぎたので 100ms に（待ちの意図はここには無く、
+        // 出だしの溜めは下の初回スケジュールが持っている）。
+        after(TRACKS_POLL_MS, () => runSlot(slot));
         return;
       }
       // スロット0以外は毎回は出さない（「たまに2本並ぶ」くらいの頻度）。
       // 待ち時間をサイクル長と揃えないので、位相も少しずつずれていく。
-      if (slot > 0 && Math.random() > LABEL_SECOND_CHANCE) {
+      const chance = slot === 0 ? 1 : (LABEL_EXTRA_CHANCE[slot - 1] ?? 0);
+      if (Math.random() > chance) {
         after(LABEL_HOLD_MS + LABEL_GAP_MS + Math.random() * 1500, () => runSlot(slot));
         return;
       }
@@ -706,7 +742,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
       activeIndexBySlot[slot] = index;
       // 出るときは opacity を最初から 1 に（＝フェードイン無し）。登場は
       // ScrambleText が担う。
-      setSlot(slot, { index, time: track.time, artist: track.artist, shown: true });
+      setSlot(slot, { index, time: track.time, date: track.date, artist: track.artist, shown: true });
       after(LABEL_HOLD_MS, () => {
         setLabels((prev) => {
           const current = prev[slot];
@@ -1164,7 +1200,7 @@ export function SoundColorsBackground({ active = true }: SoundColorsBackgroundPr
                 transition: `opacity ${shown ? LABEL_FADE_MS : FADE_OUT_MS}ms ease-out`,
               }}
             >
-              <LabelLeader key={label.index} time={label.time} artist={label.artist} />
+              <LabelLeader key={label.index} time={label.time} date={label.date} artist={label.artist} />
             </div>
           ) : null,
         )}

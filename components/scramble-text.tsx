@@ -194,7 +194,9 @@ export function ScrambleText({
       let allSettled = true;
 
       const nextChars = letters.map((char, i) => {
-        if (char === " ") return " ";
+        // 空白はスクランブルしない（nbsp も含む — 呼び出し側が幅を
+        // 稼ぐために使うことがある）。
+        if (char === " " || char === "\u00a0") return char;
         const sinceStart = elapsed - startDelays[i];
         if (sinceStart < 0) {
           allSettled = false;
