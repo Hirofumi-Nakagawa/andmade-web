@@ -38,8 +38,8 @@ const GRID_COLUMN_COUNT = 24;
 /** Preview boxes never start left of the 5th grid line. */
 const PREVIEW_START_COLUMN = 4;
 const PREVIEW_VERTICAL_MARGIN_PX = 15;
-/** How close to the very bottom of the page counts as "reached the bottom". */
-const BOTTOM_OF_PAGE_TOLERANCE_PX = 2;
+/** プレビューの箱とフッターの上端のあいだに空ける最小の間隔。 */
+const PREVIEW_FOOTER_GAP_PX = 15;
 /** Clears the preview if you leave a title and don't hover another within
  *  this long. 2000 → 1500（直接の指示）。 */
 const HOVER_CLEAR_DELAY_MS = 1500;
@@ -104,7 +104,7 @@ function randomInt(min: number, max: number) {
  * 15px-margined viewport height, and the 5th-column-rightward area — then
  * placed at a random spot within those same bounds.
  */
-function generateRandomPreviewRect(previewRatio: PreviewRatio): HoverPreviewRect {
+function generateRandomPreviewRect(previewRatio: PreviewRatio, footerTopPx?: number): HoverPreviewRect {
   const scale = getGridScale();
   const marginPx = GRID_MARGIN_PX * scale;
   const columnWidthPx = GRID_COLUMN_WIDTH_PX * scale;
@@ -113,24 +113,48 @@ function generateRandomPreviewRect(previewRatio: PreviewRatio): HoverPreviewRect
   const widthOverHeight = PREVIEW_RATIO_ASPECT[previewRatio];
   const size = PREVIEW_RATIO_SIZE[previewRatio];
   const viewportHeight = window.innerHeight;
-  const maxHeightPx = Math.max(1, viewportHeight - PREVIEW_VERTICAL_MARGIN_PX * 2);
+
+  // 使える下端。通常は画面下のマージン位置だが、フッターが視界に入って
+  // いるときはその上端の手前で止める — per direct request（フッターまで
+  // スクロールしてもプレビューは出す。ただしフッターには被せない）。
+  // 箱は position:fixed なので、ここはビューポート座標で考えればよい。
+  const defaultBottom = viewportHeight - PREVIEW_VERTICAL_MARGIN_PX;
+  const bottomLimit = Math.min(
+    defaultBottom,
+    footerTopPx === undefined ? defaultBottom : footerTopPx - PREVIEW_FOOTER_GAP_PX
+  );
+  /** フッターに詰められている＝通常より狭い状態か。 */
+  const footerConstrained = bottomLimit < defaultBottom;
+  const maxHeightPx = Math.max(1, bottomLimit - PREVIEW_VERTICAL_MARGIN_PX);
   const maxWidthByHeightColumns = Math.floor((maxHeightPx * widthOverHeight) / columnWidthPx);
 
   const widthCeilingColumns = Math.min(
     availableColumns,
-    size.ignoreViewportHeightCap ? availableColumns : maxWidthByHeightColumns,
+    // ignoreViewportHeightCap（square）は「低い画面でははみ出してよい」と
+    // いう指定だが、フッターに対しては例外を認めない。
+    size.ignoreViewportHeightCap && !footerConstrained ? availableColumns : maxWidthByHeightColumns,
     size.maxColumns ?? availableColumns
   );
-  const maxWidthColumns = Math.max(size.minColumns, widthCeilingColumns);
-  const widthColumns = randomInt(size.minColumns, maxWidthColumns);
-  const width = widthColumns * columnWidthPx;
-  const height = width / widthOverHeight;
+  // 通常は minColumns を下限として守る。フッターに詰められて minColumns
+  // すら入らないときだけ、下限のほうを譲る（被せないことを優先）。
+  const ceilingColumns = Math.max(1, widthCeilingColumns);
+  const minColumns = Math.min(size.minColumns, ceilingColumns);
+  const widthColumns = randomInt(minColumns, Math.max(minColumns, ceilingColumns));
+  let width = widthColumns * columnWidthPx;
+  let height = width / widthOverHeight;
+  // 列は整数なので、丸めのぶんだけ高さが上限を超えることがある。その場合
+  // だけグリッドを外れて縮める — 半端に被るよりは列から外れるほうがよい。
+  if (height > maxHeightPx) {
+    const shrink = maxHeightPx / height;
+    width *= shrink;
+    height *= shrink;
+  }
 
   const maxStartColumn = GRID_COLUMN_COUNT - widthColumns;
   const startColumn = randomInt(PREVIEW_START_COLUMN, Math.max(PREVIEW_START_COLUMN, maxStartColumn));
   const left = marginPx + columnWidthPx * startColumn;
 
-  const maxTop = Math.max(PREVIEW_VERTICAL_MARGIN_PX, viewportHeight - PREVIEW_VERTICAL_MARGIN_PX - height);
+  const maxTop = Math.max(PREVIEW_VERTICAL_MARGIN_PX, bottomLimit - height);
   const top = randomInt(PREVIEW_VERTICAL_MARGIN_PX, maxTop);
 
   return { top, left, width, height };
@@ -310,7 +334,6 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
   // idle grace period), since the card-dimming and the big title text
   // shouldn't linger the way the background image preview deliberately does.
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [atPageBottom, setAtPageBottom] = useState(false);
   // Whether the footer is (nearly) in view — used to hide the bottom-left
   // title text before it visually overlaps the footer. More sensitive than
   // atPageBottom (which only trips once scrolled all the way to the very
@@ -389,7 +412,12 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
         [
           {
             key: `${index}-${Date.now()}`,
-            rect: generateRandomPreviewRect(projects[index].previewRatio),
+            // フッターが視界に入っていれば、その上端を渡して箱を詰める
+            // （generateRandomPreviewRect の doc comment 参照）。
+            rect: generateRandomPreviewRect(
+              projects[index].previewRatio,
+              footerRef.current?.getBoundingClientRect().top
+            ),
             imageSrc: getProjectImageSrc(projects[index]),
             imageSrcSet: getProjectImageSrcSet(projects[index]),
             videoSrc: getProjectPreviewVideoSrc(projects[index]),
@@ -523,18 +551,12 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
     }
   }
 
-  // Fades everything out only once you've scrolled all the way to the
-  // bottom of the page (not just near the last title — that faded previews
-  // out while there were still several rows left to hover). Also checks the
-  // footer's live position here in the same handler (rather than a separate
-  // effect/listener) so there's only one code path reacting to scroll —
-  // hides the bottom-left title text before it can overlap the footer.
+  // フッターの現在位置を見て、左下のタイトル文字がフッターに重なる前に
+  // 隠す。以前はここで「ページ最下部に着いたか」も見てプレビューごと
+  // 消していたが、フッターでもプレビューは出す仕様になったので撤去した
+  // （ProjectHoverPreview の released 参照）。
   useEffect(() => {
     function checkScrollPosition() {
-      const scrolledToBottom =
-        window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - BOTTOM_OF_PAGE_TOLERANCE_PX;
-      setAtPageBottom(scrolledToBottom);
-
       const footer = footerRef.current;
       if (footer) {
         const footerTop = footer.getBoundingClientRect().top;
@@ -585,7 +607,10 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
           behave relative to #top above (same DOM-order-over-z-index
           reasoning as ProjectHoverPreview vs. the text layer). */}
       <div className="hidden lg:contents">
-        {!showImages && <ProjectHoverPreview entries={hoverEntries} released={atPageBottom || hoverIdle} />}
+        {/* released から atPageBottom を外してある — per direct request
+            （フッターまでスクロールしてもホバーで背景を出す）。被らない
+            ようにする役目は箱の縮小（generateRandomPreviewRect）が持つ。 */}
+        {!showImages && <ProjectHoverPreview entries={hoverEntries} released={hoverIdle} />}
 
         {/* `relative` (no z-index) so this becomes a positioned element with
             the default "auto" stack level, same as the preview images
