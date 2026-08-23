@@ -818,6 +818,7 @@ export function MobileMenu() {
                       noBlend
                       dark={lightPill}
                       centerWhenFits
+                      medium
                     />
                   </a>
                 ) : (
@@ -837,6 +838,7 @@ export function MobileMenu() {
                       noBlend
                       dark={lightPill}
                       centerWhenFits
+                      medium
                     />
                   </div>
                 )}

@@ -61,6 +61,10 @@ type NowPlayingTickerProps = {
    *  own identical `justify-center`-when-not-ticking treatment rather than
    *  changing this component's own PC-header default. */
   centerWhenFits?: boolean;
+  /** 文字を medium にする。既定は regular（PC ヘッダーの見え方）— per
+   *  direct follow-up（SP メニュー内だけ medium、PC ヘッダーは regular の
+   *  まま）。mobile-menu.tsx だけが渡す。 */
+  medium?: boolean;
 };
 
 /**
@@ -82,7 +86,9 @@ export function NowPlayingTicker({
   contact = false,
   revealed = true,
   centerWhenFits = false,
+  medium = false,
 }: NowPlayingTickerProps) {
+  const weight = medium ? "font-medium" : "font-normal";
   const containerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
   const [loopDistance, setLoopDistance] = useState<number | null>(null);
@@ -202,7 +208,7 @@ export function NowPlayingTicker({
         >
           <span
             ref={textRef}
-            className={`whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] font-normal ${dark ? "text-black" : contact ? "text-[#fff]" : "text-white"} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+            className={`whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] ${weight} ${dark ? "text-black" : contact ? "text-[#fff]" : "text-white"} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
           >
             {chars.map((char, i) => (
               <span
@@ -220,7 +226,7 @@ export function NowPlayingTicker({
           {isTicking && (
             <span
               aria-hidden
-              className={`whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] font-normal ${dark ? "text-black" : contact ? "text-[#fff]" : "text-white"} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
+              className={`whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.5] ${weight} ${dark ? "text-black" : contact ? "text-[#fff]" : "text-white"} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}
             >
               {text}
             </span>

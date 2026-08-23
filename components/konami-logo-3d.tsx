@@ -115,13 +115,28 @@ const WALL_THICKNESS_GRADIENT = "to bottom";
 /** 手前の面（文字そのものの面）に乗せるグラデ — per direct follow-up
  *  （"ロゴの手前の面にもグラデつけて"）。
  *
- *  輪郭だけだった前後の面に、うっすら塗りを足す。文字の形は元の SVG を
- *  そのまま `mask-image` にして抜く（穴＝A や D のカウンターも SVG の
- *  塗り規則のまま正しく抜ける）ので、パスを再現する必要がない。
+ *  輪郭だけだった前後の面に、うっすら塗りを足す。実体は、輪郭に使うのと
+ *  同じ取得済みパスを塗りで描いたインライン SVG（穴＝A や D のカウンターも
+ *  元の SVG と同じ塗り規則で抜ける）。
+ *
+ *  当初は CSS の `mask-image` で抜いていたが、ブラウザがマスク画像の取得を
+ *  遅らせるため、その間 plate は透過が上がりきっていても完全に隠れたまま
+ *  で、マスクが解決した瞬間に「フェード完了済みの濃さ」で1フレームで
+ *  現れていた（画面収録の実測で確認）。外部リソースを持たない形にすれば
+ *  この経路自体が無くなる。
  *
  *  濃さの左右差は側面と同じ規則（WALL_FAR_DIM / WALL_DEPTH_SIGN 参照）。
  *  面ごとの濃さは輪郭と同じ frontness で、視点側の面だけが読める。 */
 const FACE_OPACITY = 0.1;
+/** 面と側面の塗りが乗ってくる時間。カーブは smoothstep（両端が緩い）。
+ *
+ *  面・側面の両方をこの1つの時計で駆動する（tick() の faceIn）。以前は
+ *  側面だけ WAAPI で別に回していたが、時計が2つあると段差の原因になり、
+ *  アニメーション終了時に基底スタイルへ戻る挙動も挟まる。 */
+const FACE_FADE_MS = 900;
+/** 乗り始めるまでの待ち。輪郭の描き込みと並走させる（1350 → 300。
+ *  直接の指示「もっと早く」）。 */
+const FACE_FADE_DELAY_MS = 300;
 /** 三次ベジェを何本の直線に割るか。 */
 const CURVE_STEPS = 10;
 /** 角で短冊どうしが割れて見えないよう、線分をこのぶん（viewBox 単位）
@@ -624,6 +639,24 @@ export function KonamiLogo3D() {
         // 頂点はコマンドの終点 = 輪郭の角。曲線（D の椀）は終点のみなので
         // 角の無い区間には線が付かない — ワイヤーフレームの結線としては
         // それが正しい見え方。
+        // 前後の面の塗り（FACE_OPACITY の doc comment 参照）。取得済みの
+        // パスをそのまま塗りで描いた SVG を各 plate に入れる。文字の穴
+        // （A / D のカウンター）は元の SVG と同じ塗り規則で自然に抜ける。
+        // グラデの両端は CSS 変数を読むので、濃さの更新は tick() 側だけで
+        // 済む。
+        facePlateRefs.current.forEach((plate, i) => {
+          if (!plate) return;
+          const gradientId = `logo-face-gradient-${i}`;
+          plate.innerHTML =
+            `<svg viewBox="0 0 ${LOGO_VIEWBOX.w} ${LOGO_VIEWBOX.h}" style="display:block;width:100%;height:100%">` +
+            `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="1" y2="0">` +
+            `<stop offset="0" stop-color="#000" style="stop-opacity:var(--logo-face-l)"></stop>` +
+            `<stop offset="1" stop-color="#000" style="stop-opacity:var(--logo-face-r)"></stop>` +
+            `</linearGradient></defs>` +
+            paths.map((d) => `<path d="${d}" fill="url(#${gradientId})"></path>`).join("") +
+            `</svg>`;
+        });
+
         // 側面（押し出しの壁）— WALL_OPACITY_FRONT の doc comment 参照。
         //
         // 短冊1枚の作り方: 幅 = その線分の長さ（ステージ幅に対する %。
@@ -661,7 +694,7 @@ export function KonamiLogo3D() {
                 quads.push(
                   `<div style="position:absolute;left:${left}%;top:${top}%;width:${widthPct}%;height:${THICKNESS_PX}px;` +
                     `--qx:${qx};` +
-                    `opacity:calc(var(--logo-wall-dim) + (1 - var(--logo-wall-dim)) * (1 + var(--qx) * var(--logo-wall-yaw)) / 2);` +
+                    `opacity:calc((var(--logo-wall-dim) + (1 - var(--logo-wall-dim)) * (1 + var(--qx) * var(--logo-wall-yaw)) / 2) * var(--logo-fill-in));` +
                     `background:linear-gradient(${WALL_THICKNESS_GRADIENT}, rgba(0,0,0,var(--logo-wall-a)), rgba(0,0,0,var(--logo-wall-b)));` +
                     `transform:translate(-50%,-50%) rotateZ(${angle.toFixed(3)}deg) rotateX(-90deg);"></div>`
                 );
@@ -669,14 +702,10 @@ export function KonamiLogo3D() {
             });
           });
           wallsHost.innerHTML = quads.join("");
-          // 面は輪郭・エッジ線が描き終わってから、まとめて薄く浮かび上がる
-          // （1枚ずつ描き込むと「線が走る」演出とぶつかる）。
-          wallsHost.animate([{ opacity: 0 }, { opacity: 1 }], {
-            delay: DRAW_DELAY_MAX_MS + DRAW_EDGE_EXTRA_DELAY_MS,
-            duration: DRAW_DURATION_MAX_MS,
-            easing: "ease-out",
-            fill: "backwards",
-          });
+          // 濃さの立ち上げは tick() の faceIn が面と一緒に書く。以前は
+          // ここで WAAPI を別に回していたが、時計が2つあると段差の原因に
+          // なるうえ、アニメーション終了時に基底スタイルへ戻る挙動も
+          // 挟まる。ひとつの時計にまとめてある。
         }
 
         const edgesHost = edgesHostRef.current;
@@ -805,21 +834,34 @@ export function KonamiLogo3D() {
         // 面の塗りは同じ規則を「左端 / 右端」の2点だけで表したもの
         // （FACE_OPACITY の doc comment 参照）。
         const nearMix = (q: number) => WALL_FAR_DIM + (1 - WALL_FAR_DIM) * ((1 + q * depth) / 2);
-        stage.style.setProperty("--logo-face-l", (FACE_OPACITY * nearMix(-1)).toFixed(4));
-        stage.style.setProperty("--logo-face-r", (FACE_OPACITY * nearMix(1)).toFixed(4));
         // 面ごとの濃さ（視点側だけが読める）。登場は輪郭・エッジ線のあとに
         // 薄く浮かび上がる — 側面（wallsHost）と同じタイミング。
-        const sinceStart = entranceStartAt === null ? 0 : performance.now() - entranceStartAt;
-        const faceIn = Math.min(
-          1,
-          Math.max(0, (sinceStart - (DRAW_DELAY_MAX_MS + DRAW_EDGE_EXTRA_DELAY_MS)) / DRAW_DURATION_MAX_MS)
-        );
+        //
+        // 塗りはインライン SVG なので、パスが読めた時点（entranceStartAt）
+        // から素直に数えてよい。以前は CSS の mask-image で抜いていて、
+        // その読み込みが終わるまで要素が完全に隠れ、解決した瞬間に
+        // 「フェード完了済みの濃さ」でいきなり現れていた（実測で1フレーム
+        // 跳ね）。外部リソースを使わない形にして、その経路ごと無くした。
+        const faceStartAt = entranceStartAt === null ? null : entranceStartAt + FACE_FADE_DELAY_MS;
+        const faceProgress =
+          faceStartAt === null
+            ? 0
+            : Math.min(1, Math.max(0, (performance.now() - faceStartAt) / FACE_FADE_MS));
+        // smoothstep — 両端が緩い（FACE_FADE_MS の doc comment 参照）。
+        const faceIn = faceProgress * faceProgress * (3 - 2 * faceProgress);
+        // 濃さは要素の opacity ではなく、塗りの色そのもの（SVG グラデの
+        // stop-opacity / 短冊の背景アルファ）に畳み込む — FILL_IN の
+        // doc comment 参照。3D の中で opacity を使うと、1 未満のあいだ
+        // 子孫が平面に潰され、1 になった瞬間に潰しが解けて濃さが跳ねる。
+        stage.style.setProperty("--logo-fill-in", faceIn.toFixed(4));
         facePlateRefs.current.forEach((plate, i) => {
           if (!plate) return;
           // i の大きいほうが z 正（＝元の前面）。SLICE_COUNT=2 なので
           // i=1 が前面、i=0 が背面。
           const isFront = i / (SLICE_COUNT - 1) - 0.5 > 0;
-          plate.style.opacity = (faceIn * (isFront ? frontness : 1 - frontness)).toFixed(3);
+          const facing = faceIn * (isFront ? frontness : 1 - frontness);
+          plate.style.setProperty("--logo-face-l", (FACE_OPACITY * nearMix(-1) * facing).toFixed(4));
+          plate.style.setProperty("--logo-face-r", (FACE_OPACITY * nearMix(1) * facing).toFixed(4));
         });
         // 輪郭 canvas は JS 直書き（sliceCanvasInfo の doc comment 参照）。
         for (const info of sliceCanvasInfo) {
@@ -867,6 +909,7 @@ export function KonamiLogo3D() {
           ["--logo-wall-yaw" as string]: "0",
           ["--logo-face-l" as string]: "0",
           ["--logo-face-r" as string]: "0",
+          ["--logo-fill-in" as string]: "0",
         }}
       >
         {/* 側面（押し出しの壁）のホスト。エッジ線と同じ理由で preserve-3d
@@ -885,12 +928,11 @@ export function KonamiLogo3D() {
           className="absolute inset-0"
           style={{ transformStyle: "preserve-3d" }}
         />
-        {/* 前後の面の塗り（FACE_OPACITY の doc comment 参照）。文字の形は
-            元の SVG をそのまま mask にして抜く。濃さは tick() が毎フレーム
+        {/* 前後の面の塗り（FACE_OPACITY の doc comment 参照）。中身の
+            インライン SVG は下の effect が入れる。濃さは tick() が毎フレーム
             opacity に書く（視点側の面だけが読める）。 */}
         {Array.from({ length: SLICE_COUNT }, (_, i) => {
           const z = (i / (SLICE_COUNT - 1) - 0.5) * THICKNESS_PX;
-          const maskUrl = `url(${withBasePath("/andmade-logo.svg")})`;
           return (
             <div
               key={`face-${i}`}
@@ -898,18 +940,7 @@ export function KonamiLogo3D() {
                 facePlateRefs.current[i] = el;
               }}
               className="absolute inset-0"
-              style={{
-                transform: `translateZ(${z.toFixed(1)}px)`,
-                maskImage: maskUrl,
-                WebkitMaskImage: maskUrl,
-                maskSize: "100% 100%",
-                WebkitMaskSize: "100% 100%",
-                maskRepeat: "no-repeat",
-                WebkitMaskRepeat: "no-repeat",
-                background:
-                  "linear-gradient(to right, rgba(0,0,0,var(--logo-face-l)), rgba(0,0,0,var(--logo-face-r)))",
-                opacity: 0,
-              }}
+              style={{ transform: `translateZ(${z.toFixed(1)}px)` }}
             />
           );
         })}

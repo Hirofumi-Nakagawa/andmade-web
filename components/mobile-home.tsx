@@ -1179,10 +1179,10 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
 
         {/* FV ステートメント（PC は home-statement.tsx、Figma node 1712:1053）:
             What Matters 13px → 40px下に本文 22px → 15px下に Who we are 15px
-            → 30px下に「A sound archive〜」13px → 80px下に Made Here（下の
+            → 30px下に「A sound archive〜」13px → 75px下に Made Here（下の
             レール1行目）。縦の間隔は PC と同じく [text-box-trim:trim-both]
             前提（前の要素のベースライン → 次の要素のキャップ上端）。
-            ヘッダーからの余白は 45px（Figma 実測）→ 80px。
+            ヘッダーからの余白は 45px（Figma 実測）→ 80px → 75px。
 
             `relative` — スクロールで出る背景プレビュー（ProjectPreviewStack、
             position:fixed / z-index:auto）より前面に出すため。fixed 要素は
@@ -1323,12 +1323,12 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
         <div
           ref={sectionOriginRef}
           className="relative pb-[20px]"
-          // mt — 「A sound archive〜」の下 80px にセクション原点（= Made Here /
+          // mt — 「A sound archive〜」の下 75px にセクション原点（= Made Here /
           // お知らせの上面）。
           // pt — その Made Here のベースラインから一覧まで 40px。absolute な
           // レール／お知らせ／Made Here はパディングボックスの上端基準なので、
           // この padding では動かず、フロー内の一覧だけが下がる。
-          style={{ marginTop: 80, paddingTop: MADE_HERE_HEIGHT_PX + 40 }}
+          style={{ marginTop: 75, paddingTop: MADE_HERE_HEIGHT_PX + 40 }}
         >
           {/* 「Made Here」— レール（sticky）の外に出した非固定ラベル。位置は
               セクション原点の左上 = お知らせ（MobileRecentNews、topPx=0）の
