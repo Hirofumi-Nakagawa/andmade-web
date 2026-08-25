@@ -246,6 +246,24 @@ const float RIPPLE_PX = 14.0;
  *  左右どちらにも動くため「狭まって見える」瞬間があり（per direct
  *  follow-up "狭まってない？"）、常に外向きのこの項を追加した。 */
 const float SPREAD = 0.05;
+/** 樽型の湾曲（魚眼）— 参考コード（EdgeDistortionGallery の
+ *  pos / (1.0 + k * r * r) ）の考え方をそのまま持ち込んだもの。
+ *  サンプル位置を画面中心へ引き戻すと、内容は外へ膨らんで見える。
+ *
+ *  SPREAD が横位置に比例した線形の押し出しだったのに対し、こちらは
+ *  中心からの距離の2乗で効くので、端に近いほど・角に近いほど強く曲がる。
+ *  縦横が同じ式で曲がるぶん「板ガラスのレンズ」らしくなる。両方を残して
+ *  あるのは、SPREAD が「常に外向き」を保証する下支えとして効いているため
+ *  （sin の揺らぎだけだと狭まって見える瞬間がある）。
+ *  効くのは帯の中だけ・スクロール速度に比例（下の k を掛けている）。 */
+const float BARREL = 0.18;
+/** 樽型湾曲の横成分だけを弱める係数。
+ *
+ *  横に強く引くと、サムネとサムネのあいだ（キャプチャした元画像の地）が
+ *  引き伸ばされてサムネの背面に白ベタとして出てくる — per direct
+ *  follow-up。縦方向の引きは元々グリフや画像そのものを伸ばす方向なので
+ *  地が出にくく、横だけ抑えれば湾曲の見え方は保ったまま白ベタが消える。 */
+const float BARREL_X = 0.4;
 /** 端の際のグリッチ（per direct follow-up "上下エフェクト箇所にグリッチも
  *  加えて" → "鏡面っぽくグリッチしてるように見える"）。参照スクショの
  *  正体は**鏡面折り返し**: 帯の外側半分が、折り線（帯の中点）より内側の
@@ -356,7 +374,14 @@ void main() {
   // 側へ引き戻す = 内容が外側へ膨らんで見える。ガラスの樽型湾曲。
   float spread = -(vScreen.x - 0.5) * uViewport.x * SPREAD * k;
 
-  vec2 offsetPx = vec2(ripple + spread, pull);
+  // 樽型湾曲（BARREL の doc comment 参照）。画面中心を原点にした -1..1 の
+  // 座標で 1/(1 + k·r²) を掛け、その差分を CSS px に直して足す。
+  vec2 pos = vScreen * 2.0 - 1.0;
+  float r2 = dot(pos, pos);
+  vec2 barrelPx = (pos / (1.0 + BARREL * k * r2) - pos) * 0.5 * uViewport;
+  barrelPx.x *= BARREL_X;
+
+  vec2 offsetPx = vec2(ripple + spread, pull) + barrelPx;
 
   // 端の際のグリッチ（GLITCH_* の doc comment 参照）。帯の外側半分でのみ
   // 3タップになる — それ以外は従来どおり1タップで、コスト増は画面の
@@ -374,11 +399,15 @@ void main() {
     float mirror = 2.0 * (foldY - vScreen.y) * uViewport.y * mirrorAmt;
     // 短冊のゆらぎで鏡面を少し乱す（実内容のずれのみ）。
     vec2 gOffset = offsetPx + vec2(0.0, mirror + (h - 0.5) * GLITCH_PX * g);
-    // RGB を上下に割ってサンプル。アルファは3タップの最大値。
-    float split = GLITCH_CA_PX * g * (0.4 + 0.6 * h);
-    vec4 cR = tap(vUv + (gOffset + vec2(0.0, split)) * uPxToUv);
+    // RGB の割れは**放射方向**（画面中心から外向き）— 参考コードの
+    // normalize(pos) * offsetAmount と同じ考え方。以前は上下方向に
+    // 固定で割っていたが、放射方向のほうがレンズの色収差として読める
+    // （角では斜めに割れる）。アルファは3タップの最大値。
+    vec2 caDir = normalize(pos + vec2(1e-5));
+    vec2 caPx = caDir * (GLITCH_CA_PX * g * (0.4 + 0.6 * h));
+    vec4 cR = tap(vUv + (gOffset + caPx) * uPxToUv);
     vec4 cG = tap(vUv + gOffset * uPxToUv);
-    vec4 cB = tap(vUv + (gOffset - vec2(0.0, split)) * uPxToUv);
+    vec4 cB = tap(vUv + (gOffset - caPx) * uPxToUv);
     vec4 gcol = vec4(cR.r, cG.g, cB.b, max(cG.a, max(cR.a, cB.a)));
     vec3 grainbow = 0.5 + 0.5 * cos(t * 6.2832 + vec3(0.0, 2.094, 4.189));
     gcol.rgb += grainbow * gcol.a * DISPERSION * k;

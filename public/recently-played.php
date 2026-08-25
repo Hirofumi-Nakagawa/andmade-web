@@ -9,7 +9,7 @@
  * now-playing.php の冒頭コメント参照）。
  *
  * 返す JSON:
- *   {"tracks":[{"image":"https://i.scdn.co/image/...","artist":"...","time":"HH:MM","date":"Aug.15,2026"}, ...]}
+ *   {"tracks":[{"image":"https://i.scdn.co/image/...","artist":"...","title":"...","time":"HH:MM","date":"Aug.15,2026"}, ...]}
  *   直近再生順（新しい順）。取得できなかった場合は {"tracks":[]}。
  * 失敗時も常に 200 + 空配列（呼び出し側は「何も表示しない」だけで済む。
  * components/recently-played-flip.tsx 参照）。
@@ -355,6 +355,9 @@ foreach ($data['items'] as $entry) {
     $tracks[] = [
         'image' => $url,
         'artist' => implode(', ', $artists),
+        // title — 表示には使っていないが、アーカイブや確認用に返す
+        // （ログには元から残していた値をそのまま渡すだけ）。
+        'title' => (string) ($track['name'] ?? ''),
         'time' => $time,
         'date' => $date,
     ];
