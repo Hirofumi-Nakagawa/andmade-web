@@ -213,12 +213,12 @@ const SS09 = { fontFeatureSettings: '"ss09" 1' } as const;
 // （(80-30)/416 ≈ 0.1202）。
 const HERO_TITLE_META_GAP =
   "clamp(30px, calc((100vw - 1024px) * 0.1202 + 30px), calc(80px * var(--scale)))";
-// category → role → "View Website" の間隔。110px → 80px（直接の指示
-// "pcの実績詳細のFVのcategory、role、リンクのマージンを80pxにして"）。
-// 傾きは 1024px の 30px 下限から 1440px の 80px までの線形補間
-// （(80-30)/416 ≈ 0.1202）— 上の doc comment の設計をそのまま追従させた。
+// category → role → "View Website" の間隔。110px → 80px → 50px（いずれも
+// 直接の指示）。傾きは 1024px の 30px 下限から 1440px の 50px までの線形
+// 補間（(50-30)/416 ≈ 0.0481）— 上の doc comment の設計をそのまま追従させた。
+// タイトル → category（HERO_TITLE_META_GAP）は 80px のまま。
 const HERO_META_ITEM_GAP =
-  "clamp(30px, calc((100vw - 1024px) * 0.1202 + 30px), calc(80px * var(--scale)))";
+  "clamp(30px, calc((100vw - 1024px) * 0.0481 + 30px), calc(50px * var(--scale)))";
 
 /** Trims only the leading/trailing half-leading of a stacked-paragraph
  *  block's first/last line, without touching the natural line-height
