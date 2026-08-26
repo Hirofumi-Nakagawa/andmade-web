@@ -386,6 +386,36 @@ export type Project = {
   detail?: ProjectDetail;
 };
 
+/**
+ * 一覧（トップページ）へ渡す用に、詳細ページ専用のフィールドを落とした
+ * Project を返す。
+ *
+ * トップは Client Component（home-view.tsx）にこの配列を渡すので、渡した
+ * ものはすべて RSC ペイロードとして HTML に埋め込まれ、訪問のたびに転送・
+ * デシリアライズされる。ところが一覧・ホバープレビュー・サムネが読むのは
+ * title / category / role / date / previewRatio / imageSrc / imageSrcSet /
+ * previewVideo* / color だけで、`detail`（ヒーロー画像、ギャラリー、
+ * クレジット、Idea/Outcome の本文）や meta 系はまったく使わない。
+ * それでも入れていたため、トップの HTML は 430KB、うち script が 300KB、
+ * microCMS の画像 URL だけで 1254 個・16万文字という状態だった。
+ *
+ * 詳細ページ（app/projects/[slug]/page.tsx）は自分で getProjects() を
+ * 呼んでいるので、ここで落としても中身は変わらない。落とすのは「一覧では
+ * 絶対に使わない」と分かっている4つだけで、それ以外は今後フィールドが
+ * 増えても自動で通る（明示的に列挙して組み直すと取りこぼすため）。
+ *
+ * 戻り値の型が Project のままなのは、落とす4つがすべて optional なので
+ * 型としては互換だから — 呼び出し側の型を変えて回る必要がない。
+ */
+export function toListProject(project: Project): Project {
+  const listItem = { ...project };
+  delete listItem.detail;
+  delete listItem.metaTitle;
+  delete listItem.description;
+  delete listItem.ogImage;
+  return listItem;
+}
+
 /** Resolves the thumbnail image actually shown for a project — its real
  *  microCMS image if uploaded, otherwise the shared sample for its
  *  previewRatio. Use this everywhere a thumbnail src is needed instead of

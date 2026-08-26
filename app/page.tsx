@@ -1,6 +1,6 @@
 import { HomeView } from "@/components/home-view";
 import { getRecentNews } from "@/lib/news";
-import { getProjects } from "@/lib/projects";
+import { getProjects, toListProject } from "@/lib/projects";
 
 // `export const dynamic = "force-dynamic"` was here, keeping this page on a
 // per-request CMS fetch. Removed for the static export (next.config.ts's own
@@ -15,5 +15,7 @@ import { getProjects } from "@/lib/projects";
 // removes the brief empty-then-populated flash those fetches caused.
 export default async function Home() {
   const [projects, news] = await Promise.all([getProjects(), getRecentNews()]);
-  return <HomeView initialProjects={projects} news={news} />;
+  // 詳細ページ専用のフィールドは落として渡す — toListProject の doc
+  // comment 参照（渡したものはすべて HTML に埋め込まれるため）。
+  return <HomeView initialProjects={projects.map(toListProject)} news={news} />;
 }
