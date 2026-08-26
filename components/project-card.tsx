@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { ScrambleText } from "@/components/scramble-text";
 import { slugify, type Project } from "@/lib/projects";
@@ -338,6 +338,23 @@ export function ProjectCard({
             // ブロック化して trim を戻し、w-fit で幅は中身なりのまま
             // （＝下線がテキストと同じ長さ）にする。
             className="underline-sweep block w-fit text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] text-black"
+            // --underline-offset を共有既定値（-0.1em）から 0.5px 下げる。
+            //
+            // 下線は絶対配置の 1px の帯で、位置はこの span のボックス下端
+            // （trim-both なのでベースライン）基準。ところが**グリフは
+            // サブピクセル精度で描かれるのに、帯はボックスごと整数
+            // ピクセルに丸められる**ので、カードの縦位置の端数しだいで
+            // 丸めの向きが変わる。一覧は行間（--grid-scale 由来）も行の
+            // 高さ（leading 1.5 × 11px = 16.5px など）も端数なので、
+            // カードごとに端数が違ってくる。
+            //
+            // 実測（2倍解像度）では隙間が 0 か 1 デバイスピクセルに
+            // 分かれていて、0 の側は下線がグリフに接していた。これが
+            // 「行によって詰まって見える」の正体。既定値を半 CSS px
+            // 下げると 1〜2 デバイスピクセルになり、接する行が無くなる。
+            // 丸めによる 1 デバイスピクセルのばらつき自体は、JS で
+            // カードの位置をピクセルに吸着させない限り残る。
+            style={{ "--underline-offset": "calc(-0.1em - 0.5px)" } as CSSProperties}
           >
             <HoverPlate active={hovered} inset={TITLE_PLATE_INSET} />
             {/* `relative` so the text paints above the plate behind it — the
