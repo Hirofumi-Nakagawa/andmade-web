@@ -569,7 +569,15 @@ export default function About() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline-sweep"
-                style={{ "--underline-offset": "calc(-0.1em + 3px)" } as React.CSSProperties}
+                // --underline-untrimmed-nudge — text-box-trim が効かない環境
+                // （Firefox）でだけ 2px 下げる（直接の指示）。globals.css の
+                // @supports ブロックが読む。効く環境では無視される。
+                style={
+                  {
+                    "--underline-offset": "calc(-0.1em + 3px)",
+                    "--underline-untrimmed-nudge": "4px",
+                  } as React.CSSProperties
+                }
               >
                 Gen Interface JP
               </a>

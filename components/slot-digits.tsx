@@ -110,7 +110,9 @@ function SlotDigit({ digit, extraSpins, durationMs, itemHeightPx }: SlotDigitPro
 
   return (
     <span
-      className="relative inline-block w-[1ch] overflow-hidden align-baseline tabular-nums"
+      // slot-digit-window — text-box-trim が効かない環境で位置を直すための
+      // フック（globals.css の @supports ブロック参照）。
+      className="slot-digit-window relative inline-block w-[1ch] overflow-hidden align-baseline tabular-nums"
       style={{ height: itemHeightPx }}
     >
       <span

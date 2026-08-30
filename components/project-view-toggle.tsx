@@ -71,7 +71,10 @@ export function ProjectViewToggle({ count, showImages, onShowImagesChange, onTog
             この行ごと再マウントされる（home-view.tsx の
             toggleReplayGeneration）ので、スロットもそのたび回り直す。 */}
         <p className="text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Made Here</p>
-        <p className="mt-[calc(9px*var(--scale))] text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+        {/* untrimmed-tighten — text-box-trim が効かない環境で「Made Here」
+            との間隔が行ボックスのぶん開くのを詰め直す（globals.css の
+            @supports ブロック参照）。効く環境では何も起きない。 */}
+        <p className="untrimmed-tighten mt-[calc(9px*var(--scale))] text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
           <span className="font-medium">
             <SlotDigits
               value={countUpStarted ? count : 0}

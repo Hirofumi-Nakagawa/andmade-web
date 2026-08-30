@@ -207,7 +207,13 @@ export default function Contact() {
                 </p>
                 {/* mailto → クリックでコピー＋"Copied" 表示（copy-email.tsx）
                     — per direct follow-up。見た目のクラスは従来のまま。 */}
-                <CopyEmail inverted className="underline-sweep text-[length:calc(18px*var(--scale))] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]" />
+                <CopyEmail
+                  inverted
+                  className="underline-sweep text-[length:calc(18px*var(--scale))] text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                  // Firefox でだけ 1px 下げる（下の Instagram / X と同じ。
+                  // globals.css の @supports ブロック参照）。
+                  style={{ "--underline-untrimmed-nudge": "1px" } as React.CSSProperties}
+                />
               </div>
               {/* mr = 1マス（レイアウトグリッド1列 = 58px*grid-scale、
                   home-view.tsx の GRID_COLUMN_WIDTH_PX 参照）ぶん左へ —
@@ -223,6 +229,9 @@ export default function Contact() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                    // Firefox でだけ 1px 下げる（globals.css の @supports
+                    // ブロック参照）。
+                    style={{ "--underline-untrimmed-nudge": "1px" } as React.CSSProperties}
                   >
                     Instagram
                   </a>
@@ -232,6 +241,9 @@ export default function Contact() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                    // Firefox でだけ 1px 下げる（globals.css の @supports
+                    // ブロック参照）。
+                    style={{ "--underline-untrimmed-nudge": "1px" } as React.CSSProperties}
                   >
                     X
                   </a>

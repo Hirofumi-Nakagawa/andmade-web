@@ -174,7 +174,15 @@ export function HomeStatement({ colorsOn, onColorsToggle }: HomeStatementProps) 
                 減らす＝文字に近づく＝上がる。globals.css の該当ルール参照。 */}
             <span
               className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-              style={{ "--underline-offset": "calc(-0.1em + 2px)" } as CSSProperties}
+              // --underline-untrimmed-nudge — text-box-trim が効かない環境
+              // （Firefox）でだけ 2px 下げる（直接の指示）。globals.css の
+              // @supports ブロックが読む。効く環境では無視される。
+              style={
+                {
+                  "--underline-offset": "calc(-0.1em + 2px)",
+                  "--underline-untrimmed-nudge": "2px",
+                } as CSSProperties
+              }
             >
               Colors of Sound
             </span>

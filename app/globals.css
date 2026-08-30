@@ -41,7 +41,24 @@
   /* Formula constant so --scale-raw resolves to exactly 1 at --scale-breakpoint. */
   --scale-margin: calc(var(--scale-breakpoint) - var(--content-width));
   /* Fully relative scale (1:1 with viewport growth past the breakpoint). */
-  --scale-raw: max(1, calc((100vw - var(--scale-margin)) / var(--content-width)));
+  /*
+   * --scale-raw / --grid-scale は「ビューポート幅 ÷ 基準幅」という**無単位の
+   * 比**で、CSS だけで書くには calc() の中で長さ同士を割る必要がある。これは
+   * Chrome / Safari は通すが **Firefox は通さず、式ごと無効になる**。無効に
+   * なると、この2つを掛けている指定（左マージン 198px、コンテンツ幅、
+   * グリッドの列幅）が軒並み落ちて、レイアウトが左端に潰れる。
+   * tan(atan2(a, b)) で除算を避ける書き方も試したが、Firefox では同じく
+   * 効かなかった。
+   *
+   * そこで**この2つだけ JS で入れる**ことにした（app/layout.tsx の
+   * <head> にあるインラインスクリプト）。ここに書いてある値は、その
+   * スクリプトが走る前と、万一 JS が無効なときのフォールバック —
+   * 1440px の設計値そのもの（＝流動しないが崩れない）。
+   *
+   * 依存するのが「JS が動くこと」だけになるので、CSS 数学関数の対応状況を
+   * ブラウザごとに気にしなくてよくなる。
+   */
+  --scale-raw: 1;
   /* 1 = fully relative (--scale-raw), 0 = locked at the breakpoint size. */
   --scale-damping: 0.7;
   --scale: calc(1 + (var(--scale-raw) - 1) * var(--scale-damping));
@@ -67,7 +84,9 @@
    * 24px right margin at every viewport from 1024px up, so they never
    * overlap it.)
    */
-  --grid-scale: max(calc(1024 / 1440), calc(100vw / 1440px));
+  /* 値は JS が入れる — --scale-raw の直前のコメント参照。ここは
+     フォールバック（1440px の設計値）。 */
+  --grid-scale: 1;
 
   /* Below 1440px (--grid-scale < 1) this clamps to the fixed 1218px
      (unchanged layout, same as always). Above 1440px (--grid-scale > 1) it
@@ -111,6 +130,15 @@
      default matches most pages; Contact/Studies/project detail override it
      per-mount via <StatusBarMaskColor>. */
   --status-bar-mask: var(--background);
+
+  /* (アセンダ − ディセンダ) / 2（em）。text-box-trim が効かない環境の
+     補正に使う定数で、実体は components/untrimmed-metrics.ts が canvas で
+     実測して上書きする。ここの値は測る前のフォールバック（Helvetica 系の
+     一般的な値）。使い方は下の @supports ブロック参照。 */
+  --font-ad-half: 0.27em;
+  /* キャップハイト（em）。同じく untrimmed-metrics.ts が実測して上書き
+     する。CSS の `cap` 単位は使わない — 対応状況がブラウザで割れる。 */
+  --font-cap: 0.72em;
 
   --sp-grid-margin: 8px;
   --sp-grid-columns: 12;
@@ -325,6 +353,67 @@ body::-webkit-scrollbar {
   background-color: currentColor;
   transform: scaleX(1);
   transform-origin: left;
+}
+
+/*
+ * text-box-trim が効かない環境（Firefox）向けの補正。
+ *
+ * このサイトは縦位置の基準を trim-both（ボックス下端＝ベースライン）に
+ * 置いている。効かないとボックス下端が**行ボックスの下端**になり、
+ *
+ *     ずれ = 行送り/2 − (アセンダ − ディセンダ)/2
+ *          = calc(0.5lh - var(--font-ad-half))
+ *
+ * だけ下にずれる。行送りは要素ごとに違うので 1lh で拾い、フォント定数
+ * （--font-ad-half）は components/untrimmed-metrics.ts が実測して入れる。
+ *
+ * ここで直すのは実害の出ていた2か所だけ:
+ *  1. 下線（.underline-sweep::after）— ボックス下端基準なので、そのぶん
+ *     テキストから離れる。
+ *  2. スロットの数字（slot-digits.tsx）— 窓は overflow-hidden の
+ *     inline-block で、そのベースラインは自分の下端。中のグリフは
+ *     items-end で下揃えなので、trim が効いていれば「グリフの
+ *     ベースライン＝窓の下端＝行のベースライン」で揃う。効かないと
+ *     グリフの箱にディセンダぶんが残り、数字だけ上に浮く（"26" と
+ *     "Cases" のズレ）。窓ごと下げれば揃う。
+ */
+@supports not (text-box-trim: trim-both) {
+  .underline-sweep::after {
+    /* --underline-untrimmed-nudge — この環境でだけ効く微調整（px、正で
+       下線が下がる）。フォント実測でも合わない箇所を個別に詰めるための
+       逃げ道で、既定は 0（＝補正どおり）。 */
+    bottom: calc(
+      var(--underline-offset, -0.1em) + 0.5lh - var(--font-ad-half) -
+        var(--underline-untrimmed-nudge, 0px)
+    );
+  }
+
+  .slot-digit-window {
+    position: relative;
+    top: calc(0.5lh - var(--font-ad-half));
+  }
+
+  /*
+   * 縦に積んだテキストどうしの間隔を詰め直すユーティリティ。
+   *
+   * trim-both が効いていれば「上の行のベースライン → 下の行のキャップ
+   * 上端」が指定した gap そのものになる。効かないと、上の箱に残る
+   * （ベースライン → 行ボックス下端）と下の箱に残る（行ボックス上端 →
+   * キャップ上端）が両方入るぶんだけ離れる。その合計はちょうど
+   *
+   *     (0.5lh − ad) + (0.5lh + ad − cap) = 1lh − 1cap
+   *
+   * なので、2つ目以降に負マージンで打ち消せば元の見え方に戻る。
+   * キャップハイトは --font-cap（untrimmed-metrics.ts が実測）。
+   * 積んだ要素の font-size / 行送りが揃っている前提。
+   *
+   * .untrimmed-tighten は同じ補正を1要素だけに当てる版（親ごと直したい
+   * わけではない場所用）。
+   */
+  .untrimmed-stack > * + *,
+  .untrimmed-tighten {
+    margin-top: calc(-1 * (1lh - var(--font-cap)));
+  }
 }
 
 .underline-sweep:hover::after,

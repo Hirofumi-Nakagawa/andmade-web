@@ -168,14 +168,62 @@ export const viewport: Viewport = {
   themeColor: "#f6f6f4",
 };
 
+/**
+ * --scale-raw / --grid-scale を実測のビューポート幅から入れるスクリプト。
+ * 中身の数値は globals.css の設計値と対応している:
+ *   --scale-raw  = max(1, (幅 - (1440 - 1218)) / 1218)
+ *   --grid-scale = max(1024 / 1440, 幅 / 1440)
+ * 片方でも変えたら両方を合わせること。
+ *
+ * innerWidth を使うのは、CSS の 100vw と同じ「スクロールバーを含む幅」だから
+ * （このサイトはスクロールバーを隠しているので実質同じだが、定義を合わせて
+ * おく）。resize は passive で、値が変わったときだけ書き込む。
+ */
+const SCALE_VARS_SCRIPT = `(function(){
+  var el = document.documentElement;
+  var last = null;
+  function apply(){
+    var w = window.innerWidth;
+    if (w === last) return;
+    last = w;
+    el.style.setProperty('--scale-raw', String(Math.max(1, (w - 222) / 1218)));
+    el.style.setProperty('--grid-scale', String(Math.max(1024 / 1440, w / 1440)));
+  }
+  apply();
+  window.addEventListener('resize', apply, { passive: true });
+})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${courierPrime.variable} ${genInterfaceJP.variable} h-full antialiased`}>
+    // suppressHydrationWarning — 下の <head> のインラインスクリプトが
+    // ハイドレーション前に <html> の style（--scale-raw / --grid-scale）を
+    // 書くため、サーバーの HTML と一致しない。意図した差分なので抑制する
+    // （<body> に付けているのと同じ理由・同じ1階層ぶんのスコープ）。
+    <html
+      suppressHydrationWarning
+      lang="en"
+      className={`${courierPrime.variable} ${genInterfaceJP.variable} h-full antialiased`}
+    >
       <head>
+        {/* --scale-raw / --grid-scale を入れる（globals.css の同名の
+            doc comment 参照）。この2つは「ビューポート幅 ÷ 基準幅」という
+            無単位の比で、CSS だけで書くには calc() の中で長さ同士を割る
+            必要がある。Chrome / Safari は通すが Firefox は通さず、式ごと
+            無効になってレイアウトが左端に潰れた（tan(atan2()) で除算を
+            避ける書き方も Firefox では効かなかった）。ここで入れれば
+            CSS 数学関数の対応状況に依存しない。
+
+            <head> のインラインスクリプトなので body の描画前に走る＝
+            初期値のままの1フレームが出ない。React も Lenis も待たない。 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: SCALE_VARS_SCRIPT,
+          }}
+        />
         {/* Akzidenz Grotesk Next (Regular/Medium) via Adobe Fonts — see --font-sans in globals.css. */}
         <link rel="stylesheet" href="https://use.typekit.net/xdb8vtp.css" />
         {/* Organization JSON-LD — see organizationJsonLd's own doc comment above. */}

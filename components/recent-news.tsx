@@ -233,7 +233,15 @@ export function RecentNews({ items, hidden = false }: RecentNewsProps) {
             style={{ gap: "calc(18px*var(--scale))" }}
           >
             {items.map((item) => (
-              <div key={item.id} className="flex flex-col items-start" style={{ gap: "calc(8px*var(--scale))" }}>
+              // untrimmed-stack — text-box-trim が効かない環境で、日付と
+              // 本文のあいだが行ボックスのぶん離れるのを詰め直す
+              // （globals.css の @supports ブロック参照）。効く環境では
+              // 何も起きない。
+              <div
+                key={item.id}
+                className="untrimmed-stack flex flex-col items-start"
+                style={{ gap: "calc(8px*var(--scale))" }}
+              >
                 <p className="font-(family-name:--font-courier) text-black/50 tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                   {item.date}
                 </p>

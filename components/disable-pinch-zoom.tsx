@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useUntrimmedMetrics } from "@/components/untrimmed-metrics";
 
 /**
  * Blocks pinch-to-zoom and double-tap-to-zoom on touch devices — per direct
@@ -38,6 +39,11 @@ import { useEffect } from "react";
  * output, just a global side effect" pattern as LenisRouteResize.
  */
 export function DisablePinchZoom() {
+  // text-box-trim が効かない環境向けのフォント実測（untrimmed-metrics.ts の
+  // doc comment 参照）。専用のコンポーネントを1つ増やさずに済むよう、
+  // 同じくレイアウト直下で一度だけ走るこの component に相乗りさせている。
+  useUntrimmedMetrics();
+
   useEffect(() => {
     function blockMultiTouch(event: TouchEvent) {
       if (event.touches.length > 1) event.preventDefault();

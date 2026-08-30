@@ -207,6 +207,23 @@ function spScale(px: number): string {
   return `${((px / SP_REFERENCE_HEIGHT_PX) * 100).toFixed(4)}dvh`;
 }
 
+/** PC のタグラインの設計サイズ（1440px 基準）と、幅に対する上限。
+ *
+ *  設計値の 53px は 1440px のキャンバスでちょうど収まる大きさ。ところが
+ *  --scale は 1440px 未満では 1 で止まる（下限）ので、ウィンドウがそれより
+ *  狭いとサイズは 53px のままで幅だけ減り、いちばん長い2行目（63文字）が
+ *  必ず溢れる。画面収録の実測でも、1342px 幅で 53px のまま描かれて右端が
+ *  切れていた。
+ *
+ *  そこで幅に対する上限（vw）を足す。3.55vw は「1440px で 53px 相当」から
+ *  4% ほど余裕を引いた値 — ブラウザ間で文字送りがわずかに違うので、
+ *  ぴったりに合わせると境目で溢れる。1440px 以上では --scale 側（減衰
+ *  0.7 で vw より緩やかに伸びる）が常に小さくなるので、上限は効かない
+ *  ＝広い画面での見え方は従来のまま。 */
+const PC_TAGLINE_FONT_PX = 53;
+const PC_TAGLINE_LETTER_SPACING_PX = -1.06;
+const PC_TAGLINE_MAX_VW = 3.55;
+
 const SP_TAGLINE_FONT_PX = 33;
 const SP_TAGLINE_LETTER_SPACING_PX = -0.66;
 // Literal, fixed 24px — per direct follow-up ("日付などの文字サイズを
@@ -1121,9 +1138,12 @@ export function IdleOverlay() {
             <div
               className="w-fit mx-auto whitespace-nowrap text-center font-medium text-[#0022ff]"
               style={{
-                fontSize: "calc(53px * var(--scale))",
+                // 設計値と幅に対する上限の小さいほう（PC_TAGLINE_FONT_PX の
+                // doc comment 参照）。字間も同じ式に比例させて、どの
+                // サイズでも 1em あたりの比を保つ。
+                fontSize: `min(calc(${PC_TAGLINE_FONT_PX}px * var(--scale)), ${PC_TAGLINE_MAX_VW}vw)`,
                 lineHeight: 1.05,
-                letterSpacing: "calc(-1.06px * var(--scale))",
+                letterSpacing: `calc(${PC_TAGLINE_LETTER_SPACING_PX / PC_TAGLINE_FONT_PX} * min(calc(${PC_TAGLINE_FONT_PX}px * var(--scale)), ${PC_TAGLINE_MAX_VW}vw))`,
               }}
             >
               {TAGLINE_LINES.map((line, i) => (

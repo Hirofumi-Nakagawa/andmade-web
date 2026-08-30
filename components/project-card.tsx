@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ScrambleText } from "@/components/scramble-text";
 import { slugify, type Project } from "@/lib/projects";
 import { isInitialEntrance, LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
+import { useTextBoxTrimSupported } from "@/components/untrimmed-metrics";
 
 type ProjectCardProps = {
   project: Project;
@@ -39,10 +40,17 @@ const META_FADE_DELAY_MS = 150;
 
 /** The title plate's own `inset`, as a literal CSS `inset` shorthand
  *  (top right bottom left) — negative values push each edge *outward* past
- *  the text box. 1px all round, with an extra 1px on the bottom edge only,
- *  which is where a text-box-trimmed line has the least room to spare
- *  (descenders hang below the box). */
-const TITLE_PLATE_INSET = "-1px -1px -2px -1px";
+ *  the text box, positive values pull it *inward*.
+ *
+ *  上下の値は text-box-trim が効くかどうかで逆向きになる:
+ *   ・効く（Chrome / Safari）— 文字ボックスがキャップ上端〜ベースラインまで
+ *     詰まっているので、ディセンダ（"Dots by..." の y）が板から出ないよう
+ *     外へ広げる必要がある。下だけ 1px 多いのはそのため。
+ *   ・効かない（Firefox）— ボックスに行送りの余りが含まれるぶん板が
+ *     高くなりすぎるので、逆に内側へ詰める（直接の指示で計 3px）。
+ *  左右はどちらも 1px 外へ出したまま。 */
+const TITLE_PLATE_INSET_TRIMMED = "-1px -1px -2px -1px";
+const TITLE_PLATE_INSET_UNTRIMMED = "2px -1px 1px -1px";
 
 /** The category/role/date plates' own `inset` — 1px past the text box on
  *  every side, same shorthand form as TITLE_PLATE_INSET above (which adds a
@@ -149,6 +157,10 @@ export function ProjectCard({
   isDimmed,
 }: ProjectCardProps) {
   const router = useRouter();
+  // 板の上下の値は trim の有無で逆向き（TITLE_PLATE_INSET_* の doc comment
+  // 参照）。
+  const trimSupported = useTextBoxTrimSupported();
+  const titlePlateInset = trimSupported ? TITLE_PLATE_INSET_TRIMMED : TITLE_PLATE_INSET_UNTRIMMED;
   const cardRef = useRef<HTMLLIElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
   /** 確定後のタイトルの高さを測る影（下の JSX の doc comment 参照）。 */
@@ -356,7 +368,7 @@ export function ProjectCard({
             // カードの位置をピクセルに吸着させない限り残る。
             style={{ "--underline-offset": "calc(-0.1em - 0.5px)" } as CSSProperties}
           >
-            <HoverPlate active={hovered} inset={TITLE_PLATE_INSET} />
+            <HoverPlate active={hovered} inset={titlePlateInset} />
             {/* `relative` so the text paints above the plate behind it — the
                plate is absolutely positioned, which would otherwise stack it
                over this static inline content. */}

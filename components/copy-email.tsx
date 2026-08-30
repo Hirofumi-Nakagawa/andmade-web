@@ -52,12 +52,16 @@ const COPIED_MS = 1500;
  */
 export function CopyEmail({
   className,
+  style,
   tabIndex,
   inverted = false,
   belowMenu = false,
   offsetY = 0,
 }: {
   className?: string;
+  /** 呼び出し側の追加スタイル（CSS 変数の受け渡しにも使う — Contact の
+   *  --underline-untrimmed-nudge など）。内部の touchAction とマージされる。 */
+  style?: React.CSSProperties;
   tabIndex?: number;
   /** "Copied" ピルの配色を反転（白ベタ＋黒文字）— per direct follow-up
    *  ("Contactは色反転して表示して")。黒背景のページ（Contact）や黒い
@@ -172,7 +176,7 @@ export function CopyEmail({
       // touchAction: manipulation は実機タップの遅延・ダブルタップズーム
       // 誤爆対策（このコードベースのタップ要素の通例）。
       className={`cursor-pointer ${className ?? ""}`}
-      style={{ touchAction: "manipulation" }}
+      style={{ touchAction: "manipulation", ...style }}
       tabIndex={tabIndex}
     >
       {CONTACT_EMAIL}
