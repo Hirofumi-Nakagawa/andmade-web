@@ -45,11 +45,12 @@ const META_FADE_DELAY_MS = 150;
  *  上下の値は text-box-trim が効くかどうかで逆向きになる:
  *   ・効く（Chrome / Safari）— 文字ボックスがキャップ上端〜ベースラインまで
  *     詰まっているので、ディセンダ（"Dots by..." の y）が板から出ないよう
- *     外へ広げる必要がある。下だけ 1px 多いのはそのため。
+ *     外へ広げる必要がある。下だけ 1px 多いのはそのため。さらに上下
+ *     1px ずつ広げてある（直接の指示）。
  *   ・効かない（Firefox）— ボックスに行送りの余りが含まれるぶん板が
  *     高くなりすぎるので、逆に内側へ詰める（直接の指示で計 3px）。
  *  左右はどちらも 1px 外へ出したまま。 */
-const TITLE_PLATE_INSET_TRIMMED = "-1px -1px -2px -1px";
+const TITLE_PLATE_INSET_TRIMMED = "-2px -1px -3px -1px";
 const TITLE_PLATE_INSET_UNTRIMMED = "2px -1px 1px -1px";
 
 /** The category/role/date plates' own `inset` — 1px past the text box on
