@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTextBoxTrimSupported } from "@/components/untrimmed-metrics";
 import { mod, ORIENTATION_ASPECT_RATIO, type Study, type StudyOrientation } from "@/lib/studies";
 import { ScrambleText } from "@/components/scramble-text";
 import { SlotDigits } from "@/components/slot-digits";
@@ -373,7 +374,13 @@ function easeOutCubic(t: number) {
  * reveal (see scramble-text.tsx's own render-time reset logic) — no separate
  * mount/key trick needed for that replay either way.
  */
+/** text-box-trim が効かない環境でゲージを下げる量（px）。上の doc comment
+ *  参照。 */
+const GAUGE_UNTRIMMED_OFFSET_PX = 2;
+
 export function StudiesGallery({ studies }: { studies: Study[] }) {
+  // ゲージの縦位置補正（GAUGE_UNTRIMMED_OFFSET_PX の doc comment 参照）。
+  const trimSupported = useTextBoxTrimSupported();
   // Starts `null` (not a real random pick) so the server-rendered HTML and
   // React's first client render match exactly — Math.random() necessarily
   // differs between the two, which is what caused scenic-map-background.tsx's
@@ -1174,7 +1181,15 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
             `items-center` ("ゲージの位置がまだ下位置になってる"). This
             keeps the gauge vertically centered in the row like before,
             independent of that baseline concern entirely. */}
-        <div className="relative top-0 h-px w-[calc(45px*var(--scale))] shrink-0 self-center bg-black/20">
+        {/* top — text-box-trim が効かない環境（Firefox）でだけ 2px 下げる
+            （直接の指示）。このゲージは self-center で行の交差軸中央に
+            置いているが、trim が効かないと左右の "01" / "11" の箱に行送りの
+            余りが入って行そのものが高くなり、中央が数字の光学的な中心より
+            上にずれる。 */}
+        <div
+          className="relative h-px w-[calc(45px*var(--scale))] shrink-0 self-center bg-black/20"
+          style={{ top: trimSupported ? 0 : GAUGE_UNTRIMMED_OFFSET_PX }}
+        >
           {!zoomed && (
             <div
               key={autoAdvanceGeneration}
