@@ -173,9 +173,13 @@ export const AWARDS_COL_2 = [
 export type MediaItem = { text: string; linked?: boolean; href?: string };
 
 export const MEDIA_COL_1: MediaItem[] = [
-  // 一旦非表示（URLが未定のため）。再掲するときはこの行のコメントを外し、
-  // href に実URLを入れること（href 無しのままだと `#` 止まりのリンクになる）。
-  // { text: "The Art Director's Guide to Design", linked: true },
+  // 仮題「The Art Director's Guide to Design」で置いていた枠。URL未定のため
+  // 一旦コメントアウトしていたが、正式タイトルと販売ページが出たので復帰。
+  {
+    text: "The Art Director / Designer’s Approach",
+    linked: true,
+    href: "https://www.amazon.co.jp/dp/4295209074",
+  },
   {
     text: "iDID Works Interview",
     linked: true,
