@@ -15,7 +15,17 @@ export function ContactHero() {
   return (
     // ウェイトは medium → regular に戻した（"AboutのDesign with clarity~の
     // 3行と、ContactのGet in touchをregularに戻す"）。
-    <p className="ml-[calc(198px*var(--grid-scale))] text-[length:calc(60px*var(--scale))] leading-[1.75] font-normal text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+    //
+    // marginLeft — 基準はこのページ共通の 198px * --grid-scale だが、そこから
+    // 1px 左へ（直接の指示）。"G" の左サイドベアリングぶん右に浮いて見えるのを
+    // 目視で詰めるためのもので、グリッドの値そのものではないので calc の中に
+    // 直接書いている。--scale ではなく素の 1px（見た目の微調整なので
+    // 画面幅で増減させない）。Tailwind の任意値クラスではなくインラインなのは、
+    // 新規ユーティリティが dev の生成CSSに乗り遅れることがあるため。
+    <p
+      style={{ marginLeft: "calc(198px * var(--grid-scale) - 1px)" }}
+      className="text-[length:calc(60px*var(--scale))] leading-[1.75] font-normal text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+    >
       <ScrambleText text={TEXT} active />
     </p>
   );

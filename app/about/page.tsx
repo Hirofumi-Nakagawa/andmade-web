@@ -281,8 +281,14 @@ export default function About() {
                   ぶん。大きい文字は既定のままだと字間が空いて見えるので、
                   サイズが上がったぶんだけ引き締める。強めたい場合はこの値
                   だけを触ればよい。 */}
+          {/* marginLeft -2px — 親（198px * --grid-scale）から2px左へ（直接の
+              指示）。"D" の左サイドベアリングぶん右に浮いて見えるのを目視で
+              詰めるためのもので、グリッドの値ではないので --scale/--grid-scale
+              は掛けない（画面幅で増減させない）。リード文は別の箱なので
+              動かない。 */}
           <CurtainRevealLines
             lines={HERO_LINES}
+            style={{ marginLeft: -2 }}
             className="text-[length:calc(50px*var(--scale))] leading-[calc(54px*var(--scale))] font-normal tracking-[calc(-1px*var(--scale))] [font-kerning:normal] text-black"
           />
 
