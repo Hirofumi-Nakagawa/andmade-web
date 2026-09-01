@@ -181,6 +181,11 @@ export const MEDIA_COL_1: MediaItem[] = [
     href: "https://www.amazon.co.jp/dp/4295209074",
   },
   {
+    text: "Master & Student Talk vol. 2 - CREATIVE CLASS",
+    linked: true,
+    href: "https://idid.team/articles/other/school-004/",
+  },
+  {
     text: "iDID Works Interview",
     linked: true,
     href: "https://idid.team/articles/interview/creator-interview-works003/",
@@ -190,13 +195,15 @@ export const MEDIA_COL_1: MediaItem[] = [
     linked: true,
     href: "https://books.mdn.co.jp/books/3225303036/",
   },
+];
+export const MEDIA_COL_2: MediaItem[] = [
+  // 1列目の末尾にあったが、上に2件増えて行数が偏ったのでこちらの先頭へ
+  // （直接の指示）。左→右の並び順自体は変わらない。
   {
     text: "Rough Sketch of Art Director & Desginer 250",
     linked: true,
     href: "https://books.mdn.co.jp/books/3225303024/",
   },
-];
-export const MEDIA_COL_2: MediaItem[] = [
   {
     text: "MdN Designers File 2025",
     linked: true,
