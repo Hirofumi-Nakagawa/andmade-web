@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Courier_Prime } from "next/font/google";
-import localFont from "next/font/local";
 import Script from "next/script";
 import { DisablePinchZoom } from "@/components/disable-pinch-zoom";
 import { GridOverlay } from "@/components/grid-overlay";
@@ -37,15 +36,18 @@ const courierPrime = Courier_Prime({
 // (https://gen.typesetting.jp/) slots in as the fallback for Japanese
 // specifically — see --font-sans in globals.css. Briefly tried Regular
 // (400) — reverted back to Light (300) per explicit follow-up
-// ("やっぱりLightに戻そう"). Only one weight is ever actually loaded here,
-// so every place that sets this font family also sets its own matching
-// `font-light` class (see about/page.tsx and contact/page.tsx).
-const genInterfaceJP = localFont({
-  src: "../public/fonts/GenInterfaceJP-Light.woff2",
-  variable: "--font-gen-interface-jp",
-  weight: "300",
-  display: "swap",
-});
+// ("やっぱりLightに戻そう"). Only one weight is ever actually loaded, so
+// every place that sets this font family also sets its own matching
+// `font-light` class (see about/page.tsx と contact/page.tsx)。
+//
+// 読み込みは next/font/local（public/fonts/GenInterfaceJP-Light.woff2 を
+// self-host）から配布元の jsDelivr CDN に変更（直接の指示）。CDN 版は
+// 用途別に unicode-range で細かく分割された @font-face 群なので、
+// ページに出ている文字を含むサブセットしか落ちてこない — 2.6MB の
+// woff2 を丸ごと1本読ませていた self-host よりずっと軽い。
+// font-family 名は配布元が定義する "Gen Interface JP"（globals.css の
+// --font-gen-interface-jp 参照）。ウェイトは従来どおり 300 のみなので
+// 300.css だけを読む。
 
 // Shared OGP share-card image (public/images/ogp.png, supplied directly by
 // the user — a real, already-designed 1200x630 card, not a Claude-authored
@@ -206,7 +208,7 @@ export default function RootLayout({
     <html
       suppressHydrationWarning
       lang="en"
-      className={`${courierPrime.variable} ${genInterfaceJP.variable} h-full antialiased`}
+      className={`${courierPrime.variable} h-full antialiased`}
     >
       <head>
         {/* --scale-raw / --grid-scale を入れる（globals.css の同名の
@@ -226,6 +228,19 @@ export default function RootLayout({
         />
         {/* Akzidenz Grotesk Next (Regular/Medium) via Adobe Fonts — see --font-sans in globals.css. */}
         <link rel="stylesheet" href="https://use.typekit.net/xdb8vtp.css" />
+        {/* Gen Interface JP Light (300) — 日本語のフォールバック。
+            配布元の jsDelivr CDN から読む（このファイル上部の
+            「Akzidenz-Grotesk Next / Helvetica ~」のコメント参照）。
+            preconnect は、この <link> の CSS を読んだあとに *別ホストの*
+            woff2 を取りにいくのではなく同じ cdn.jsdelivr.net なので、
+            スタイルシート取得そのものの接続確立を前倒しするためのもの。
+            crossOrigin はフォント取得が CORS 前提なので必須（付け忘れると
+            preconnect した接続が使い回されず、二重に張りにいく）。 */}
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/gen-interface-jp@0.8.0/cdn/300.css"
+        />
         {/* Organization JSON-LD — see organizationJsonLd's own doc comment above. */}
         <script
           type="application/ld+json"

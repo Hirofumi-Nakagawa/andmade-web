@@ -140,6 +140,14 @@
      する。CSS の `cap` 単位は使わない — 対応状況がブラウザで割れる。 */
   --font-cap: 0.72em;
 
+  /* Gen Interface JP の font-family 名。
+     以前は next/font/local が生成したハッシュ付きの名前をこの変数に入れて
+     いたが、読み込みを配布元の jsDelivr CDN に変えた（app/layout.tsx の
+     <link> 参照）ので、CDN の CSS が定義する名前をそのまま持つ。
+     使う側（--font-sans や font-(family-name:--font-gen-interface-jp)）は
+     変数越しなので、この1行を差し替えるだけで切り替わる。 */
+  --font-gen-interface-jp: "Gen Interface JP";
+
   --sp-grid-margin: 8px;
   --sp-grid-columns: 12;
   --sp-grid-column-width: calc((100vw - var(--sp-grid-margin) * 2) / var(--sp-grid-columns));
