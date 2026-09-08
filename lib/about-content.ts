@@ -186,6 +186,11 @@ export const MEDIA_COL_1: MediaItem[] = [
     href: "https://idid.team/articles/other/school-004/",
   },
   {
+    text: "CREATIVE CLASS / Guest Lecturer",
+    linked: true,
+    href: "https://creative-class.site/course/artdirection-nakagawa-001/",
+  },
+  {
     text: "iDID Works Interview",
     linked: true,
     href: "https://idid.team/articles/interview/creator-interview-works003/",
