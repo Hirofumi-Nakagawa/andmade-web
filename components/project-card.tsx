@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { ScrambleText } from "@/components/scramble-text";
 import { slugify, type Project } from "@/lib/projects";
 import { isInitialEntrance, LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
-import { useTextBoxTrimSupported } from "@/components/untrimmed-metrics";
 
 type ProjectCardProps = {
   project: Project;
@@ -38,24 +37,43 @@ const COLUMN_STAGGER_MS = 120;
 /** Extra delay before the category/role/date block starts fading in. */
 const META_FADE_DELAY_MS = 150;
 
-/** The title plate's own `inset`, as a literal CSS `inset` shorthand
- *  (top right bottom left) — negative values push each edge *outward* past
- *  the text box, positive values pull it *inward*.
+/** タイトルの板が、キャップ上端〜ベースラインの文字ボックスから外へ
+ *  はみ出す量（px）。従来 `inset` ショートハンド
+ *  （"-2px -1px -3px -1px"）で持っていた値をそのまま分解したもの。
  *
- *  上下の値は text-box-trim が効くかどうかで逆向きになる:
- *   ・効く（Chrome / Safari）— 文字ボックスがキャップ上端〜ベースラインまで
- *     詰まっているので、ディセンダ（"Dots by..." の y）が板から出ないよう
- *     外へ広げる必要がある。下だけ 1px 多いのはそのため。さらに上下
- *     1px ずつ広げてある（直接の指示）。
- *   ・効かない（Firefox）— ボックスに行送りの余りが含まれるぶん板が
- *     高くなりすぎるので、逆に内側へ詰める（直接の指示で計 3px）。
- *  左右はどちらも 1px 外へ出したまま。 */
-const TITLE_PLATE_INSET_TRIMMED = "-2px -1px -3px -1px";
-const TITLE_PLATE_INSET_UNTRIMMED = "2px -1px 1px -1px";
+ *  下だけ 1px 多いのは、ディセンダ（"Dots by..." の y）が板から出ない
+ *  ようにするため。上下はさらに 1px ずつ広げてある（直接の指示）。
+ *
+ *  以前は text-box-trim の効く／効かないで2組の値を持ち分けていたが、板の
+ *  描き方を「ボックスに絶対配置した要素」から「インラインの background」に
+ *  変えた（TITLE_PLATE_* / titlePlateStyle 参照）ことで、基準がブロックの
+ *  ボックスではなくフォントのメトリクス（アセント・キャップハイト）に
+ *  なったため、trim の対応可否で位置が変わらなくなり1組で済むようになった。 */
+const TITLE_PLATE_OUT_TOP_PX = 2;
+const TITLE_PLATE_OUT_BOTTOM_PX = 3;
+const TITLE_PLATE_OUT_X_PX = 1;
+
+/** この書体（Akzidenz Grotesk Next Pro）のキャップハイトとアセント（em）。
+ *
+ *  板をインラインボックス基準で置くのに要る。インラインボックスの上端は
+ *  「ベースライン − アセント」なので、
+ *      板の上端 = 1em(アセント) − キャップハイト − はみ出し量
+ *      板の高さ = キャップハイト + 上下のはみ出し量
+ *  で、trim が効いていたときの見た目と一致する。
+ *
+ *  値は実測（本番サイト上で canvas の TextMetrics と、trim 済みボックスの
+ *  実高さの両方で確認 — どちらも 0.706em、アセントは 11〜60px の各サイズで
+ *  ちょうど 1em）。書体を差し替えたら測り直すこと。 */
+const FONT_CAP_EM = 0.706;
+const FONT_ASCENT_EM = 1;
 
 /** The category/role/date plates' own `inset` — 1px past the text box on
- *  every side, same shorthand form as TITLE_PLATE_INSET above (which adds a
- *  further 1px on the bottom for the title's larger descenders). */
+ *  every side. これらは1行ごとに `block w-fit` の箱を持っていて、その箱が
+ *  そのまま板の基準になる（タイトルとは違い、板は今も HoverPlate の
+ *  絶対配置のまま — 3行が隙間なく続いて1枚に見えるのは、各行の板が
+ *  「行ボックス ±1px」で少しずつ重なっているため。タイトルと同じ
+ *  インライン background 方式にすると行ボックスではなく文字ボックス基準に
+ *  なり、この連続性が崩れる）。 */
 const META_PLATE_INSET = "-1px";
 
 /** Plate wipe timing — matches .underline-sweep's own 0.6s/curve
@@ -65,6 +83,42 @@ const PLATE_SWEEP_EASE = "cubic-bezier(0.16, 1, 0.55, 1)";
 /** How long the category/role/date plates wait after the title's own, so the
  *  two read as a sequence rather than one simultaneous flash. */
 const PLATE_META_DELAY_MS = 100;
+
+/**
+ * タイトルの板。HoverPlate（絶対配置の要素）ではなく**インライン要素の
+ * background** として描く。
+ *
+ * 理由は下線（.underline-sweep-line、globals.css）と同じで、タイトルが2行に
+ * 折り返したときに正しく出すため。絶対配置の板はブロックのボックス基準
+ * なので、折り返した時点で列幅いっぱいの1枚になってしまう。インライン
+ * ボックスは行ごとに分かれるので、box-decoration-break: clone を付ければ
+ * 各行が自分の幅の板を持つ。
+ *
+ * 縦位置・高さはフォントのメトリクスから組む（FONT_CAP_EM / FONT_ASCENT_EM
+ * の doc comment 参照）。横は background-size を 100% + 左右のはみ出し量に
+ * するだけ — padding で広げるとインラインでも左右は行送りに影響してしまい、
+ * 折り返し位置が変わるので使えない。
+ *
+ * ワイプは transform ではなく background-size のトランジション。開くときは
+ * 左端を、閉じるときは右端を固定したいので、`left <n>` / `right <n>` の
+ * 2値構文で位置を切り替える（％指定だと幅が変わるたびに両端が動いてしまう）。
+ * 切り替わる瞬間は、開くとき幅0・閉じるとき幅は左右いっぱいで、どちらも
+ * `left`/`right` のどちらで置いても同じ位置になるので飛びは見えない。
+ * transition は background-size にだけ掛けてあるので、位置は常に即座に入る。
+ */
+function titlePlateStyle(active: boolean): CSSProperties {
+  const height = `calc(${FONT_CAP_EM}em + ${TITLE_PLATE_OUT_TOP_PX + TITLE_PLATE_OUT_BOTTOM_PX}px)`;
+  return {
+    WebkitBoxDecorationBreak: "clone",
+    boxDecorationBreak: "clone",
+    backgroundImage: "linear-gradient(var(--color-background), var(--color-background))",
+    backgroundRepeat: "no-repeat",
+    backgroundPositionY: `calc(${FONT_ASCENT_EM}em - ${FONT_CAP_EM}em - ${TITLE_PLATE_OUT_TOP_PX}px)`,
+    backgroundPositionX: active ? `left -${TITLE_PLATE_OUT_X_PX}px` : `right -${TITLE_PLATE_OUT_X_PX}px`,
+    backgroundSize: active ? `calc(100% + ${TITLE_PLATE_OUT_X_PX * 2}px) ${height}` : `0% ${height}`,
+    transition: `background-size ${PLATE_SWEEP_MS}ms ${PLATE_SWEEP_EASE}`,
+  };
+}
 
 /**
  * The plate that wipes in behind a hovered card's text, in the page's own
@@ -78,12 +132,12 @@ const PLATE_META_DELAY_MS = 100;
  * width. A single card-level plate would instead span the full grid column,
  * which is usually far wider than the text.
  *
- * `inset` is a literal CSS `inset` shorthand — "0" (the default, used by
- * the category/role/date lines) makes the plate exactly its parent's box,
- * while negative values push individual edges outward past it. The title
- * passes TITLE_PLATE_INSET: its text is `text-box-trim`med to cap-height/
- * baseline, so descenders ("y" in "Dots by...") hang below that box and
- * would otherwise sit on the hover-preview image with nothing behind them.
+ * `inset` is a literal CSS `inset` shorthand — "0" (the default) makes the
+ * plate exactly its parent's box, while negative values push individual
+ * edges outward past it.
+ *
+ * 今の呼び出し元は category/role/date の3行だけ。タイトルの板は折り返し
+ * 対応のため titlePlateStyle()（インラインの background）へ移した。
  *
  * This exists because the Tx list no longer renders through
  * mix-blend-exclusion (see home-view.tsx). White-on-blend used to keep the
@@ -158,10 +212,6 @@ export function ProjectCard({
   isDimmed,
 }: ProjectCardProps) {
   const router = useRouter();
-  // 板の上下の値は trim の有無で逆向き（TITLE_PLATE_INSET_* の doc comment
-  // 参照）。
-  const trimSupported = useTextBoxTrimSupported();
-  const titlePlateInset = trimSupported ? TITLE_PLATE_INSET_TRIMMED : TITLE_PLATE_INSET_UNTRIMMED;
   const cardRef = useRef<HTMLLIElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
   /** 確定後のタイトルの高さを測る影（下の JSX の doc comment 参照）。 */
@@ -350,7 +400,14 @@ export function ProjectCard({
             // その下端基準なので離れ、下マージンも広がる。block で
             // ブロック化して trim を戻し、w-fit で幅は中身なりのまま
             // （＝下線がテキストと同じ長さ）にする。
-            className="underline-sweep block w-fit text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] text-black"
+            // underline-sweep-lines — 下線をこの箱の ::after ではなく、中の
+            // インライン span（.underline-sweep-line）の background として
+            // 行ごとに引く。タイトルが2行に折り返すと、この箱は w-fit でも
+            // 列幅いっぱいに広がるので、::after 版だと最終行の下に列幅の
+            // 帯が1本だけ出てしまう（"The Breakthrough Company GO"）。
+            // ホバーと .underline-sweep-play のフックはこの箱のままなので、
+            // .underline-sweep も併記して外さない。globals.css 参照。
+            className="underline-sweep underline-sweep-lines block w-fit text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] text-black"
             // --underline-offset を共有既定値（-0.1em）から 0.5px 下げる。
             //
             // 下線は絶対配置の 1px の帯で、位置はこの span のボックス下端
@@ -369,12 +426,17 @@ export function ProjectCard({
             // カードの位置をピクセルに吸着させない限り残る。
             style={{ "--underline-offset": "calc(-0.1em - 0.5px)" } as CSSProperties}
           >
-            <HoverPlate active={hovered} inset={titlePlateInset} />
-            {/* `relative` so the text paints above the plate behind it — the
-               plate is absolutely positioned, which would otherwise stack it
-               over this static inline content. */}
-            <span className="relative">
-              <ScrambleText text={project.title} active={scrambleActive} />
+            {/* 板と下線はどちらもインラインの background（titlePlateStyle /
+               .underline-sweep-line）。2枚重ねるのに要素を分けているのは、
+               子孫の background のほうが上に描かれるから — 板と下線は
+               縦に重なる領域があるので、下線を内側にしないと板に隠れる。
+               どちらもインラインのままにしておくこと（block や
+               inline-block にすると行ごとに分かれず、列幅で1枚に戻る）。
+               文字自体はどちらの background よりも上に描かれる。 */}
+            <span style={titlePlateStyle(hovered)}>
+              <span className="underline-sweep-line">
+                <ScrambleText text={project.title} active={scrambleActive} />
+              </span>
             </span>
           </span>
         </span>

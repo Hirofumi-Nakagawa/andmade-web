@@ -444,6 +444,94 @@ body::-webkit-scrollbar {
 }
 
 /*
+ * 折り返す見出し用の、**行ごとに引く**下線。
+ *
+ * .underline-sweep の下線は「ボックスの下端に絶対配置した1本の帯」なので、
+ * 中身が2行に折り返すと破綻する — 箱は `width: fit-content` でも折り返した
+ * 時点で列幅いっぱいに広がるため、下線は最終行の下に、テキストではなく
+ * *列の幅* で1本だけ引かれる（トップ一覧の "The Breakthrough Company GO"
+ * で発覚）。
+ *
+ * こちらは帯を疑似要素ではなく**インライン要素の background** として描く。
+ * インラインボックスは行ごとに分かれるので、box-decoration-break: clone を
+ * 付ければ各行が自分の断片の幅で背景を持つ＝行ごとにテキスト幅の下線になる。
+ *
+ * 縦位置は .underline-sweep と同じ「ベースラインから --underline-offset」に
+ * なるように組んである。ただし基準にできる箱が違う:
+ *   ・.underline-sweep — ブロックの下端。text-box-trim: trim-both が効いて
+ *     いれば、それがそのままベースライン。
+ *   ・こちら — インラインボックスの**上端**からアセント分下がった位置が
+ *     ベースライン。アセントはこのフォント（Akzidenz Grotesk Next）では
+ *     ちょうど 1em（11〜60px の各サイズで実測して確認済み。ディセント側は
+ *     0.5px 単位に丸められて 0.3em から最大 0.25px ずれるので、上端基準に
+ *     している）。
+ * 結果として text-box-trim の対応可否に依存しない — Firefox 用の
+ * @supports 補正（上の .underline-sweep::after）はこちらには要らない。
+ *
+ * 帯の色・太さ・オフセットの変数は .underline-sweep と共通なので、
+ * 呼び出し側の --underline-offset / --underline-thickness はそのまま効く。
+ */
+.underline-sweep-lines::after {
+  /* ブロック側の1本帯は出さない（この2つは併用する — position: relative と
+     ホバー／再生のフック側は .underline-sweep のものをそのまま使う）。 */
+  content: none;
+}
+
+.underline-sweep-line {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-size: 100% var(--underline-thickness, 1px);
+  /* left 0 / top ... の4値構文 — top からの距離で置く。
+     1em = ベースライン、そこから下線の下端が --underline-offset ぶん下
+     （offset は負の値で「下」なので引く）、さらに帯の高さぶん戻して上端。 */
+  background-position: left 0 top
+    calc(1em - var(--underline-offset, -0.1em) - var(--underline-thickness, 1px));
+}
+
+/* ホバー／プログラム再生のフックは .underline-sweep と同じ場所（外側の
+   ブロック）に付いたまま。中の帯へは子孫セレクタで届かせる。 */
+.underline-sweep-lines:hover .underline-sweep-line,
+.group:hover .underline-sweep-lines .underline-sweep-line,
+.underline-sweep-play .underline-sweep-line {
+  animation: underline-sweep-lines 0.7s linear;
+}
+
+/*
+ * underline-sweep と同じ動きを background で。
+ *
+ * transform 版は「原点 left で scaleX しつつ translateX で右へ逃がす」こと
+ * で右端に貼り付いたまま縮む見え方を作っていた。background では
+ * background-position-x を区間ごとに固定するだけで同じことができる:
+ *   ・前半 100%（右揃え）— 幅が減ると左端だけが右へ動く＝右端に貼り付く
+ *   ・後半 0%（左揃え）— 幅が増えると右端だけが右へ動く＝左から伸びる
+ * 切り替わる 50% の時点では幅0なので、位置の飛びは見えない。
+ * イージングは transform 版と同じ値を区間ごとに持たせている。
+ */
+@keyframes underline-sweep-lines {
+  0% {
+    background-size: 100% var(--underline-thickness, 1px);
+    background-position-x: 100%;
+    animation-timing-function: cubic-bezier(0.6, 0.18, 0.17, 0.72);
+  }
+  50% {
+    background-size: 0% var(--underline-thickness, 1px);
+    background-position-x: 100%;
+    animation-timing-function: steps(1, end);
+  }
+  50.01% {
+    background-size: 0% var(--underline-thickness, 1px);
+    background-position-x: 0%;
+    animation-timing-function: cubic-bezier(0.6, 0.18, 0.17, 0.72);
+  }
+  100% {
+    background-size: 100% var(--underline-thickness, 1px);
+    background-position-x: 0%;
+  }
+}
+
+/*
  * SP project list title underline only (components/mobile-project-list.tsx)
  * — a genuine element, not a ::after pseudo-element like .underline-sweep
  * above, so it can be remounted (via `key`) independently of the title text
