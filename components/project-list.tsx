@@ -60,8 +60,14 @@ export function ProjectList({
       // project-thumbnail-grid.tsx に付いている。
       className="grid content-start items-start"
       style={{
-        gridTemplateColumns: "repeat(3, calc(220px * var(--grid-scale)))",
-        columnGap: "calc(128px * var(--grid-scale))",
+        // 列幅・列間はグリッドのマス数で持つ（1マス58px、左マージン24px）。
+        // 220px / 128px だった頃は、ピッチ（220+128=348＝6マス）だけが
+        // マス数に乗っていて、セルの右端はどこの線にも乗っていなかった
+        // （220px＝3.79マス）。4マス（232px）＋2マス（116px）にすると
+        // ピッチ6マスはそのままで、左端（198 / 546 / 894）に加えて
+        // 右端（430 / 778 / 1126）もグリッド線に乗る。
+        gridTemplateColumns: "repeat(3, calc(232px * var(--grid-scale)))",
+        columnGap: "calc(116px * var(--grid-scale))",
         // 100px → 95px → 90px → 85px → 80px。
         rowGap: "calc(80px * var(--grid-scale))",
       }}
