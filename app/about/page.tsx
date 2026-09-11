@@ -8,6 +8,7 @@ import { HeaderSummon } from "@/components/header-summon";
 import { MobileAbout } from "@/components/mobile-about";
 import { PageBodyBackground } from "@/components/page-body-background";
 import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
+import { MediaLine } from "@/components/media-line";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { RecentlyPlayedFlip } from "@/components/recently-played-flip";
 import { SiteFooter } from "@/components/site-footer";
@@ -481,42 +482,14 @@ export default function About() {
             <AboutSection id={ABOUT_NAV_ITEMS[4].id} label="Media" index="05">
               <div className="flex w-full items-start pl-[calc(116px*var(--grid-scale))] text-justify text-[length:calc(15px*var(--scale))] leading-[1.8] text-black">
                 <div className="flex w-[calc(464px*var(--grid-scale))] flex-col items-start gap-[calc(20px*var(--scale))]">
-                  {MEDIA_COL_1.map((item) =>
-                    item.linked ? (
-                      <a
-                        key={item.text}
-                        href={item.href ?? "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-                      >
-                        {item.text}
-                      </a>
-                    ) : (
-                      <p key={item.text} className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-                        {item.text}
-                      </p>
-                    ),
-                  )}
+                  {MEDIA_COL_1.map((item) => (
+                    <MediaLine key={item.text} item={item} />
+                  ))}
                 </div>
                 <div className="flex flex-col items-start gap-[calc(20px*var(--scale))]">
-                  {MEDIA_COL_2.map((item) =>
-                    item.linked ? (
-                      <a
-                        key={item.text}
-                        href={item.href ?? "#"}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-                      >
-                        {item.text}
-                      </a>
-                    ) : (
-                      <p key={item.text} className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-                        {item.text}
-                      </p>
-                    ),
-                  )}
+                  {MEDIA_COL_2.map((item) => (
+                    <MediaLine key={item.text} item={item} />
+                  ))}
                 </div>
               </div>
             </AboutSection>

@@ -170,7 +170,23 @@ export const AWARDS_COL_2 = [
  *  treatment as the project list's titles (project-card.tsx). `href` is
  *  left undefined until real URLs are supplied — the link still renders
  *  (with a `#` target) in the meantime. */
-export type MediaItem = { text: string; linked?: boolean; href?: string };
+/** 行の一部だけをリンクにしたいときの断片（MediaItem.parts）。
+ *  `href` があればその部分だけがリンクになる。 */
+export type MediaItem = {
+  /** 表示テキスト。`parts` がある場合は出し分けには使わず、React の key と
+   *  検索性のための行全体の文字列として持つ（`parts` の text をつなげた
+   *  ものと一致させること）。 */
+  text: string;
+  linked?: boolean;
+  href?: string;
+  /** 1行の中にリンクが複数あるとき用（Spotify の Pt.1 / Pt.2 など）。
+   *  これがあると `linked` / `href` は無視され、断片ごとに描かれる。 */
+  parts?: { text: string; href?: string }[];
+  /** SP だけ差し替える `parts`。SP の Media は whitespace-nowrap で折り返さず、
+   *  375px 幅の端末だと使える幅が 299px しかないため、長い行はここで短い
+   *  言い回しを持つ。未指定なら PC と同じものを使う。 */
+  partsSp?: { text: string; href?: string }[];
+};
 
 export const MEDIA_COL_1: MediaItem[] = [
   // 仮題「The Art Director's Guide to Design」で置いていた枠。URL未定のため
@@ -208,6 +224,40 @@ export const MEDIA_COL_2: MediaItem[] = [
     text: "Rough Sketch of Art Director & Desginer 250",
     linked: true,
     href: "https://books.mdn.co.jp/books/3225303024/",
+  },
+  {
+    // 1行に2本リンクがある唯一の項目（Pt.1 / Pt.2）。行全体ではなく
+    // 断片ごとにリンクを張るので parts で持つ。
+    text: "kome Inc. Guest Appearance on Spotify (Pt.1 & Pt.2)",
+    parts: [
+      { text: "kome Inc. Guest Appearance on Spotify (" },
+      {
+        text: "Pt.1",
+        href: "https://open.spotify.com/episode/0dzCsrpRUjLswtiMAT84Qj?si=47aa8b5a6ed54563",
+      },
+      { text: " & " },
+      {
+        text: "Pt.2",
+        href: "https://open.spotify.com/episode/1vdW7EHye9qXgxCGKodJej?si=h7VU9rPTRd6T4vD6IdMofA",
+      },
+      { text: ")" },
+    ],
+    // SP は頭の "kome Inc. " を落とす（直接の指示）。PC のままだと 14px で
+    // 303.5px あり、375px 幅の端末の使える幅 299.2px をわずかに超えて
+    // 右端が切れるため。落とすと 244.6px。
+    partsSp: [
+      { text: "Guest Appearance on Spotify (" },
+      {
+        text: "Pt.1",
+        href: "https://open.spotify.com/episode/0dzCsrpRUjLswtiMAT84Qj?si=47aa8b5a6ed54563",
+      },
+      { text: " & " },
+      {
+        text: "Pt.2",
+        href: "https://open.spotify.com/episode/1vdW7EHye9qXgxCGKodJej?si=h7VU9rPTRd6T4vD6IdMofA",
+      },
+      { text: ")" },
+    ],
   },
   {
     text: "MdN Designers File 2025",

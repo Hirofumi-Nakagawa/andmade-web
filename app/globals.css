@@ -494,7 +494,13 @@ body::-webkit-scrollbar {
    ブロック）に付いたまま。中の帯へは子孫セレクタで届かせる。 */
 .underline-sweep-lines:hover .underline-sweep-line,
 .group:hover .underline-sweep-lines .underline-sweep-line,
-.underline-sweep-play .underline-sweep-line {
+.underline-sweep-play .underline-sweep-line,
+/* 帯を持つ要素そのものがリンクの場合（About の Media で、1行の中の
+   "Pt.1" / "Pt.2" だけをリンクにしている箇所 — components/media-line.tsx）。
+   一覧タイトルのように外側の箱にフックを付けられないので、自分の :hover で
+   直接動かす。一覧タイトル側は上の2つと二重に当たるが、同じアニメーション
+   なので実害はない。 */
+.underline-sweep-line:hover {
   animation: underline-sweep-lines 0.7s linear;
 }
 

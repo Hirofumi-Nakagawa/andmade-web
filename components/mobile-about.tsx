@@ -3,6 +3,7 @@
 import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useLenis } from "lenis/react";
+import { MediaLine } from "@/components/media-line";
 import { MobileAboutSection } from "@/components/mobile-about-section";
 import { RecentlyPlayedFlip } from "@/components/recently-played-flip";
 import { MobileAboutSideNav } from "@/components/mobile-about-side-nav";
@@ -478,23 +479,9 @@ export function MobileAbout() {
 
             <MobileAboutSection id={spSectionId(ABOUT_NAV_ITEMS[4].id)} label="Media" index="05">
               <div className="flex w-full flex-col items-start gap-[18px] text-justify text-[14px] leading-[1.8] whitespace-nowrap text-black">
-                {[...MEDIA_COL_1, ...MEDIA_COL_2].map((item) =>
-                  item.linked ? (
-                    <a
-                      key={item.text}
-                      href={item.href ?? "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-                    >
-                      {item.text}
-                    </a>
-                  ) : (
-                    <p key={item.text} className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
-                      {item.text}
-                    </p>
-                  ),
-                )}
+                {[...MEDIA_COL_1, ...MEDIA_COL_2].map((item) => (
+                  <MediaLine key={item.text} item={item} sp />
+                ))}
               </div>
             </MobileAboutSection>
 
