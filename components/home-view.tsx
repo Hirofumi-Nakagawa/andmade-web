@@ -486,12 +486,26 @@ export function HomeView({ initialProjects, news }: HomeViewProps) {
   // ホバーを流し直す（pendingHoverIndexRef の doc comment 参照）。
   useEffect(() => {
     if (suppressHoverFromScroll || suppressHoverPreview) return;
-    const index = pendingHoverIndexRef.current;
-    if (index === null) return;
+    if (pendingHoverIndexRef.current === null) return;
     // effect 本体での同期 setState を避けるため rAF 経由（このコードベースの
     // 通例）。handleHoverTitle は「同じ index なら何もしない」ので、
     // 既に出ているときに呼んでも二重には出ない。
-    const frame = requestAnimationFrame(() => handleHoverTitle(index));
+    //
+    // index は**フレームが回る時点で**読み直すこと（外で読んだ値を閉じ込め
+    // ない）。この effect は handleHoverTitle の同一性が変わるたびに走る＝
+    // hoveredIndex が変わるたびに走るので、タイトルに乗った直後にも1回
+    // 予約される。素早く乗せて離すと、その予約が handleHoverEnd の**後**に
+    // 発火し、離れているのに handleHoverTitle が走って cancelPendingClear()
+    // が消去タイマーを潰してしまう（同じ index なので何も出し直さずそのまま
+    // 帰る）。結果、背景イメージを消す担当が誰も居なくなって出っぱなしに
+    // なっていた（報告: "素早くカーソルを動かして表示させてホバーアウト
+    // したら、背景イメージが消えないことがある"）。離れていれば
+    // handleHoverEnd が null にしているので、読み直せば何もしない。
+    const frame = requestAnimationFrame(() => {
+      const index = pendingHoverIndexRef.current;
+      if (index === null) return;
+      handleHoverTitle(index);
+    });
     return () => cancelAnimationFrame(frame);
   }, [suppressHoverFromScroll, suppressHoverPreview, handleHoverTitle]);
 
