@@ -69,13 +69,20 @@ export const HERO_LEAD_EN = [
 export const VISION_JA = [
   "ANDMADE（アンドメイド）は、東京を拠点に活動するインディペンデントデザインスタジオです。企業やブランド、製品のブランディングに関わるウェブサイトやデジタル施策のUI設計から、ビジュアルコミュニケーションにおけるグラフィックデザインまで、包括的にアートディレクションとデザインを手掛けています。",
   "明確な美意識と高い視座を持って課題解決に取り組み、クライアントに寄り添いながらモノづくりをする「共創」のスタンスでビジョンを具現化し、未来への方向性を形にしていきます。",
-  "また、企業やブランドの魅力を最大限に引き出すために考察し、新たな価値を生み出すことは、クライアントをはじめとするチーム全員のクリエイティブを加速させ、次の可能性を切り拓くことにつながると信じています。変化の激しい時代だからこそ、一時的な流行や表層的なアウトプットではなく、時間を経ても価値が残るデザインと体験を生み出していくこと、それがANDMADEの目指すクリエイティブです。",
+  // 「〜信じています。」で改行（直接の指示）。配列を分ければ別の <p> に
+  // なり、BilingualBody は段落間に gap を持たないので、行送りぶんだけ
+  // 改まった1行として続く。
+  "また、企業やブランドの魅力を最大限に引き出すために考察し、新たな価値を生み出すことは、クライアントをはじめとするチーム全員のクリエイティブを加速させ、次の可能性を切り拓くことにつながると信じています。",
+  "変化の激しい時代だからこそ、一時的な流行や表層的なアウトプットではなく、時間を経ても価値が残るデザインと体験を生み出していくこと、それがANDMADEの目指すクリエイティブです。",
 ];
 
+/** 日本語（VISION_JA）と段落の切れ目を合わせてある。4段落目が
+ *  「変化の激しい時代だからこそ〜」に対応する。 */
 export const VISION_EN = [
-  "ANDMADE is a design studio providing comprehensive art direction and design, from UI design for websites and digital brand experiences to graphic design for visual communication, helping shape the identity of companies, brands, and products.",
-  "Guided by a clear aesthetic vision and a thoughtful perspective, we approach every challenge through close collaboration with our clients. By embracing a spirit of co-creation, we transform ideas into tangible experiences and help define meaningful directions for the future.",
-  "We believe that uncovering the true strengths of a brand and creating new value not only elevates the brand itself, but also inspires everyone involved in the process, opening the door to new possibilities. In a rapidly changing world, our goal is to create design and experiences that endure—work that goes beyond passing trends or surface-level aesthetics to deliver lasting value.",
+  "ANDMADE is an independent design studio based in Tokyo. We provide comprehensive art direction and design across websites and UI design for digital initiatives related to corporate, brand, and product branding, as well as graphic design for visual communication.",
+  "With a clear aesthetic sensibility and a broad perspective, we approach each challenge while working closely with our clients. Through a collaborative approach to making and creating together, we bring visions to life and shape directions for the future.",
+  "We believe that thoughtful exploration into what makes a company or brand unique can unlock new value, accelerating the creativity of everyone involved—from our clients to the wider creative team—and opening up new possibilities.",
+  "In a time of constant change, we seek to create design and experiences whose value endures beyond passing trends and surface-level expression. This is the kind of creative work ANDMADE strives to make.",
 ];
 
 export const APPROACH_JA = [
