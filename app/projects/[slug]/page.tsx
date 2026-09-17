@@ -143,6 +143,22 @@ const CREDIT_BLOCK_WIDTH = "calc(1276px * var(--grid-scale))";
  *  stays put. */
 const CREDIT_FIELD_LEFT_PX = { role: 290, date: 638, creditCol1: 290, creditCol2: 812 } as const;
 
+/** 上の recap 行のうち、値が長くなりうる Category / Role の折り返し幅
+ *  （px、1440px 基準）。
+ *
+ *  この行の各フィールドは絶対配置で、値は whitespace-nowrap だった。
+ *  Category は次の Role（左 290px）まで 290px しか無いのに、長いものは
+ *  335px あり、そのまま Role に重なっていた（SATOYAMA TERRACE の
+ *  "Identity, Brand site, Graphic, Merchandise, Signs, Typeface"）。
+ *
+ *  すぐ下の (Credit) 行が CREDIT_COLUMN_WIDTH で解決しているのと同じ手で、
+ *  隣のフィールドの手前で折り返させる。値はどちらも「次のフィールドまでの
+ *  距離 − 1マス（58px）」＝ Category 4マス / Role 5マス。1マスぶん空けて
+ *  あるのは、折り返した行の右端が隣の見出しにぶつからないようにするため。
+ *
+ *  Date は値が短い（"Aug.2025"）ので従来どおり nowrap のまま。 */
+const CREDIT_FIELD_WIDTH_PX = { category: 232, role: 290 } as const;
+
 /** Width of each Credit column — 8 grid columns (58px each = 464px at the
  *  1440px reference canvas). Without an explicit width these columns are
  *  `absolute` with no bound at all, so a long value ran straight on past the
@@ -1467,8 +1483,11 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                合わせて"). */}
             <div className="relative mt-[calc(140px*var(--scale))]" style={{ marginLeft: CREDIT_BLOCK_ML, width: CREDIT_BLOCK_WIDTH }}>
               <MetaField label="Category" dark={headerDark}>
+                {/* whitespace-nowrap を外し、幅で折り返す
+                   （CREDIT_FIELD_WIDTH_PX の doc comment 参照）。 */}
                 <p
-                  className={`text-[length:calc(14px*var(--scale))] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+                  style={{ width: `calc(${CREDIT_FIELD_WIDTH_PX.category}px * var(--grid-scale))` }}
+                  className={`text-[length:calc(14px*var(--scale))] leading-[calc(19px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
                     headerDark ? "text-black" : "text-white"
                   }`}
                 >
@@ -1477,7 +1496,8 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
               </MetaField>
               <MetaField label="Role" leftPx={CREDIT_FIELD_LEFT_PX.role} dark={headerDark}>
                 <p
-                  className={`text-[length:calc(14px*var(--scale))] whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+                  style={{ width: `calc(${CREDIT_FIELD_WIDTH_PX.role}px * var(--grid-scale))` }}
+                  className={`text-[length:calc(14px*var(--scale))] leading-[calc(19px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
                     headerDark ? "text-black" : "text-white"
                   }`}
                 >
