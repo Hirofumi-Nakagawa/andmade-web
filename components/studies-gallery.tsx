@@ -1003,8 +1003,14 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
          other type on this page. */}
       {introDone && (
         <div
-          className="pointer-events-none fixed z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black px-[calc(14px*var(--scale))] py-[calc(8px*var(--scale))] text-[12px] leading-none font-medium whitespace-nowrap text-white transition-opacity"
+          className="pointer-events-none fixed z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black py-[calc(8px*var(--scale))] text-[12px] leading-none font-medium whitespace-nowrap text-white transition-opacity"
           style={{
+            // 左右 14px → 12px（いずれも直接の指示。11px / 13px も試した）。
+            // Tailwind の任意値
+            // クラスではなくインラインなのは、初出のユーティリティが dev の
+            // 生成CSSに乗り遅れることがあり、効かないと左右の余白が丸ごと
+            // 0 になって別物に見えるため。上下は従来どおりクラス。
+            paddingInline: "calc(12px * var(--scale))",
             left: labelDisplayPos.x,
             top: labelDisplayPos.y,
             opacity: hovering ? 1 : 0,
