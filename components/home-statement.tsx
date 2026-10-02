@@ -169,14 +169,31 @@ export function HomeStatement({ colorsOn, onColorsToggle }: HomeStatementProps) 
               colorsOn ? "opacity-50" : "opacity-100"
             }`}
           >
-            {/* --underline-offset — 共有の .underline-sweep 既定値（-0.1em）
-                から 2px 上げる。bottom は負のオフセットなので、負の量を
-                減らす＝文字に近づく＝上がる。globals.css の該当ルール参照。 */}
+            {/* ここだけ [text-box-trim] を**付けない**。理由があるので外さないこと。
+                （サイトの他の箇所は全て付いているので、消し忘れに見えるが違う）
+
+                この span はサイト内で唯一 .underline-sweep が
+                display: inline のまま使われている箇所。text-box-trim は長らく
+                インラインボックスには効かず、ボックス下端＝ベースライン＋
+                ディセント（12px で +3.5px）だったので、下の
+                `calc(-0.1em + 2px)`（12px で +0.8px）でちょうど
+                ベースラインの 2.7px 下に下線が乗っていた。
+
+                ところがブラウザ側の更新でインラインにも trim が効くように
+                なり、ボックス下端がベースラインまで 3.5px 上がった結果、
+                同じ +0.8px が「ベースラインより上」＝文字に食い込む位置に
+                変わった（コード無変更のまま Chrome / Safari で同時に発生）。
+
+                trim を外せばボックスはどのブラウザでも「アセント〜ディセント」
+                で固定され、下線位置も従来どおりに戻る。インラインに trim を
+                掛けても、この行の高さは親の strut が決めているのでレイアウト
+                上の意味は無く、外しても見た目は変わらない。 */}
             <span
-              className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-              // --underline-untrimmed-nudge — text-box-trim が効かない環境
-              // （Firefox）でだけ 2px 下げる（直接の指示）。globals.css の
-              // @supports ブロックが読む。効く環境では無視される。
+              className="underline-sweep"
+              // --underline-offset — 上記のとおり「trim されていないインライン
+              // ボックスの下端」からの量。--underline-untrimmed-nudge は
+              // text-box-trim 非対応環境（Firefox）だけに効く 2px の微調整
+              // （直接の指示）。globals.css の @supports ブロックが読む。
               style={
                 {
                   "--underline-offset": "calc(-0.1em + 2px)",
