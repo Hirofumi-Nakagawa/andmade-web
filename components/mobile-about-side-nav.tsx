@@ -111,6 +111,29 @@ import { useFadeIn } from "@/components/use-fade-in";
  */
 const STICKY_TOP_PX = 30;
 
+/**
+ * スクロールスパイの判定線の位置（画面高に対する比）。
+ *
+ * **この線を最後に超えたセクションが current**、という判定にしている。
+ * 以前は IntersectionObserver に `rootMargin: "-40% 0px -55% 0px"` を渡し、
+ * 画面の 40〜45% にできる「帯」に入っているセクションのうち、ナビ順で最初の
+ * ものを current にしていた。これには2つ問題があった:
+ *
+ *  1. 帯が画面高の5%（SPで約40px）しかないのに、セクション間には約100pxの
+ *     余白がある。余白が帯に重なる間はどのセクションも捉えられず、current が
+ *     一瞬消えていた。
+ *  2. Services のように背の低いセクション（184px / 画面812px）だと、本文が
+ *     画面上部を占めている段階でセクション下端が既に帯を通り過ぎてしまい、
+ *     次の Awards が current になっていた（報告: "SPのaboutでServices
+ *     セクション時に左ナビのAwardsがcurrentになる"）。実測では読んでいる
+ *     のが Services でも Awards が点いていた。
+ *
+ * 線なら余白でも必ずどれかが「最後に超えたセクション」になるので1は起きず、
+ * セクションの高さにも依存しないので2も起きない。0.25 は、この線より上に
+ * 見出しが来たらそのセクションに入った、と見なす位置（sticky のナビのすぐ下）。
+ */
+const SPY_LINE_RATIO = 0.25;
+
 export function MobileAboutSideNav() {
   const lenis = useLenis();
   // 初期値は空文字＝どれも current にしない — per direct follow-up
@@ -132,36 +155,52 @@ export function MobileAboutSideNav() {
   const lineRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    const sections = ABOUT_NAV_ITEMS.map((item) => document.getElementById(spSectionId(item.id))).filter(
-      (el): el is HTMLElement => el !== null,
-    );
-    if (sections.length === 0) return;
+    const read = () =>
+      ABOUT_NAV_ITEMS.map((item) => ({ id: item.id, el: document.getElementById(spSectionId(item.id)) })).filter(
+        (s): s is { id: AboutSectionId; el: HTMLElement } => s.el !== null,
+      );
 
-    const visible = new Set<string>();
+    let frame: number | null = null;
+    const update = () => {
+      frame = null;
+      const sections = read();
+      if (sections.length === 0) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) visible.add(entry.target.id);
-          else visible.delete(entry.target.id);
-        }
-        // 帯（rootMargin で作った画面中央の判定域）にどのセクションも
-        // 入っていなければ current を外す — per direct follow-up ("一度
-        // currentになってからページ上まで戻ってもvisionがcurrentになった
-        // ままなので、非選択にするようにして")。以前は `if (firstVisible)`
-        // で、見つからないときは直前の値を保持していたため、FV まで
-        // スクロールを戻しても Vision が点いたままだった。
-        // ページ最下部（フッター付近）で Outline が帯から外れたときも
-        // 同じく非選択になる。「今いるセクション」を示す表示なので、
-        // どのセクションにもいない状態では何も点かないほうが一貫する。
-        const firstVisible = ABOUT_NAV_ITEMS.find((item) => visible.has(spSectionId(item.id)));
-        setActiveId(firstVisible ? firstVisible.id : "");
-      },
-      { rootMargin: "-40% 0px -55% 0px", threshold: 0 },
-    );
+      // 判定線 = 画面上端から SPY_LINE_RATIO の位置。
+      const line = window.innerHeight * SPY_LINE_RATIO;
+      // この線を**最後に超えたセクション**が current。
+      let current = "";
+      for (const section of sections) {
+        if (section.el.getBoundingClientRect().top <= line) current = section.id;
+      }
+      // 上端（FV）に戻ったときは非選択 — per direct follow-up ("一度
+      // currentになってからページ上まで戻ってもvisionがcurrentになった
+      // ままなので、非選択にするようにして")。最初のセクションがまだ線を
+      // 超えていなければ current は "" のまま＝上のループの初期値。
+      //
+      // 最下部（フッター付近）で最後のセクションも線より上へ抜けたときも
+      // 同じく非選択に戻す。「今いるセクション」を示す表示なので、どの
+      // セクションにもいない状態では何も点かないほうが一貫する（これは
+      // 以前の実装の挙動を引き継いだもの）。
+      const last = sections[sections.length - 1];
+      if (last.el.getBoundingClientRect().bottom <= line) current = "";
 
-    sections.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+      setActiveId((prev) => (prev === current ? prev : current));
+    };
+
+    const onScroll = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(update);
+    };
+
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
   }, []);
 
   useEffect(() => {

@@ -1297,9 +1297,10 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
                    どのブラウザでも固定される。 */}
                 <span
                   className="underline-sweep"
-                  // PC は既定から 2px 上げているが、SP はそこからさらに
-                  // 2px 下げる＝共有既定値（-0.1em）と同じ位置。
-                  style={{ "--underline-offset": "-0.1em" } as CSSProperties}
+                  // 共有既定値（-0.1em）から計 2.5px 上げる（直接の指示で
+                  // 1px / 1px / 0.5px と3回）。bottom は負のオフセットなので、
+                  // 負の量を減らす＝文字に近づく＝上がる。
+                  style={{ "--underline-offset": "calc(-0.1em + 2.5px)" } as CSSProperties}
                 >
                   Colors of Sound
                 </span>
