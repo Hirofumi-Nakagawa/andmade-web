@@ -1288,8 +1288,15 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
                   transitionDuration: "300ms",
                 }}
               >
+                {/* ここだけ [text-box-trim] を**付けない**。理由があるので外さ
+                   ないこと（PC 版 home-statement.tsx の同じ span と同じ事情。
+                   詳細はあちらのコメント参照）。この span は display: inline の
+                   まま .underline-sweep を使っており、インラインボックスに
+                   text-box-trim が効くかどうかで下線の基準ボックスが
+                   ディセント分（約0.3em）動いてしまう。付けないほうが
+                   どのブラウザでも固定される。 */}
                 <span
-                  className="underline-sweep [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+                  className="underline-sweep"
                   // PC は既定から 2px 上げているが、SP はそこからさらに
                   // 2px 下げる＝共有既定値（-0.1em）と同じ位置。
                   style={{ "--underline-offset": "-0.1em" } as CSSProperties}

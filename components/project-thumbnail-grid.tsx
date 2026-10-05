@@ -547,9 +547,19 @@ function ProjectThumbnailCard({
            thumbnail. Hiding this whole span until `revealed` is true keeps
            that plain-text state invisible so title and thumbnail visibly
            start together. */}
+        {/* ここだけ [text-box-trim] を**付けない**。理由があるので外さないこと
+           （home-statement.tsx の Colors of Sound と同じ事情。詳細はあちらの
+           コメント参照）。この span は display: inline のまま
+           .underline-sweep を使っている。text-box-trim は長らくインライン
+           ボックスには効かず、ボックス下端＝ベースライン＋ディセント
+           （14px で +4px）だったので、下の `calc(-0.1em + 3px)`（14px で
+           +1.6px）でベースラインの 2.4px 下に下線が乗っていた。ブラウザ側の
+           更新でインラインにも trim が効くようになるとボックス下端が
+           ベースラインまで上がり、同じ +1.6px が文字に食い込む位置に変わる。
+           trim を外せばボックスはどのブラウザでも固定される。 */}
         <span
           ref={titleRef}
-          className={`underline-sweep text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium text-black [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+          className={`underline-sweep text-[length:calc(14px*var(--scale))] leading-[1.5] font-medium text-black ${
             revealed ? "opacity-100" : "opacity-0"
           }`}
           style={{ "--underline-offset": "calc(-0.1em + 3px)" } as React.CSSProperties}
