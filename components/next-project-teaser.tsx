@@ -41,6 +41,13 @@ const CONTENT_ML = "calc(198px * var(--grid-scale))";
  * fires on its own) reaches exactly the three real link elements and nothing
  * else.
  */
+/** Next Project の category / role / date まわりの間隔（px、1440px 基準）。
+ *  NEXT_META_LINE_HEIGHT_PX は「1項目の中」の行間（カテゴリーが折り返した
+ *  ときの行送り）、NEXT_META_FIELD_GAP_PX は「項目どうし」の間。
+ *  どちらも直接の指示での調整用 — 詳しい経緯は下の JSX のコメント参照。 */
+const NEXT_META_LINE_HEIGHT_PX = 14;
+const NEXT_META_FIELD_GAP_PX = 9;
+
 export function NextProjectTeaser({
   href,
   title,
@@ -112,21 +119,54 @@ export function NextProjectTeaser({
             {title}
           </Link>
         </div>
-        {/* leading-[15px] — per direct follow-up ("Next Projectのカテゴリー、
-           日付の行間を15pxに"): these three lines are one <p>-like block
-           joined by <br/>, not separate flex items with a `gap`, so their own
-           line spacing is just this element's line-height. */}
+        {/* category / role / date。
+           以前は1つのブロックを <br/> で区切っていたので、行間は
+           すべて line-height の15px（"Next Projectのカテゴリー、日付の
+           行間を15pxに"）一択だった。カテゴリーが2行に折り返す実績
+           （SATOYAMA TERRACE など）では、
+
+             ・折り返した中の行間 → 広すぎる
+             ・カテゴリーと role の間 → 狭すぎる
+
+           という相反する指摘が出たため、3つを別々のブロックに分けた
+           （直接の指示）。これで「1項目の中の行間」は line-height、
+           「項目どうしの間」は margin と、別々に調整できる。
+
+           各ブロックに text-box-trim を付けてあるので、項目間の見た目の
+           余白は margin の値そのもの（上の行のベースライン → 下の行の
+           キャップ上端）になる。分ける前の見た目上の間隔は
+           15px − キャップハイト（12px × 0.706 ≒ 8.5px）＝ 約6.5px だった
+           ので、NEXT_META_FIELD_GAP_PX はそこから少し広げた値。 */}
         <Link
           href={href}
           onMouseEnter={playUnderlineSweep}
-          className="mt-[calc(12px*var(--scale))] block text-[length:calc(12px*var(--scale))] leading-[calc(15px*var(--scale))] text-black/50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+          className="mt-[calc(12px*var(--scale))] block text-[length:calc(12px*var(--scale))] text-black/50"
           style={{ marginLeft: CONTENT_ML, width: "calc(232px*var(--grid-scale))" }}
         >
-          {category}
-          <br />
-          {role}
-          <br />
-          <span className="font-(family-name:--font-courier) tracking-[calc(-0.6px*var(--scale))]">{date}</span>
+          <span
+            className="block [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+            style={{ lineHeight: `calc(${NEXT_META_LINE_HEIGHT_PX}px * var(--scale))` }}
+          >
+            {category}
+          </span>
+          <span
+            className="block [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+            style={{
+              lineHeight: `calc(${NEXT_META_LINE_HEIGHT_PX}px * var(--scale))`,
+              marginTop: `calc(${NEXT_META_FIELD_GAP_PX}px * var(--scale))`,
+            }}
+          >
+            {role}
+          </span>
+          <span
+            className="block font-(family-name:--font-courier) tracking-[calc(-0.6px*var(--scale))] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+            style={{
+              lineHeight: `calc(${NEXT_META_LINE_HEIGHT_PX}px * var(--scale))`,
+              marginTop: `calc(${NEXT_META_FIELD_GAP_PX}px * var(--scale))`,
+            }}
+          >
+            {date}
+          </span>
         </Link>
       </div>
       <Link
