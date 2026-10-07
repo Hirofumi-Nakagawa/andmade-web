@@ -106,32 +106,61 @@ function findUrls(content, spec) {
   return hits;
 }
 
-/** アップロード時に名前を変えたファイルの対応表。
- *  キー＝Cloudinary 側のファイル名、値＝R2 に置いた名前。
+/** Cloudinary がアップロード時に付けるランダムな接尾辞。
+ *  `yatsumonji-top-mv_sl9ajr.mp4` の `_sl9ajr` の部分で、ファイル名の意味に
+ *  関係しない。R2 へ移すときに外した（実際に R2 上の11本で規則を確認済み）。
  *
- *  原則はファイル名を変えずに移すこと（そうすれば URL の違いがホスト部分
- *  だけになり、書き換えが単純な置換で済む）。どうしても変えたものだけ
- *  ここに1行足す。`logo-mv` は名前だけでは何の動画か分からないため
- *  Circus のものと分かるようにした、という経緯。 */
+ *  5文字以上を条件にしてあるのは、`college8_mv_kih2jg.mp4` のように元の
+ *  名前自体がアンダースコアを含む場合に、`_mv` まで巻き込んで削らない
+ *  ようにするため（→ 正しく `college8_mv.mp4` になる）。 */
+const CLOUDINARY_SUFFIX_RE = /_[a-z0-9]{5,10}(\.[a-z0-9]+)$/i;
+
+/** 接尾辞を外したあと、さらに個別に名前を変えたファイルの対応表。
+ *  キー＝接尾辞を外した名前、値＝R2 に実際に置いた名前。
+ *  `logo-mv` は名前だけでは何の動画か分からないので Circus のものと
+ *  分かるようにした、という経緯（直接の指示）。 */
 const RENAMES = {
   "logo-mv.mp4": "circus-logo-mv.mp4",
 };
 
 /** Cloudinary の URL から、R2 側に置いたファイル名を決める。 */
 function fileNameOf(url) {
-  CLOUDINARY_RE.lastIndex = 0;
-  const match = CLOUDINARY_RE.exec(url);
-  const original = match ? match[1] : url.split("/").pop();
-  return RENAMES[original] ?? original;
+  const stripped = originalFileNameOf(url).replace(CLOUDINARY_SUFFIX_RE, "$1");
+  return RENAMES[stripped] ?? stripped;
 }
 
-/** ダウンロード時は Cloudinary 側の名前のまま保存する（RENAMES を通さない）。
- *  手元のフォルダと R2 の中身を見比べたときに、どれがリネーム対象だったか
- *  分かるようにしておくため。 */
+/** Cloudinary 側のファイル名そのまま（接尾辞あり）。download で使う。 */
 function originalFileNameOf(url) {
   CLOUDINARY_RE.lastIndex = 0;
   const match = CLOUDINARY_RE.exec(url);
   return match ? match[1] : url.split("/").pop();
+}
+
+/** 書き換え先の URL が本当に存在するか確かめる。
+ *  CMS に死んだ URL を書き込んでしまうと、どの実績の動画が消えたのか
+ *  後から追うのが大変なので、rewrite の前に必ず全件通す。
+ *
+ *  HEAD だけに頼らない。ブラウザからは全件読めるのに Node の HEAD では
+ *  全件失敗する、という状態に実際に遭遇したため（HEAD の扱いか IPv6 の
+ *  選択あたりが原因）。先頭1バイトだけを GET する方法でも試し、どちらかが
+ *  通れば「ある」と判断する。失敗したときは理由も返して、原因が分かる
+ *  ようにしておく。 */
+async function probeUrl(url) {
+  const attempts = [
+    { method: "HEAD" },
+    { method: "GET", headers: { Range: "bytes=0-0" } },
+  ];
+  let lastReason = "";
+  for (const init of attempts) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok || response.status === 206) return { ok: true };
+      lastReason = `HTTP ${response.status}`;
+    } catch (error) {
+      lastReason = String(error?.cause?.message ?? error?.message ?? error).slice(0, 120);
+    }
+  }
+  return { ok: false, reason: lastReason };
 }
 
 async function collect() {
@@ -194,12 +223,70 @@ async function cmdDownload() {
   console.log(`次は この中身を R2 のバケット（andmade-media）へアップロードしてください。`);
 }
 
+/**
+ * microCMS から読み取った値を、そのまま書き戻せる形に直す。
+ *
+ * 画像フィールドは読み取り時 `{url, width, height}` のオブジェクトで返るが、
+ * 書き込み時は URL の文字列しか受け付けない。繰り返しフィールド
+ * （dtlGallery）を丸ごと送り直すとこの差で配列全体が弾かれる
+ * （`'dtlGallery' has unexpected data type.`）。
+ *
+ * 対象は「url を持つオブジェクト」だけ。それ以外（select の配列、
+ * テキスト、fieldId など）は触らない。
+ */
+function toWritable(value) {
+  if (Array.isArray(value)) return value.map(toWritable);
+  if (value && typeof value === "object") {
+    if (typeof value.url === "string") return value.url;
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, toWritable(v)]));
+  }
+  return value;
+}
+
+/** 書き戻した結果が、狙った箇所以外を壊していないかの照合用。
+ *  画像の表現差（オブジェクト/文字列）を吸収してから比べる。 */
+function normalized(value) {
+  return JSON.stringify(toWritable(value));
+}
+
 async function cmdRewrite(dryRun) {
   if (!dryRun && !writeKey) {
     console.error("MICROCMS_WRITE_API_KEY が未設定です。書き込み権限のある API キーを .env.local に追加してください。");
     process.exit(1);
   }
   const rows = await collect();
+
+  // 先に全部の移行先 URL を実在確認する。1本でも欠けていたら、CMS には
+  // 一切触れずに止める（中途半端に書き換わった状態がいちばん困るため）。
+  const targets = [...new Set(rows.map((r) => `${NEW_BASE}/${r.file}`))];
+  if (process.argv.includes("--skip-verify")) {
+    console.log(`実在確認を飛ばします（--skip-verify）。移行先 ${targets.length} 本。\n`);
+  } else {
+    console.log(`移行先 ${targets.length} 本の実在を確認しています...`);
+    const missing = [];
+    for (const url of targets) {
+      const result = await probeUrl(url);
+      if (!result.ok) missing.push({ url, reason: result.reason });
+    }
+    if (missing.length > 0) {
+      console.error(`\n次の ${missing.length} 本を確認できませんでした。`);
+      for (const item of missing) console.error(`  ${item.url}\n      ${item.reason}`);
+      if (missing.length === targets.length) {
+        console.error(
+          "\n全件失敗しています。ファイルが無いのではなく、この環境から " +
+            "media.andmade.jp に届いていない可能性が高いです（DNS の反映待ち、" +
+            "社内ネットワーク、IPv6 など）。ブラウザで上記 URL を開いて再生できるなら、" +
+            "--skip-verify を付けて実行して構いません。"
+        );
+      } else {
+        console.error("\nアップロード漏れか名前違いです。");
+      }
+      console.error("\n中断しました。CMS は変更していません。");
+      process.exit(1);
+    }
+    console.log("すべて存在を確認しました。\n");
+  }
+
   // 1コンテンツに複数箇所ある場合があるので、コンテンツ単位にまとめて1回で送る。
   const byContent = new Map();
   for (const row of rows) {
@@ -207,6 +294,9 @@ async function cmdRewrite(dryRun) {
     if (!byContent.has(key)) byContent.set(key, { endpoint: row.endpoint, id: row.id, title: row.title, hits: [] });
     byContent.get(key).hits.push(row);
   }
+
+  const succeeded = [];
+  const failed = [];
 
   for (const entry of byContent.values()) {
     const spec = ENDPOINTS.find((s) => s.endpoint === entry.endpoint);
@@ -227,16 +317,50 @@ async function cmdRewrite(dryRun) {
         repeat[hit.repeatIndex][hit.repeatField] = next;
       }
     }
-    if (repeat) body[spec.repeat.field] = repeat;
+    if (repeat) body[spec.repeat.field] = toWritable(repeat);
     if (dryRun) continue;
     const response = await fetch(api(`${entry.endpoint}/${entry.id}`), {
       method: "PATCH",
       headers: { "X-MICROCMS-API-KEY": writeKey, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    console.log(response.ok ? "    更新しました" : `    失敗 ${response.status} ${await response.text()}`);
+    if (response.ok) {
+      // 狙った動画URL以外が壊れていないか、書き戻した直後に読み直して照合する。
+      // 繰り返しフィールドは丸ごと送り直しているので、ここを確認しないと
+      // ギャラリーの画像や並びが欠けていても気づけない。
+      let verdict = "更新しました";
+      if (repeat) {
+        const after = await fetch(api(`${entry.endpoint}/${entry.id}`), {
+          headers: { "X-MICROCMS-API-KEY": apiKey },
+        }).then((r) => r.json());
+        if (normalized(after[spec.repeat.field]) !== normalized(repeat)) {
+          verdict = "更新しましたが、ギャラリーの内容が送った値と一致しません。CMS を確認してください";
+          failed.push({ id: `${entry.endpoint}/${entry.id}`, title: entry.title, status: "照合NG", text: "" });
+        }
+      }
+      if (!verdict.startsWith("更新しましたが")) succeeded.push(`${entry.endpoint}/${entry.id}`);
+      console.log(`    ${verdict}`);
+    } else {
+      const text = (await response.text()).slice(0, 300);
+      failed.push({ id: `${entry.endpoint}/${entry.id}`, title: entry.title, status: response.status, text });
+      console.log(`    失敗 ${response.status} ${text}`);
+    }
   }
-  console.log(dryRun ? "\n--dry なので何も書き換えていません。" : "\n書き換え完了。ビルドし直すとサイトに反映されます。");
+
+  if (dryRun) {
+    console.log("\n--dry なので何も書き換えていません。");
+    return;
+  }
+  // 1件でも失敗したら、それが埋もれないよう最後にまとめ直して非ゼロで終わる。
+  console.log(`\n成功 ${succeeded.length} 件 / 失敗 ${failed.length} 件`);
+  if (failed.length > 0) {
+    console.log("\n失敗したもの:");
+    for (const f of failed) console.log(`  ${f.id}  ${f.title}\n      ${f.status} ${f.text}`);
+    console.log("\n書き換えは途中までです。原因を直してからもう一度実行してください（成功済みのものは list に出なくなります）。");
+    process.exitCode = 1;
+    return;
+  }
+  console.log("書き換え完了。ビルドし直すとサイトに反映されます。");
 }
 
 const command = process.argv[2];
