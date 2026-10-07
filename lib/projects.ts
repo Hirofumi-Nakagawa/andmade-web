@@ -341,13 +341,14 @@ export type Project = {
    *  （PC: project-hover-preview.tsx / SP: mobile-home.tsx）だけが動画に
    *  なり、`imageSrc` はそのポスターとして使われる。Img グリッドと詳細
    *  ページは従来どおり静止画（imageSrc）のまま。ギャラリーの動画と同じく
-   *  外部ホスティング（Cloudinary 推奨）の直リンクを想定。 */
+   *  外部ホスティング（Cloudflare R2 / media.andmade.jp）の直リンクを想定。 */
   previewVideoSrc?: string;
   /** SP 用に軽く書き出した動画の URL — per direct follow-up ("最初から
    *  SP用の軽い動画を用意するようにするわ なのでcmsに動画登録項目を
    *  もうひとつ設けて")。SP のプレビューはこちらを優先し、未設定なら
    *  previewVideoSrc にフォールバックする（getProjectSpPreviewVideoSrc
-   *  参照）。当初は Cloudinary の URL 変換（w_720,q_auto:eco）で自動生成
+   *  参照）。当初は（当時の配信元だった）Cloudinary の URL 変換
+   *  （w_720,q_auto:eco）で自動生成
    *  していたが、初回リクエスト時の再エンコード待ちで逆に表示が遅く
    *  なったため、事前に用意したファイルを登録する運用に切り替えた。 */
   previewVideoSpSrc?: string;
@@ -749,11 +750,13 @@ function buildGalleryFromCms(items: GalleryRepeatItem[] | undefined): ProjectGal
       // not microCMS's own File field: microCMS's File field type requires a
       // paid plan (unavailable on Hobby), so this instead expects a plain URL
       // typed/pasted in rather than a real upload through microCMS itself.
-      // Cloudinary is the recommended host, since the number of videos grows
-      // with every new project: upload the video there and paste its
-      // delivery URL here. (An earlier version of
-      // this comment suggested this project's own public/ folder instead,
-      // fine for a one-off video but not once the count keeps growing.)
+      // 置き場は Cloudflare R2 のバケット `andmade-media`。バケット直下に
+      // 平置きし、`https://media.andmade.jp/<ファイル名>` をここに貼る。
+      // 動画は実績が増えるたびに増えるので、この project の public/ に
+      // 置く運用は早々に行き詰まる（最初期はそう書いてあった）。
+      // 以前は Cloudinary を使っていたが、転送量が増えて有料プランの
+      // 固定費が乗ってきたため R2 へ移行した（R2 は転送量が無料）。
+      // 既存ぶんの移し替えは scripts/migrate-videos.mjs 参照。
       const videoUrl = trimmedText(item.video);
       const poster = asMicrocmsImage(item.poster);
       if (!videoUrl && !poster) continue; // nothing set for this item at all
@@ -921,8 +924,8 @@ type ProjectCmsContent = {
    *       ようにして")。空ならその枠は従来どおり image1/image2 の画像。URL を
    *       入れた側は動画になり、同じ番号の画像がポスター（＋縦横比の取得元）
    *       として使われるので、image1/image2 は動画の枠でも必須のまま。
-   *       URLの入れ方は `galleryVideo` の `video` と同じ（Cloudinary などに
-   *       置いた配信URLを貼る。理由は buildGalleryFromCms 内のコメント参照）。
+   *       URLの入れ方は `galleryVideo` の `video` と同じ（R2 に置いた配信URL
+   *       を貼る。理由は buildGalleryFromCms 内のコメント参照）。
    *     - `galleryIdea` — a "(Idea)" bilingual text block. Sub-fields: `ja`
    *       (textarea), `en` (textarea). No `width` — always renders at the
    *       same fixed width as Overview's own BilingualSection.

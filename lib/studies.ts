@@ -99,7 +99,7 @@ export type Study = {
   imageSrcSet?: string;
   /** The real video file's URL — only set when `mediaType` is `"video"`
    *  (undefined for plain image studies). An externally-hosted URL
-   *  (Cloudinary recommended, matching lib/projects.ts's own
+   *  (Cloudflare R2 / media.andmade.jp, matching lib/projects.ts's own
    *  `ProjectGalleryBlock`'s video `src`), not a microCMS-hosted file. Only
    *  the large center display (studies-center-image.tsx) ever reads this;
    *  the thumbnail rail always uses `imageSrc` regardless. */
@@ -262,8 +262,9 @@ type StudyCmsContent = {
    *  block exactly (see that file's own `video` field doc comment): microCMS's
    *  File field type requires a paid plan (unavailable on this project's
    *  Hobby plan), so this expects a plain URL typed/pasted in instead, after
-   *  uploading the actual video file to Cloudinary (or any other external
-   *  host) and pasting its delivery URL here. Field ID `video`. When set
+   *  uploading the actual video file to Cloudflare R2 (バケット
+   *  `andmade-media` の直下) and pasting its delivery URL
+   *  (`https://media.andmade.jp/<ファイル名>`) here. Field ID `video`. When set
    *  (a non-empty string), this study's `mediaType` resolves to `"video"`
    *  and the large center display (studies-center-image.tsx) plays it
    *  directly (muted, autoplay, loop) in place of `image` — the thumbnail
@@ -310,7 +311,7 @@ const STUDIES_FETCH_LIMIT = 100;
  *     format/size it was. Still worth setting even on a study that also has
  *     `video` below, since the thumbnail rail never plays video.
  *   - `video` (text field, optional, field ID `video`) — a direct URL to a
- *     video file hosted externally (Cloudinary recommended, matching
+ *     video file hosted externally (Cloudflare R2 / media.andmade.jp, matching
  *     lib/projects.ts's own `galleryVideo` block — see that file's own field
  *     doc comment for why this is a plain text field rather than microCMS's
  *     File field: File requires a paid plan, unavailable on Hobby). When
@@ -359,7 +360,7 @@ export async function getStudies(): Promise<Study[]> {
         color: PLACEHOLDER_COLORS[index % PLACEHOLDER_COLORS.length],
         slug: slugify(title),
         // Mirrors lib/projects.ts's own `galleryVideo` handling: `video` is a
-        // plain text field (an externally-hosted URL, e.g. Cloudinary — see
+        // plain text field (an externally-hosted URL — R2, see
         // `StudyCmsContent.video`'s own doc comment for why, not microCMS's
         // File field), so a present-but-blank string still counts as unset.
         mediaType: content.video?.trim() ? ("video" as const) : ("image" as const),
@@ -372,7 +373,7 @@ export async function getStudies(): Promise<Study[]> {
         imageSrcSet: content.image ? microcmsImageSrcSet(content.image.url) : undefined,
         // Not run through microcmsImageUrl() — that helper's WebP/resize
         // transform is image-only and microCMS-hosted-file-specific, neither
-        // of which applies to an externally-hosted (e.g. Cloudinary) video
+        // of which applies to an externally-hosted (R2) video
         // URL. Left `undefined` for plain image studies (the common case).
         videoSrc: content.video?.trim() || undefined,
       };

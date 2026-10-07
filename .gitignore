@@ -47,3 +47,7 @@ next-env.d.ts
 
 # Local-only Claude Code tool permissions (machine-specific paths).
 .claude/settings.local.json
+
+# Cloudinary → R2 移行で一時的に落とす動画の置き場
+# （scripts/migrate-videos.mjs の download）。実ファイルなのでコミットしない。
+/media-migration/

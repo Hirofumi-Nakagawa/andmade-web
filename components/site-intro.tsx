@@ -5,19 +5,21 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { withBasePath } from "@/lib/base-path";
 
-/** Flip to false once the intro's timing/visuals are finalized — while
- *  testing, it should show on every visit regardless of the one-day check
- *  below (per explicit request: "現状はテスト確認中なので都度表示する").
- *  Briefly flipped to false while chasing the tap-responsiveness bug below,
- *  then immediately back to true per a direct follow-up ("イントロは毎回
- *  表示に戻して") once it became clear that bug wasn't actually caused by
- *  this flag replaying the intro on every test visit — it was a real bug
- *  in this component's own exit handling (see `shouldShow`'s own doc
- *  comment below). */
-const ALWAYS_SHOW_FOR_TESTING = true;
+/** イントロを**毎回**出すか。true が確定仕様（直接の指示「オープニングは
+ *  もう毎回再生で大丈夫」）。
+ *
+ *  もとは ALWAYS_SHOW_FOR_TESTING という名前で、「調整中だけ毎回出す。
+ *  固まったら false に戻して1日1回にする」という一時フラグだった
+ *  （"現状はテスト確認中なので都度表示する"）。その後そのまま運用されて
+ *  毎回表示が仕様として受け入れられたので、テスト用という名前と前提を
+ *  やめて実名に変えた。
+ *
+ *  false にすると下の STORAGE_KEY / ONE_DAY_MS による「1日1回」の判定が
+ *  効くようになる。その仕組みは消していないので、いつでも戻せる。 */
+const SHOW_ON_EVERY_VISIT = true;
 
-/** localStorage key holding the last time the intro was shown, so it only
- *  reappears once a day (see ALWAYS_SHOW_FOR_TESTING above). */
+/** localStorage key holding the last time the intro was shown — SHOW_ON_
+ *  EVERY_VISIT を false にしたときだけ効く「1日1回」判定で使う。 */
 const STORAGE_KEY = "andmade-intro-last-shown";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -77,7 +79,7 @@ const TAGLINE_LINES = [
 const PILLS = ["Designed with clarity", "Built to last", "Rooted in purpose"];
 
 /**
- * Full-screen splash shown once a day (see ALWAYS_SHOW_FOR_TESTING) before
+ * Full-screen splash shown on every visit (see SHOW_ON_EVERY_VISIT) before
  * landing on the top page — Figma node 878:2031: wordmark logo, the site's
  * 3-line tagline below it, and 3 rounded "Designed with clarity / Built to
  * last / Rooted in purpose" pills below that.
@@ -193,7 +195,7 @@ export function willIntroShow(pathname: string): boolean {
   if (typeof window === "undefined") return false;
   if (introDecision !== null) return introDecision;
   if (pathname !== "/") return false;
-  if (ALWAYS_SHOW_FOR_TESTING) return true;
+  if (SHOW_ON_EVERY_VISIT) return true;
   const lastShown = Number(window.localStorage.getItem(STORAGE_KEY) ?? 0);
   const shownWithinOneDay = Date.now() - lastShown < ONE_DAY_MS;
   return !shownWithinOneDay;
@@ -283,7 +285,7 @@ export function SiteIntro() {
 
     const lastShown = Number(window.localStorage.getItem(STORAGE_KEY) ?? 0);
     const shownWithinOneDay = Date.now() - lastShown < ONE_DAY_MS;
-    if (shownWithinOneDay && !ALWAYS_SHOW_FOR_TESTING) {
+    if (shownWithinOneDay && !SHOW_ON_EVERY_VISIT) {
       recordIntroDecision(false);
       return;
     }
