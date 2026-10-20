@@ -18,7 +18,7 @@ export const SITE_URL = "https://andmade.jp";
 export const SITE_NAME = "ANDMADE Inc.";
 
 export const SITE_DESCRIPTION =
-  "ANDMADE Inc.は、クライアントと共にモノづくりをする共創のスタンスで、ウェブ、CI・VI、ビジュアルに関わるグラフィックまで、包括的にアートディレクションとデザインを行っているデザインスタジオです。";
+  "ANDMADE Inc.は、クライアントと共にモノづくりをする共創のスタンスで、ウェブ、CI・VI、ビジュアルに関わるグラフィックまで、包括的にアートディレクションとデザインを手掛けるデザインスタジオです。";
 
 /** サイト共通の OGP/Twitter カード画像（1200x630、支給済みの実画像）。
  *  元は app/layout.tsx のローカル定数だったが、実績詳細ページの
