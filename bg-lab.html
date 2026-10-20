@@ -354,7 +354,8 @@ const PRESET_PARAMS = {
   "sky（blue×purple）": {
     speed: 0.15, scale: 3.5, warp: 1.2, octaves: 2, streak: 3.5, blurAngle: 90,
     contrast: 1.15, cursorStrength: 0.1,
-    grain: 0.07, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    // grain 0.07 → 0.06。実装側を下げたあとラボに戻し忘れていたぶんの同期。
+    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
     topColor: "#ebfdff", topRange: 0.9, topMix: 1,
     edgeSoft: 0.1, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
     lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
@@ -362,7 +363,8 @@ const PRESET_PARAMS = {
   "Contact（黒ベース）": {
     speed: 0.15, scale: 3.2, warp: 1.2, octaves: 4, streak: 6, blurAngle: 180,
     contrast: 1.1, cursorStrength: 0.1,
-    grain: 0.07, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    // grain は About と同値。上の sky と揃えて 0.07 → 0.06。
+    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
     topColor: "#ebfdff", topRange: 0, topMix: 1,
     edgeSoft: 0.45, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
     lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
