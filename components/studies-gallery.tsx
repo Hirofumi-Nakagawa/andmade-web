@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTextBoxTrimSupported } from "@/components/untrimmed-metrics";
+import { playKonamiSound } from "@/components/konami-sound";
 import { mod, ORIENTATION_ASPECT_RATIO, type Study, type StudyOrientation } from "@/lib/studies";
 import { ScrambleText } from "@/components/scramble-text";
 import { SlotDigits } from "@/components/slot-digits";
@@ -629,6 +630,16 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
   // comment above on why the center image needs to follow *every* position
   // update, not just settled ones.
   const activeIndex = mod(Math.round(resolvedPosition), studies.length);
+  // エッグ中、作品が切り替わるたびに1回鳴らす。このページはホイールで
+  // 作品を送る作りで window 自体は一切スクロールしないため、
+  // konami-sound.tsx のスクロール音ハンドラ（window の scroll を見ている）は
+  // 反応しない。ダイヤルの「カチッ」に相当するのはここ。
+  const soundedIndexRef = useRef(activeIndex);
+  useEffect(() => {
+    if (soundedIndexRef.current === activeIndex) return;
+    soundedIndexRef.current = activeIndex;
+    playKonamiSound("scroll");
+  }, [activeIndex]);
   const active = studies[activeIndex];
   const aspectRatio = ORIENTATION_ASPECT_RATIO[active.orientation];
   const zoomWidthColumns = ZOOM_WIDTH_COLUMNS[active.orientation];
@@ -753,6 +764,11 @@ export function StudiesGallery({ studies }: { studies: Study[] }) {
   function handleImageClick(event: React.MouseEvent) {
     if (!introDone) return;
     event.stopPropagation();
+    // エッグ中の効果音。中央画像はただの <div> なので、konami-sound.tsx の
+    // 委譲ハンドラが見ているセレクタ（a / button / role）には掛からない。
+    // Zoom と Zoom Out で音を変えていないのは、素材が3つしかないのと、
+    // 「押した」感触自体は同じものだから。
+    playKonamiSound("click");
     setZoomed((current) => !current);
   }
 

@@ -8,6 +8,7 @@ import { KonamiGrain } from "@/components/konami-grain";
 import { KonamiLogo3D } from "@/components/konami-logo-3d";
 import { KonamiWarpCanvas } from "@/components/konami-warp-canvas";
 import { KonamiWipe } from "@/components/konami-wipe";
+import { KONAMI_SOUND_OFF_EVENT, KONAMI_SOUND_ON_EVENT } from "@/components/konami-sound";
 
 /** ↑↑↓↓←→←→BA. Compared against `event.key`, so the letters are matched
  *  case-insensitively below (Shift or Caps Lock shouldn't break it). */
@@ -192,6 +193,8 @@ export function KonamiGlitch() {
         // 従来どおり演出なしの即時オフ — 逃げ道は速いのが正しい。
         if (wipeModeRef.current) return;
         setActive(false);
+        // 音も止める。「解除で止まる」指定どおり、逃げ道は音も含めて効く。
+        window.dispatchEvent(new Event(KONAMI_SOUND_OFF_EVENT));
         return;
       }
 
@@ -253,6 +256,23 @@ export function KonamiGlitch() {
       root.style.removeProperty("--konami-glitch");
       root.style.removeProperty("--konami-glitch-dir");
     };
+  }, [active]);
+
+  // 効果音の on/off（components/konami-sound.tsx）。
+  //
+  // クラスや active をあちらから直接見ていない理由 — このエフェクトは
+  // トップページ限定で、下層へ遷移すると上の isTopPage 判定で自動的に
+  // off になる。一方で音は「下層のボタンなども同様」に鳴らす指定なので、
+  // 遷移では止めたくない。そこで「意図して on/off したとき」だけを
+  // 専用イベントで知らせ、ページ移動による自動解除は伝えない。
+  //
+  // 送り出しが2系統に分かれているのはそのため:
+  //   ・on  … コマンド成立 / トグルで active が true になったとき
+  //   ・off … Escape とコマンド再入力のハンドラ（下の key handler）から直接
+  // ここでは on だけを扱う。
+  useEffect(() => {
+    if (!active) return;
+    window.dispatchEvent(new Event(KONAMI_SOUND_ON_EVENT));
   }, [active]);
 
   // --- scroll velocity -> glitch intensity --------------------------------
@@ -374,7 +394,13 @@ export function KonamiGlitch() {
       {wipeMode !== null && (
         <KonamiWipe
           mode={wipeMode}
-          onSwitch={() => setActive((current) => !current)}
+          onSwitch={() => {
+            // activeRef で「これから off になるのか」を判定してから反転する。
+            // setActive の更新関数の中で dispatch すると、React が更新関数を
+            // 複数回呼びうる（StrictMode など）ぶんイベントも重複する。
+            if (activeRef.current) window.dispatchEvent(new Event(KONAMI_SOUND_OFF_EVENT));
+            setActive((current) => !current);
+          }}
           onComplete={() => setWipeMode(null)}
         />
       )}

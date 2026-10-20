@@ -4,6 +4,7 @@ import Script from "next/script";
 import { DisablePinchZoom } from "@/components/disable-pinch-zoom";
 import { GridOverlay } from "@/components/grid-overlay";
 import { KonamiGlitch } from "@/components/konami-glitch";
+import { KonamiSound } from "@/components/konami-sound";
 import { IdleOverlay } from "@/components/idle-overlay";
 import { LenisRouteResize } from "@/components/lenis-route-resize";
 import { MobileMenu } from "@/components/mobile-menu";
@@ -278,6 +279,9 @@ export default function RootLayout({
                 MobileMenu is: it should survive client-side navigation
                 rather than switching itself off on every route change. */}
             <KonamiGlitch />
+            {/* エッグ発動後の効果音。視覚エフェクトと寿命が違う（下層ページでも
+                鳴り続ける）ので別コンポーネント — konami-sound.tsx の doc comment 参照。 */}
+            <KonamiSound />
             {/* Scroll-progress gauge along the top edge of the window, PC and
                 SP alike. Inside SmoothScroll for the same reason as
                 KonamiGlitch above — it reads scroll progress via useLenis —
