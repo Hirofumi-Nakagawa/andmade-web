@@ -26,11 +26,16 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
  *   （andmade:konami-sound-on / -off）だけを購読し、`konami-glitch` クラスの
  *   有無や pathname は一切見ない。視覚エフェクトが消えても音は生きる。
  *
- * ■ 音の止まり方
- *   「解除で止まる」指定どおり、Escape もしくはコマンド再入力で off になる。
- *   ページをまたいで生き残る必要があるので sessionStorage に持たせてある
- *   （タブを閉じれば消える。リロードでは残る＝エッグ中にリロードしても
- *   音だけ復活する、という読み味）。
+ * ■ 音の止まり方と寿命
+ *   Escape / コマンド再入力 / Tick トグルのいずれでも off になる。
+ *
+ *   状態はこのモジュールの変数だけで持つ。保存はしない。
+ *   ページ遷移（クライアント側のルーティング）ではこのモジュールも
+ *   KonamiSound も生き続けるので、下層へ移っても鳴り続ける。一方、
+ *   **リロードすると off に戻る** — 当初は sessionStorage に保存して
+ *   リロードも跨がせていたが、エッグ専用だった頃の名残で、誰でも押せる
+ *   トグルになった今は「読み込み直したら音は鳴っていない」ほうが素直
+ *   （直接の指摘 "tick押してリロードしてもtickが押された状態なんだけど"）。
  *
  * ■ 自動再生ポリシー
  *   AudioContext はユーザー操作なしに音を出せないが、このモードに入る
@@ -42,9 +47,6 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
  *  視覚エフェクトの active とは寿命が違う（上の doc comment 参照）。 */
 export const KONAMI_SOUND_ON_EVENT = "andmade:konami-sound-on";
 export const KONAMI_SOUND_OFF_EVENT = "andmade:konami-sound-off";
-
-/** ページをまたいでも鳴り続けるための保存先。 */
-const STORAGE_KEY = "andmade-konami-sound";
 
 /** 音量。「小さめで固定」の指定どおり、UI も設定も持たない。
  *  クリックだけ気持ち大きいのは、素材自体（40ms の木質音）が他の2つより
@@ -219,12 +221,6 @@ function attachHandlers() {
 export function setSoundEnabled(on: boolean) {
   if (soundEnabled === on) return;
   soundEnabled = on;
-  try {
-    if (on) window.sessionStorage.setItem(STORAGE_KEY, "1");
-    else window.sessionStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // プライベートブラウズ等で書けなくても、そのセッション中は動く。
-  }
   if (on) {
     void ensureLoaded().then(attachHandlers);
   } else {
@@ -257,27 +253,6 @@ export function KonamiSound() {
     const disable = () => setSoundEnabled(false);
     window.addEventListener(KONAMI_SOUND_ON_EVENT, enable);
     window.addEventListener(KONAMI_SOUND_OFF_EVENT, disable);
-
-    // リロードやページ遷移後の復帰。ただし AudioContext の解錠はユーザー
-    // 操作が要るので、ここでは状態だけ戻して、最初の操作（ポインタ/キー/
-    // スクロール）で解錠と配線を行う。鳴り始めが1アクション遅れることが
-    // あるが、無音のまま壊れるよりよい。
-    let restored = false;
-    try {
-      restored = window.sessionStorage.getItem(STORAGE_KEY) === "1";
-    } catch {
-      restored = false;
-    }
-    if (restored) {
-      soundEnabled = true;
-      notify();
-      const unlock = () => {
-        void ensureLoaded().then(attachHandlers);
-      };
-      document.addEventListener("pointerdown", unlock, { once: true });
-      window.addEventListener("keydown", unlock, { once: true });
-      window.addEventListener("scroll", unlock, { once: true, passive: true });
-    }
 
     return () => {
       window.removeEventListener(KONAMI_SOUND_ON_EVENT, enable);
