@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { introDefinitelyWontShow, willIntroShow } from "@/components/site-intro";
+import { useToggleSound } from "@/components/konami-sound";
 import { LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
 
 type CaseCounterProps = {
@@ -120,6 +121,24 @@ export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
     return () => observer.disconnect();
   }, [lastTitleRef, replayGeneration]);
 
+  // 登場の遅延は「初回だけ」。
+  //
+  // LIST_ENTRANCE_DELAY_MS は一覧と足並みを揃えて一拍おいて出すための待ちで、
+  // ページを開いた最初の1回にだけ意味がある。スクロールで消えたあと上へ
+  // 戻ってきたときにも同じ待ちが入ると、戻ったのに出てこない時間ができて
+  // 反応が鈍く見える（直接の指示 "上に戻った時の表示タイミングを
+  // scrollともにもう少し早く"）。一度でも出したあとは遅延なしで即座に戻す。
+  const visible = revealed && !released && !scrolled;
+  // state で持つ（ref ではない）。描画中に ref を読み書きするのは
+  // react-hooks/refs に引っかかるうえ、遅延の値は実際に描画へ出るので
+  // state が正しい。visible が立った最初の1回だけ true に倒す。
+  // 描画中の条件付き setState（React 公式の "Adjusting state when a prop
+  // changes" の形）。effect に逃がすと react-hooks/set-state-in-effect に
+  // 当たるうえ、1フレーム遅れて遅延値が切り替わる。
+  const [hasShown, setHasShown] = useState(false);
+  if (visible && !hasShown) setHasShown(true);
+  const entranceDelayMs = hasShown ? 0 : LIST_ENTRANCE_DELAY_MS;
+
   return (
     // pointer-events-none: this div has no explicit width, so as a
     // block-level element it spans the full row — which, because of the
@@ -135,14 +154,14 @@ export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
         // top-level `revealed` doc comment) or already `released` (scrolled
         // past, this element's own pre-existing scroll fade-out).
         className={`absolute top-0 whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity duration-300 ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
-          revealed && !released && !scrolled ? "opacity-100" : "opacity-0"
+          visible ? "opacity-100" : "opacity-0"
         }`}
         style={{
           right: "var(--edge-right-inset)",
           // 一覧と足並みを揃えて一拍おいて出す（lib/entrance.ts 参照）。
           // 消えるとき（released / scrolled）は待たせたくないので、出るとき
           // だけ遅延を付ける。
-          transitionDelay: revealed && !released && !scrolled ? `${LIST_ENTRANCE_DELAY_MS}ms` : "0ms",
+          transitionDelay: `${visible ? entranceDelayMs : 0}ms`,
         }}
       >
         {/* 「N Cases」→「Scroll」。件数の表示は左レール（Made Here / N
@@ -150,6 +169,66 @@ export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
            （イントロ待ち・最終行に到達したらフェードアウト）はそのまま。 */}
         Scroll
       </p>
+
+      <AudioToggle visible={visible} delayMs={visible ? entranceDelayMs : 0} />
     </div>
+  );
+}
+
+/** 「Scroll」からグリッド1マス（58px）ぶん左に置く。
+ *  Scroll は --edge-right-inset でグリッド右端に右揃えされているので、
+ *  そこへ1マス足せば「右から2つめ」の位置に右揃えされる。 */
+const AUDIO_RIGHT_OFFSET_PX = 58;
+
+/**
+ * 効果音のオン/オフ（components/konami-sound.tsx）。
+ *
+ * Scroll と同じ行・同じ級数で、グリッドの右から2つめに置く（直接の指示）。
+ * 出す/引っ込めるタイミングも Scroll と同一にしてある（イントロ待ち・
+ * 最終行に到達／スクロール開始でフェードアウト）。
+ *
+ * 状態は濃度で示す — オンで 50%。トップFVの「Colors of Sound」と同じ作法。
+ * 下線とホバー時のスイープはサイト共通の .underline-sweep。
+ *
+ * pointer-events-auto — 親の sticky な箱は pointer-events-none で
+ * 一覧のクリックを素通しにしているので、ここだけ拾い直す。
+ */
+function AudioToggle({ visible, delayMs }: { visible: boolean; delayMs: number }) {
+  const [enabled, toggle] = useToggleSound();
+  return (
+    // 位置決めは外側の span が持つ。.underline-sweep 自身が
+    // `position: relative` を持っていて（globals.css）、Tailwind の
+    // `absolute` ユーティリティより後ろに出るため、同じ要素に両方付けると
+    // relative が勝って絶対配置が効かない（実際に位置が崩れた）。
+    // 位置と装飾を別の要素に分ければ競合しない。
+    // 外側 = 位置と「出す/引っ込める」。内側 = 状態（オン=50%）とホバー。
+    // 透過を2段に分けているのは、どちらも opacity を使うため。入れ子なら
+    // 掛け算になるので、隠れている間（外側 0）はホバーしても出てこない。
+    // 1要素にまとめると hover:opacity-50 が opacity-0 を上書きしてしまう。
+    <span
+      className={`absolute top-0 transition-opacity duration-300 ease-out ${
+        visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+      }`}
+      style={{
+        right: `calc(var(--edge-right-inset) + ${AUDIO_RIGHT_OFFSET_PX}px * var(--grid-scale))`,
+        transitionDelay: `${delayMs}ms`,
+      }}
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        aria-pressed={enabled}
+        // 下線は無し（直接の指示）。隣の Scroll も下線を持たないので、
+        // この行は2つとも素のテキストで揃う。
+        // ホバーで 50% — トップFVの「Colors of Sound」と同じ作法
+        // （あちらも状態・ホバーとも opacity で表す）。オン中は既に 50% な
+        // ので、ホバーしても見た目は変わらない。
+        className={`block cursor-pointer whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity hover:opacity-50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+          enabled ? "opacity-50" : "opacity-100"
+        }`}
+      >
+        Audio
+      </button>
+    </span>
   );
 }
