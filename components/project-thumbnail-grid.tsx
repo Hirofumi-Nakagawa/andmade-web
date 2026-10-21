@@ -306,7 +306,7 @@ export function ProjectThumbnailGrid({ projects }: ProjectThumbnailGridProps) {
           ))}
         </ul>
       </div>
-      <CaseCounter lastTitleRef={lastTitleRef} listRef={listRef} />
+      <CaseCounter lastTitleRef={lastTitleRef} />
     </div>
   );
 }

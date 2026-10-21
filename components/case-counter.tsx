@@ -1,19 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useLenis } from "lenis/react";
 import { usePathname } from "next/navigation";
 import { introDefinitelyWontShow, willIntroShow } from "@/components/site-intro";
 import { useToggleSound } from "@/components/konami-sound";
+import { TickIcon } from "@/components/tick-icon";
 import { LIST_ENTRANCE_DELAY_MS } from "@/lib/entrance";
 
 type CaseCounterProps = {
   /** Ref to the last row's title — the same element the sticky release point
    *  is aligned to (see project-grid-section.tsx). Used to detect that release. */
   lastTitleRef: React.RefObject<HTMLDivElement | null>;
-  /** 一覧（<ul>）そのもの。「Scroll」を押したときのスクロール先。
-   *  Txt / Img どちらの親も既に持っているものをそのまま渡してもらう。 */
-  listRef?: React.RefObject<HTMLUListElement | null>;
 };
 
 /** 登場のフェード時間。一覧のカード（project-card.tsx の duration-500）と
@@ -24,10 +21,6 @@ type CaseCounterProps = {
 const ENTRANCE_FADE_MS = 500;
 /** 消えるときは待たせたくないので従来どおり短いまま。 */
 const EXIT_FADE_MS = 300;
-
-/** 「Scroll」で一覧へ飛んだとき、一覧の上端を画面上から何px下に置くか。
- *  ヘッダーの真下に潜り込まない程度の余白。 */
-const SCROLL_TO_LIST_OFFSET_PX = 90;
 
 /** Roughly where this counter itself sits (bottom-6 + its own ~15px height). */
 const RELEASE_ZONE_PX = 40;
@@ -61,7 +54,7 @@ const RELEASE_ZONE_PX = 40;
  * deliberate reveal rather than frequent live-navigation feedback, so it can
  * afford to be showier and slower.
  */
-export function CaseCounter({ lastTitleRef, listRef }: CaseCounterProps) {
+export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
   const pathname = usePathname();
   const [released, setReleased] = useState(false);
   /** 少しでもスクロールしたら即座に消す。最終行に到達したら消える従来の `released`
@@ -152,24 +145,10 @@ export function CaseCounter({ lastTitleRef, listRef }: CaseCounterProps) {
   // 描画中の条件付き setState（React 公式の "Adjusting state when a prop
   // changes" の形）。effect に逃がすと react-hooks/set-state-in-effect に
   // 当たるうえ、1フレーム遅れて遅延値が切り替わる。
-  const lenis = useLenis();
   const [hasShown, setHasShown] = useState(false);
   if (visible && !hasShown) setHasShown(true);
   const entranceDelayMs = hasShown ? 0 : LIST_ENTRANCE_DELAY_MS;
 
-  // 「Scroll」を押したら一覧の先頭へ。
-  // Lenis がある場合はそちらに任せる（サイト全体のスクロールは Lenis が
-  // 握っているので、window.scrollTo だと慣性と競合して途中で引き戻される）。
-  const scrollToList = () => {
-    const list = listRef?.current;
-    if (!list) return;
-    if (lenis) {
-      lenis.scrollTo(list, { offset: -SCROLL_TO_LIST_OFFSET_PX });
-      return;
-    }
-    const top = list.getBoundingClientRect().top + window.scrollY - SCROLL_TO_LIST_OFFSET_PX;
-    window.scrollTo({ top, behavior: "smooth" });
-  };
 
   return (
     // pointer-events-none: this div has no explicit width, so as a
@@ -180,15 +159,13 @@ export function CaseCounter({ lastTitleRef, listRef }: CaseCounterProps) {
     // since it's a later DOM sibling and paints on top. The counter itself
     // is just static text, never interactive, so this has no downside.
     <div className="sticky bottom-[18px] h-[calc(15px*var(--scale))] pointer-events-none">
-      {/* 外側 = 位置と「出す/引っ込める」、内側 = ホバー。Tick と同じ
-         2段構成（あちらのコメント参照）。 */}
-      <span
+      <p
         // Hidden (opacity-0) whenever any gate says so — not yet
         // `revealed` (still waiting on the intro, see this component's own
         // top-level `revealed` doc comment) or already `released` (scrolled
         // past, this element's own pre-existing scroll fade-out).
-        className={`absolute top-0 transition-opacity ease-out ${
-          visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        className={`absolute top-0 whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+          visible ? "opacity-100" : "opacity-0"
         }`}
         style={{
           right: "var(--edge-right-inset)",
@@ -203,16 +180,10 @@ export function CaseCounter({ lastTitleRef, listRef }: CaseCounterProps) {
            Cases、project-view-toggle.tsx）へ移した。出す/引っ込めるタイミング
            （イントロ待ち・最終行に到達したらフェードアウト）はそのまま。
 
-           押すと一覧の先頭まで送る（直接の指示）。案内文のままにしておく
-           よりは、文字どおり「スクロールする」ボタンにしたほうが素直。 */}
-        <button
-          type="button"
-          onClick={scrollToList}
-          className="block cursor-pointer whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity hover:opacity-50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
-        >
-          Scroll
-        </button>
-      </span>
+           一時はクリックで一覧へ送るボタンにしていたが、押せない案内文に
+           戻した（直接の指示）。 */}
+        Scroll
+      </p>
 
       <TickToggle visible={visible} delayMs={visible ? entranceDelayMs : 0} />
     </div>
@@ -223,6 +194,10 @@ export function CaseCounter({ lastTitleRef, listRef }: CaseCounterProps) {
  *  Scroll は --edge-right-inset でグリッド右端に右揃えされているので、
  *  そこへ1マス足せば「右から2つめ」の位置に右揃えされる。 */
 const TICK_RIGHT_OFFSET_PX = 58;
+/** アイコンの縦位置の微調整（px、正で下へ）。隣の Scroll とキャップ高で
+ *  ほぼ揃うが、目視で1px下げたほうが合う（直接の指示）。--scale は掛けない
+ *  — 見た目の詰めなので画面幅で増減させない。 */
+const TICK_TOP_NUDGE_PX = 1;
 
 /**
  * 効果音のオン/オフ（components/konami-sound.tsx）。
@@ -260,6 +235,7 @@ function TickToggle({ visible, delayMs }: { visible: boolean; delayMs: number })
       }`}
       style={{
         right: `calc(var(--edge-right-inset) + ${TICK_RIGHT_OFFSET_PX}px * var(--grid-scale))`,
+        top: TICK_TOP_NUDGE_PX,
         transitionDuration: `${visible ? ENTRANCE_FADE_MS : EXIT_FADE_MS}ms`,
         transitionDelay: `${delayMs}ms`,
       }}
@@ -268,16 +244,24 @@ function TickToggle({ visible, delayMs }: { visible: boolean; delayMs: number })
         type="button"
         onClick={toggle}
         aria-pressed={enabled}
-        // 下線は無し（直接の指示）。隣の Scroll も下線を持たないので、
-        // この行は2つとも素のテキストで揃う。
+        // 文字ではなくアイコン（Figma node 1825:9）。読み上げ用に
+        // aria-label を持たせる — 見た目に文字が無くなったぶん、
+        // ここだけが機能名を伝える唯一の手がかりになる。
+        aria-label="Sound effects"
         // ホバーで 50% — トップFVの「Colors of Sound」と同じ作法
         // （あちらも状態・ホバーとも opacity で表す）。オン中は既に 50% な
         // ので、ホバーしても見た目は変わらない。
-        className={`block cursor-pointer whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity hover:opacity-50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+        className={`block cursor-pointer text-black transition-opacity hover:opacity-50 ${
           enabled ? "opacity-50" : "opacity-100"
         }`}
       >
-        Tick
+        {/* 13×8 の原寸を --scale で追従させる。隣の Scroll（12px、
+           キャップ上端〜ベースラインにトリム済み）のキャップ高が
+           約 8.5px なので、8px のアイコンを同じ top に置くと高さが
+           ほぼ揃う。 */}
+        <TickIcon
+          style={{ width: "calc(13px * var(--scale))", height: "calc(8px * var(--scale))", display: "block" }}
+        />
       </button>
     </span>
   );
