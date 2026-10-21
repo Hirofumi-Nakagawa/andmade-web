@@ -88,7 +88,7 @@ export function ProjectGridSection({
           activeIndex={activeIndex}
         />
       </div>
-      <CaseCounter lastTitleRef={lastTitleRef} />
+      <CaseCounter lastTitleRef={lastTitleRef} listRef={listRef} />
     </div>
   );
 }

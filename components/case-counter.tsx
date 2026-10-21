@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLenis } from "lenis/react";
 import { usePathname } from "next/navigation";
 import { introDefinitelyWontShow, willIntroShow } from "@/components/site-intro";
 import { useToggleSound } from "@/components/konami-sound";
@@ -10,7 +11,14 @@ type CaseCounterProps = {
   /** Ref to the last row's title — the same element the sticky release point
    *  is aligned to (see project-grid-section.tsx). Used to detect that release. */
   lastTitleRef: React.RefObject<HTMLDivElement | null>;
+  /** 一覧（<ul>）そのもの。「Scroll」を押したときのスクロール先。
+   *  Txt / Img どちらの親も既に持っているものをそのまま渡してもらう。 */
+  listRef?: React.RefObject<HTMLUListElement | null>;
 };
+
+/** 「Scroll」で一覧へ飛んだとき、一覧の上端を画面上から何px下に置くか。
+ *  ヘッダーの真下に潜り込まない程度の余白。 */
+const SCROLL_TO_LIST_OFFSET_PX = 90;
 
 /** Roughly where this counter itself sits (bottom-6 + its own ~15px height). */
 const RELEASE_ZONE_PX = 40;
@@ -44,7 +52,7 @@ const RELEASE_ZONE_PX = 40;
  * deliberate reveal rather than frequent live-navigation feedback, so it can
  * afford to be showier and slower.
  */
-export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
+export function CaseCounter({ lastTitleRef, listRef }: CaseCounterProps) {
   const pathname = usePathname();
   const [released, setReleased] = useState(false);
   /** 少しでもスクロールしたら即座に消す。最終行に到達したら消える従来の `released`
@@ -135,9 +143,24 @@ export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
   // 描画中の条件付き setState（React 公式の "Adjusting state when a prop
   // changes" の形）。effect に逃がすと react-hooks/set-state-in-effect に
   // 当たるうえ、1フレーム遅れて遅延値が切り替わる。
+  const lenis = useLenis();
   const [hasShown, setHasShown] = useState(false);
   if (visible && !hasShown) setHasShown(true);
   const entranceDelayMs = hasShown ? 0 : LIST_ENTRANCE_DELAY_MS;
+
+  // 「Scroll」を押したら一覧の先頭へ。
+  // Lenis がある場合はそちらに任せる（サイト全体のスクロールは Lenis が
+  // 握っているので、window.scrollTo だと慣性と競合して途中で引き戻される）。
+  const scrollToList = () => {
+    const list = listRef?.current;
+    if (!list) return;
+    if (lenis) {
+      lenis.scrollTo(list, { offset: -SCROLL_TO_LIST_OFFSET_PX });
+      return;
+    }
+    const top = list.getBoundingClientRect().top + window.scrollY - SCROLL_TO_LIST_OFFSET_PX;
+    window.scrollTo({ top, behavior: "smooth" });
+  };
 
   return (
     // pointer-events-none: this div has no explicit width, so as a
@@ -148,13 +171,15 @@ export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
     // since it's a later DOM sibling and paints on top. The counter itself
     // is just static text, never interactive, so this has no downside.
     <div className="sticky bottom-[18px] h-[calc(15px*var(--scale))] pointer-events-none">
-      <p
+      {/* 外側 = 位置と「出す/引っ込める」、内側 = ホバー。Tick と同じ
+         2段構成（あちらのコメント参照）。 */}
+      <span
         // Hidden (opacity-0) whenever any gate says so — not yet
         // `revealed` (still waiting on the intro, see this component's own
         // top-level `revealed` doc comment) or already `released` (scrolled
         // past, this element's own pre-existing scroll fade-out).
-        className={`absolute top-0 whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity duration-300 ease-out [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
-          visible ? "opacity-100" : "opacity-0"
+        className={`absolute top-0 transition-opacity duration-300 ease-out ${
+          visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
         style={{
           right: "var(--edge-right-inset)",
@@ -166,11 +191,20 @@ export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
       >
         {/* 「N Cases」→「Scroll」。件数の表示は左レール（Made Here / N
            Cases、project-view-toggle.tsx）へ移した。出す/引っ込めるタイミング
-           （イントロ待ち・最終行に到達したらフェードアウト）はそのまま。 */}
-        Scroll
-      </p>
+           （イントロ待ち・最終行に到達したらフェードアウト）はそのまま。
 
-      <AudioToggle visible={visible} delayMs={visible ? entranceDelayMs : 0} />
+           押すと一覧の先頭まで送る（直接の指示）。案内文のままにしておく
+           よりは、文字どおり「スクロールする」ボタンにしたほうが素直。 */}
+        <button
+          type="button"
+          onClick={scrollToList}
+          className="block cursor-pointer whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] font-normal text-black transition-opacity hover:opacity-50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"
+        >
+          Scroll
+        </button>
+      </span>
+
+      <TickToggle visible={visible} delayMs={visible ? entranceDelayMs : 0} />
     </div>
   );
 }
@@ -178,10 +212,15 @@ export function CaseCounter({ lastTitleRef }: CaseCounterProps) {
 /** 「Scroll」からグリッド1マス（58px）ぶん左に置く。
  *  Scroll は --edge-right-inset でグリッド右端に右揃えされているので、
  *  そこへ1マス足せば「右から2つめ」の位置に右揃えされる。 */
-const AUDIO_RIGHT_OFFSET_PX = 58;
+const TICK_RIGHT_OFFSET_PX = 58;
 
 /**
  * 効果音のオン/オフ（components/konami-sound.tsx）。
+ *
+ * ラベルは「Tick」— 実際に鳴っているのが 8〜40ms のクリック音そのもの
+ * なので、機能名（Audio / SE / Snd）より鳴っている音を指すほうが
+ * このサイトの語彙（Scroll / Made Here など、動作や状態を短く置く）に
+ * 馴染む、という判断（直接の指示）。
  *
  * Scroll と同じ行・同じ級数で、グリッドの右から2つめに置く（直接の指示）。
  * 出す/引っ込めるタイミングも Scroll と同一にしてある（イントロ待ち・
@@ -193,7 +232,7 @@ const AUDIO_RIGHT_OFFSET_PX = 58;
  * pointer-events-auto — 親の sticky な箱は pointer-events-none で
  * 一覧のクリックを素通しにしているので、ここだけ拾い直す。
  */
-function AudioToggle({ visible, delayMs }: { visible: boolean; delayMs: number }) {
+function TickToggle({ visible, delayMs }: { visible: boolean; delayMs: number }) {
   const [enabled, toggle] = useToggleSound();
   return (
     // 位置決めは外側の span が持つ。.underline-sweep 自身が
@@ -210,7 +249,7 @@ function AudioToggle({ visible, delayMs }: { visible: boolean; delayMs: number }
         visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
       }`}
       style={{
-        right: `calc(var(--edge-right-inset) + ${AUDIO_RIGHT_OFFSET_PX}px * var(--grid-scale))`,
+        right: `calc(var(--edge-right-inset) + ${TICK_RIGHT_OFFSET_PX}px * var(--grid-scale))`,
         transitionDelay: `${delayMs}ms`,
       }}
     >
@@ -227,7 +266,7 @@ function AudioToggle({ visible, delayMs }: { visible: boolean; delayMs: number }
           enabled ? "opacity-50" : "opacity-100"
         }`}
       >
-        Audio
+        Tick
       </button>
     </span>
   );
