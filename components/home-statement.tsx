@@ -157,7 +157,11 @@ export function HomeStatement({ colorsOn, onColorsToggle }: HomeStatementProps) 
           <br />
           everyday listening into color.
         </p>
-        <div className="mt-[calc(10px*var(--scale))]">
+        {/* 上の「A sound archive〜」との間隔。10px → 8px（直接の指示で2px詰め）。
+            下の span は text-box-trim を外してある（理由はその場のコメント参照）
+            ぶん、ボックスの上端がキャップ上端より上にあり、指定値より広く
+            見える。ここはその補正も込みの実測値。 */}
+        <div className="mt-[calc(8px*var(--scale))]">
           <button
             type="button"
             onClick={onColorsToggle}
