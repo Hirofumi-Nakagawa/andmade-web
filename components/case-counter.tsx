@@ -16,6 +16,15 @@ type CaseCounterProps = {
   listRef?: React.RefObject<HTMLUListElement | null>;
 };
 
+/** 登場のフェード時間。一覧のカード（project-card.tsx の duration-500）と
+ *  同じにして、一覧と同時に立ち上がって見えるようにする（直接の指示
+ *  "TickとScrollの表示タイミングを一覧の表示タイミングに合わせて"）。
+ *  遅延も一覧と同じ LIST_ENTRANCE_DELAY_MS なので、これで出だしと
+ *  終わりが揃う。 */
+const ENTRANCE_FADE_MS = 500;
+/** 消えるときは待たせたくないので従来どおり短いまま。 */
+const EXIT_FADE_MS = 300;
+
 /** 「Scroll」で一覧へ飛んだとき、一覧の上端を画面上から何px下に置くか。
  *  ヘッダーの真下に潜り込まない程度の余白。 */
 const SCROLL_TO_LIST_OFFSET_PX = 90;
@@ -178,11 +187,12 @@ export function CaseCounter({ lastTitleRef, listRef }: CaseCounterProps) {
         // `revealed` (still waiting on the intro, see this component's own
         // top-level `revealed` doc comment) or already `released` (scrolled
         // past, this element's own pre-existing scroll fade-out).
-        className={`absolute top-0 transition-opacity duration-300 ease-out ${
+        className={`absolute top-0 transition-opacity ease-out ${
           visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
         style={{
           right: "var(--edge-right-inset)",
+          transitionDuration: `${visible ? ENTRANCE_FADE_MS : EXIT_FADE_MS}ms`,
           // 一覧と足並みを揃えて一拍おいて出す（lib/entrance.ts 参照）。
           // 消えるとき（released / scrolled）は待たせたくないので、出るとき
           // だけ遅延を付ける。
@@ -245,11 +255,12 @@ function TickToggle({ visible, delayMs }: { visible: boolean; delayMs: number })
     // 掛け算になるので、隠れている間（外側 0）はホバーしても出てこない。
     // 1要素にまとめると hover:opacity-50 が opacity-0 を上書きしてしまう。
     <span
-      className={`absolute top-0 transition-opacity duration-300 ease-out ${
+      className={`absolute top-0 transition-opacity ease-out ${
         visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
       }`}
       style={{
         right: `calc(var(--edge-right-inset) + ${TICK_RIGHT_OFFSET_PX}px * var(--grid-scale))`,
+        transitionDuration: `${visible ? ENTRANCE_FADE_MS : EXIT_FADE_MS}ms`,
         transitionDelay: `${delayMs}ms`,
       }}
     >
