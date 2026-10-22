@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { OGP_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site";
 import { AboutBlendBackground } from "@/components/about-blend-background";
 import { AboutSection } from "@/components/about-section";
 import { AboutSideNav } from "@/components/about-side-nav";
@@ -42,10 +42,41 @@ import {
 // description — per direct follow-up ("各ページのdescriptionを以下に変更
 // して")。プレーンな meta description のみで、OGP/Twitter の description は
 // 従来どおりルート（app/layout.tsx）のサイト共通文を丸ごと継承する。
+/** このページの description。plain の meta と OGP / Twitter で同じ文面を
+ *  使うので、二重に書かずここで一度だけ定義する。 */
+const PAGE_DESCRIPTION =
+  "ANDMADEは東京を拠点に活動するインディペンデントデザインスタジオです。ブランドの本質を見極め、アートディレクション、グラフィック、ウェブサイトを通して長く愛されるデザインをつくっています。";
+
 export const metadata: Metadata = {
   title: "About",
-  description:
-    "ANDMADEは東京を拠点に活動するインディペンデントデザインスタジオです。ブランドの本質を見極め、アートディレクション、グラフィック、ウェブサイトを通して長く愛されるデザインをつくっています。",
+  description: PAGE_DESCRIPTION,
+  // openGraph / twitter をここで持つ理由 — Next の metadata 継承は
+  // **オブジェクト丸ごと**で、フィールド単位のマージではない。定義しないと
+  // ルート（app/layout.tsx）のものをそのまま引き継ぎ、og:title が
+  // "ANDMADE Inc."、og:url が "/" のまま出る＝ canonical（このページ）と
+  // 食い違う。実際そうなっていた（実測で3ページとも og:url が "/"）。
+  // 実績詳細（app/projects/[slug]/page.tsx）は既に同じ理由で自前定義して
+  // いるので、そちらと同じ形に揃える。
+  // title に "- ANDMADE Inc." を明示で付けるのは、ルートの title.template が
+  // plain <title> にしか効かない（OGP には適用されない）ため。
+  // images も自前で持つ必要がある — 同じ理由（丸ごと継承）で、書かないと
+  // このページだけ og:image が消える。サイト共通画像（lib/site.ts の
+  // OGP_IMAGE）をそのまま指す。
+  openGraph: {
+    title: `About - ${SITE_NAME}`,
+    description: PAGE_DESCRIPTION,
+    url: "/about/",
+    siteName: SITE_NAME,
+    images: [OGP_IMAGE],
+    locale: "ja_JP",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `About - ${SITE_NAME}`,
+    description: PAGE_DESCRIPTION,
+    images: [OGP_IMAGE.url],
+  },
   alternates: { canonical: "/about/" },
 };
 
@@ -288,6 +319,7 @@ export default function About() {
               は掛けない（画面幅で増減させない）。リード文は別の箱なので
               動かない。 */}
           <CurtainRevealLines
+            as="h1"
             lines={HERO_LINES}
             style={{ marginLeft: -2 }}
             className="text-[length:calc(50px*var(--scale))] leading-[calc(54px*var(--scale))] font-normal tracking-[calc(-1px*var(--scale))] [font-kerning:normal] text-black"

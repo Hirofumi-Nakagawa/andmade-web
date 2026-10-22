@@ -22,6 +22,12 @@ export function ContactHero() {
     // 直接書いている。--scale ではなく素の 1px（見た目の微調整なので
     // 画面幅で増減させない）。Tailwind の任意値クラスではなくインラインなのは、
     // 新規ユーティリティが dev の生成CSSに乗り遅れることがあるため。
+    // ここは <h1> にしない。ScrambleText に active を直に渡しているため、
+    // サーバー側の描画では文字が伏せられた状態（nbsp の羅列）になり、初期
+    // HTML に "Get in touch." が1文字も入らない。見出しにすると「中身が空の
+    // h1」になってしまい、見出しが無いより悪い。SSR にも文字を出すには
+    // ProjectTitleScramble（マウント後に active を立てる）と同じ形にする
+    // 必要があるが、それだと1フレームだけ完成形が見えるので演出が変わる。
     <p
       style={{ marginLeft: "calc(198px * var(--grid-scale) - 1px)" }}
       className="text-[length:calc(60px*var(--scale))] leading-[1.75] font-normal text-[#fff] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]"

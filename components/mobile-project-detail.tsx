@@ -583,9 +583,10 @@ export function MobileProjectDetail({
          screen. */}
       <div className="mt-[140px] flex flex-col items-start" style={{ paddingLeft: HEADER_ML, paddingRight: SIDE_ML }}>
         <div className="flex w-full flex-col items-start gap-[15px]">
-          <p className={`text-[17px] font-medium leading-[1.5] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
+          {/* <h1> — PC 版（app/projects/[slug]/page.tsx）と同じ理由。 */}
+          <h1 className={`text-[17px] font-medium leading-[1.5] whitespace-nowrap ${headerText} [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]`}>
             <ScrambleText text={project.title} active={titleActive} />
-          </p>
+          </h1>
           {/* All three lines in one <p> on a single `leading-[1.25]`, with no
              gap between them — per direct follow-up ("SP時の詳細ページのタイ
              トル下カテゴリー、ロール、日付の行間をトップのカテゴリー・ロー

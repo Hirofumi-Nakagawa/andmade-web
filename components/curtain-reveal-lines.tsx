@@ -18,6 +18,14 @@ type CurtainRevealLinesProps = {
   lines: string[];
   /** Applied to the outer wrapping div (font size/color/leading/position/etc). */
   className?: string;
+  /** 外側の箱のタグ。既定は <div>。
+   *
+   *  ページの主題そのものを出している呼び出し（About FV の3行コピー）だけ
+   *  "h1" を渡して見出しにする。見出し要素をサイト全体で1つも使っておらず、
+   *  検索・AI検索から見てページが平坦なテキストに見えていたため。
+   *  スタイルは className 側が持っているので、タグを変えても見た目は
+   *  変わらない。中の1行ずつの <p> とマスクの仕組みは触らない。 */
+  as?: "div" | "h1" | "h2";
   style?: CSSProperties;
   /** Extra classes per line, index-aligned with `lines` (e.g. text-box-trim
    *  on the first/last line only) — combined with the "whitespace-nowrap"
@@ -51,7 +59,7 @@ type CurtainRevealLinesProps = {
  * invisible before the transform animates), no separate "hide pre-active"
  * class needed.
  */
-export function CurtainRevealLines({ lines, className, style, lineClassNames, active: activeProp }: CurtainRevealLinesProps) {
+export function CurtainRevealLines({ lines, className, style, lineClassNames, active: activeProp, as: Tag = "div" }: CurtainRevealLinesProps) {
   const [mountActive, setMountActive] = useState(false);
 
   useEffect(() => {
@@ -63,7 +71,7 @@ export function CurtainRevealLines({ lines, className, style, lineClassNames, ac
   const active = activeProp ?? mountActive;
 
   return (
-    <div className={className} style={style}>
+    <Tag className={className} style={style}>
       {lines.map((line, index) => {
         const extra = lineClassNames?.[index];
         return (
@@ -83,6 +91,6 @@ export function CurtainRevealLines({ lines, className, style, lineClassNames, ac
           </div>
         );
       })}
-    </div>
+    </Tag>
   );
 }

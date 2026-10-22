@@ -275,6 +275,7 @@ export function MobileAbout() {
                 行間 1.12 と字間 -0.02em は PC 版（50px / 56px / -1px）と
                 同じ比率。PC 側を触るときは合わせて見直すこと。 */}
             <CurtainRevealLines
+              as="h1"
               lines={HERO_LINES}
               // 1行目だけ trim-start — 左ナビ（MobileAboutSideNav）の頭に
               // ある飾り線と上面を揃えるため（直接の指示）。

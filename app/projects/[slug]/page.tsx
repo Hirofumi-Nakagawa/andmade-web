@@ -1264,13 +1264,16 @@ export default async function ProjectDetailPage({ params }: ProjectsPageProps) {
                mobile-project-list.tsx's own titles already use, wrapped in its
                own tiny client component (project-title-scramble.tsx) since
                this page itself is an async Server Component. */}
-            <p
+            {/* <h1> — このページの主題は実績名そのもの。見た目は変えず
+               タグだけ意味のあるものにする（スタイルは Tailwind 側が
+               持っているので表示は一切変わらない）。 */}
+            <h1
               className={`shrink-0 text-[length:calc(30px*var(--scale))] leading-[1.5] font-medium whitespace-nowrap [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
                 headerDark ? "text-black" : "text-white"
               }`}
             >
               <ProjectTitleScramble text={project.title} />
-            </p>
+            </h1>
           {/* category/role/"View Website" now share one row (per direct
              follow-up: "この文字列の右端に「View Website」を入れる") instead
              of "View Website" sitting as its own separately-positioned

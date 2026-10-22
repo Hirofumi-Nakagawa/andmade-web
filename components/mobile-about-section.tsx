@@ -85,7 +85,10 @@ export function MobileAboutSection({ id, label, index, children }: MobileAboutSe
         }`}
       >
         <div className="flex w-full items-start justify-between whitespace-nowrap border-t border-black/15 pt-[15px] font-(family-name:--font-courier) text-[12px] leading-[1.2] tracking-[-0.6px] text-black">
-          <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">({label})</p>
+          {/* <h2> — Vision / Approach / Services / Awards / Media / Outline の
+            6セクション見出し。ここを見出しにしておくと、会社概要を
+            セクション単位で拾えるようになる。見た目は変わらない。 */}
+        <h2 className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">({label})</h2>
           <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">{index}</p>
         </div>
         {children}

@@ -71,7 +71,10 @@ export function AboutSection({ id, label, index, children }: AboutSectionProps) 
       }`}
     >
       <div className="flex w-[calc(var(--content-width)*var(--grid-scale))] items-start justify-between whitespace-nowrap border-t border-black/15 pt-[calc(15px*var(--scale))] font-(family-name:--font-courier) text-[length:calc(12px*var(--scale))] leading-[1.2] tracking-[calc(-0.6px*var(--scale))] text-black">
-        <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">({label})</p>
+        {/* <h2> — Vision / Approach / Services / Awards / Media / Outline の
+            6セクション見出し。ここを見出しにしておくと、会社概要を
+            セクション単位で拾えるようになる。見た目は変わらない。 */}
+        <h2 className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">({label})</h2>
         <p className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">{index}</p>
       </div>
       {children}
