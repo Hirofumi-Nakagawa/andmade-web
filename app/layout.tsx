@@ -15,12 +15,20 @@ import { StatusBarMask } from "@/components/status-bar-mask";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { TabFaviconSwap } from "@/components/tab-favicon-swap";
 import {
+  AWARDS_COL_1,
+  AWARDS_COL_2,
+  SERVICES_COL_1,
+  SERVICES_COL_2,
+} from "@/lib/about-content";
+import {
   INSTAGRAM_URL,
   OGP_IMAGE,
+  ORGANIZATION_ID,
   SITE_DESCRIPTION,
   SITE_NAME,
   SITE_URL,
   TWITTER_HANDLE,
+  WEBSITE_ID,
   X_URL,
 } from "@/lib/site";
 import "./globals.css";
@@ -74,14 +82,69 @@ const courierPrime = Courier_Prime({
 // 2023.
 const GA_MEASUREMENT_ID = "G-2SHFHDT5ZJ";
 
-const organizationJsonLd = {
+/** Organization と WebSite を1つの @graph にまとめて出す。
+ *
+ *  以前は Organization だけを出していた。WebSite を足したのは、
+ *  「このドメインは1つのサイトであり、その発行者はこの会社」という関係が
+ *  どこにも書かれておらず、エンジン側がページ単位の寄せ集めとして扱う
+ *  余地があったため。@id で互いを指すので、両者が同じ実体だと明示できる。
+ *
+ *  Organization に足した項目（founder / foundingDate / address / award /
+ *  knowsAbout）は、すべて **About ページに既に表示されている情報**
+ *  （lib/about-content.ts の OUTLINE_COL_1 / AWARDS_* / SERVICES_*）。
+ *  新しい事実を書いてはいない。「東京のデザインスタジオを探している」
+ *  という問いに対して候補として挙がるかどうかは、受賞歴と業務領域が
+ *  機械可読になっているかで差が出るので、本文に文章を足すのではなく
+ *  既にある情報を構造化データ側にも載せる形にしている。
+ *
+ *  award / knowsAbout は lib/about-content.ts から直接展開する（About
+ *  ページの表示と同じ配列なので、増減が勝手にずれない）。founder /
+ *  foundingDate / address だけは配列から1件を取り出す形になり、ラベル
+ *  一致で引くと About 側の表記変更で静かに undefined になるため、値を
+ *  直接書いている。**OUTLINE_COL_1 / OUTLINE_COL_2 を変更したら
+ *  ここも合わせること。**
+ *
+ *  address に番地が無いのは、About の Office が "Tokyo (Coming Soon)" で
+ *  住所を公開していないため。市区町村と国だけでも「東京の会社」という
+ *  判定には効く。実住所を出す段になったら streetAddress を足す。
+ *
+ *  logo は 512x512 の PNG（public/web-app-manifest-512x512.png）。
+ *  schema.org / Google の案内がラスター画像を求めるので、SVG の
+ *  ワードマークではなくこちら。 */
+const siteJsonLd = {
   "@context": "https://schema.org",
-  "@type": "Organization",
-  name: SITE_NAME,
-  url: SITE_URL,
-  logo: `${SITE_URL}/web-app-manifest-512x512.png`,
-  description: SITE_DESCRIPTION,
-  sameAs: [INSTAGRAM_URL, X_URL],
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": ORGANIZATION_ID,
+      name: SITE_NAME,
+      alternateName: "ANDMADE",
+      url: SITE_URL,
+      logo: `${SITE_URL}/web-app-manifest-512x512.png`,
+      image: `${SITE_URL}${OGP_IMAGE.url}`,
+      description: SITE_DESCRIPTION,
+      email: "info@andmade.jp",
+      foundingDate: "2017-09-01",
+      founder: { "@type": "Person", name: "Hirofumi Nakagawa" },
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: "Tokyo",
+        addressCountry: "JP",
+      },
+      award: [...AWARDS_COL_1, ...AWARDS_COL_2],
+      knowsAbout: [...SERVICES_COL_1, ...SERVICES_COL_2],
+      sameAs: [INSTAGRAM_URL, X_URL],
+    },
+    {
+      "@type": "WebSite",
+      "@id": WEBSITE_ID,
+      url: `${SITE_URL}/`,
+      name: SITE_NAME,
+      description: SITE_DESCRIPTION,
+      inLanguage: "ja",
+      publisher: { "@id": ORGANIZATION_ID },
+    },
+  ],
 };
 
 export const metadata: Metadata = {
@@ -242,10 +305,10 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/gen-interface-jp@0.8.0/cdn/300.css"
         />
-        {/* Organization JSON-LD — see organizationJsonLd's own doc comment above. */}
+        {/* Organization + WebSite JSON-LD — see siteJsonLd's own doc comment above. */}
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
         />
       </head>
       {/* suppressHydrationWarning — browser extensions (ColorZilla et al.)

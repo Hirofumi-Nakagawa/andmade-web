@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CopyEmail } from "@/components/copy-email";
-import { INSTAGRAM_URL, OGP_IMAGE, SITE_NAME, SITE_URL, X_URL } from "@/lib/site";
+import { INSTAGRAM_URL, OGP_IMAGE, ORGANIZATION_ID, SITE_NAME, SITE_URL, X_URL } from "@/lib/site";
 import Image from "next/image";
 import Link from "next/link";
 import { ContactHero } from "@/components/contact-hero";
@@ -118,6 +118,10 @@ const contactJsonLd = {
   name: `Contact - ${SITE_NAME}`,
   mainEntity: {
     "@type": "Organization",
+    // @id — app/layout.tsx が出している Organization 本体と同じ識別子
+    // （lib/site.ts の ORGANIZATION_ID 参照）。問い合わせ先がこの会社の
+    // ものだと結びつける。
+    "@id": ORGANIZATION_ID,
     name: SITE_NAME,
     url: SITE_URL,
     email: "info@andmade.jp",

@@ -1215,6 +1215,9 @@ export function MobileHome({ projects, news, colorsOn, onColorsToggle }: MobileH
               <CurtainLines
                 text={STATEMENT_COPY}
                 active={headerRevealed}
+                // as="h1" — PC（home-statement.tsx）と同じ理由。SP でも
+                // 同じステートメントがページの主題なので揃える。
+                as="h1"
                 delayMs={STATEMENT_DELAY_COPY_MS}
                 onLastLineStart={handleCopyLastLineStart}
                 // tracking — PC（home-statement.tsx）と同じ -0.01em 相当。

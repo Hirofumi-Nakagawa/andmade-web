@@ -17,6 +17,17 @@ export const SITE_URL = "https://andmade.jp";
 
 export const SITE_NAME = "ANDMADE Inc.";
 
+/** 構造化データ（JSON-LD）の中で会社・サイトを指す識別子。
+ *
+ *  JSON-LD は複数ページ・複数ブロックに散らばるが、同じ `@id` を持つ
+ *  ノードはエンジン側で1つの実体として束ねられる。About / Contact の
+ *  ページ別 JSON-LD が持つ Organization も、app/layout.tsx が出す本体と
+ *  同じ ID を指すことで「別の会社が3つある」と読まれないようにしている。
+ *  値そのものは URL の形をしているだけで、そこに何かを置く必要はない
+ *  （フラグメント付き URI は JSON-LD の識別子の慣例）。 */
+export const ORGANIZATION_ID = `${SITE_URL}/#organization`;
+export const WEBSITE_ID = `${SITE_URL}/#website`;
+
 export const SITE_DESCRIPTION =
   "ANDMADE Inc.は、クライアントと共にモノづくりをする共創のスタンスで、ウェブ、CI・VI、ビジュアルに関わるグラフィックまで、包括的にアートディレクションとデザインを手掛けるデザインスタジオです。";
 

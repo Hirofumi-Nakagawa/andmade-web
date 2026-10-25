@@ -75,9 +75,15 @@ export function CurtainRevealLines({ lines, className, style, lineClassNames, ac
       {lines.map((line, index) => {
         const extra = lineClassNames?.[index];
         return (
-          <div key={line} className="overflow-hidden">
-            <p
-              className={extra ? `whitespace-nowrap ${extra}` : "whitespace-nowrap"}
+          // div/p ではなく span + block — `as` に "h1"/"h2" を渡したとき、
+          // 見出しの中に div や p が入ると HTML としては不正になる（見出しの
+          // 中身はインライン要素だけ）。display:block を付けた span なら
+          // 組版は div/p とまったく同じまま、どのタグの中でも正しい。
+          // `block` が必須なのは、overflow-hidden のマスクと内側の transform が
+          // display:inline では効かないため。
+          <span key={line} className="block overflow-hidden">
+            <span
+              className={extra ? `block whitespace-nowrap ${extra}` : "block whitespace-nowrap"}
               style={{
                 transform: active ? "translateY(0)" : "translateY(100%)",
                 transitionProperty: "transform",
@@ -87,8 +93,8 @@ export function CurtainRevealLines({ lines, className, style, lineClassNames, ac
               }}
             >
               {line}
-            </p>
-          </div>
+            </span>
+          </span>
         );
       })}
     </Tag>

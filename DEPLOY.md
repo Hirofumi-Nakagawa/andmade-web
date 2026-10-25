@@ -269,6 +269,11 @@ npm run build
   - それ以外: `{"isPlaying":false}`
   - **500 エラーや HTML が返る場合**は PHP 側の問題。まず設定ファイルのパスを疑う
 - `https://<ドメイン>/存在しないURL` — 404ページが出る
+- `https://<ドメイン>/projects/` — **404**（Apache 素の 403 ページではない）
+  - `.htaccess` の「index の無いディレクトリを 403 ではなく 404 にする」ブロック。
+    `/images/` `/sounds/` も同様
+  - `/about/` など実ページが 404 になってしまった場合はこのブロックの条件が
+    誤爆しているので、ブロックごと削除して再デプロイ
 - `https://<ドメイン>/sitemap.xml` と `/llms.txt`
 - `https://andmade.co.jp/about/` — `https://andmade.jp/about/` へ **301** でリダイレクトする
   （`.htaccess` の「andmade.co.jp → andmade.jp への統合」ブロック。両ドメインは

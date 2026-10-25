@@ -323,6 +323,18 @@ export type Project = {
   category: string;
   role: string;
   date: string;
+  /** microCMS がこのコンテンツを最後に更新した時刻（ISO 8601）。表示には
+   *  使わない — app/sitemap.ts の `lastModified` 専用。
+   *
+   *  表示用の `date` とは別物。あちらは「いつ制作した仕事か」を手で入力した
+   *  文字列（"May.2026"）で、こちらは「CMS の中身がいつ書き換わったか」。
+   *  sitemap が欲しいのは後者（クローラーに再取得の必要性を伝えるため）。
+   *
+   *  microCMS の `revisedAt` は「公開中の内容が最後に変わった時刻」で、
+   *  下書き保存では動かない。`updatedAt` は下書きでも動くので、公開
+   *  サイトの更新を表すのは `revisedAt` のほう。古いコンテンツには入って
+   *  いないことがあるので optional。 */
+  revisedAt?: string;
   /** Orientation/ratio of this project's real hover-preview image (once
    *  available) — each project has one specific prepared image, not a
    *  random one. Placeholder-cycled below until real images exist. */
@@ -1107,6 +1119,10 @@ export async function getProjects(): Promise<Project[]> {
       category: content.category,
       role: content.role,
       date: content.date,
+      // revisedAt は microCMS のシステムフィールド（SDK の getList が
+      // 自動で載せる）。sitemap の lastModified 専用 — Project.revisedAt の
+      // doc comment 参照。
+      revisedAt: content.revisedAt,
       previewRatio: resolveSelect(
         // Allowlist is every ratio (PREVIEW_RATIOS); the *fallback* is drawn
         // from the narrower cycle — see those two constants' own comments.

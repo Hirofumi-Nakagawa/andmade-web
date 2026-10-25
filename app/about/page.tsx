@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { OGP_IMAGE, SITE_NAME, SITE_URL } from "@/lib/site";
+import { OGP_IMAGE, ORGANIZATION_ID, SITE_NAME, SITE_URL } from "@/lib/site";
 import { AboutBlendBackground } from "@/components/about-blend-background";
 import { AboutSection } from "@/components/about-section";
 import { AboutSideNav } from "@/components/about-side-nav";
@@ -202,6 +202,11 @@ const aboutJsonLd = {
   name: `About - ${SITE_NAME}`,
   mainEntity: {
     "@type": "Organization",
+    // @id — app/layout.tsx が出している Organization 本体と同じ識別子。
+    // これが無いと「名前と URL が同じだけの別の Organization」として
+    // 読まれうるので、受賞歴や設立年を持つ本体とこのページの記述が
+    // 結びつかない（lib/site.ts の ORGANIZATION_ID 参照）。
+    "@id": ORGANIZATION_ID,
     name: SITE_NAME,
     url: SITE_URL,
     description: [...VISION_EN, ...APPROACH_EN].join(" "),

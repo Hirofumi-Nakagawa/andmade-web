@@ -105,6 +105,12 @@ export function HomeStatement({ colorsOn, onColorsToggle }: HomeStatementProps) 
           text={copyLines.join(" ")}
           lines={copyLines}
           active={revealed}
+          // as="h1" — このステートメントがトップページの主題そのもの
+          // （sitemap/OGP の description とも同じ内容）。見出し要素が
+          // サイト内に1つも無く、検索・AI検索から見てページが平坦な
+          // テキストに見えていたため。組版は className 側が持っているので
+          // 見た目は変わらない（curtain-lines.tsx の `as` を参照）。
+          as="h1"
           delayMs={DELAY_COPY_MS}
           // tracking — -0.01em 相当。28px に対して -0.28px。
           className="text-[length:calc(28px*var(--scale))] leading-[1.05] font-medium tracking-[calc(-0.28px*var(--scale))] text-black"
