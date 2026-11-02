@@ -87,12 +87,12 @@ export const VISION_EN = [
 
 export const APPROACH_JA = [
   "課題やビジョンの本質を見極め、複雑に絡み合った要素をシンプルな視点へと再定義し、表面的なアウトプットだけでなく、その背景にある思想や目的まで丁寧に整理しながら、ブランドにとって本当に必要な方向性を導き出していきます。",
-  "そして、既存の枠組みにとらわれない柔軟な発想を取り入れながら、戦略・体験・ビジュアルを横断したアプローチで、長く価値が続くデザインをつくります。クライアントと対話を重ねながら共に思考し、細部まで一貫した視点で形にしていきます。",
+  "そして、既存の枠組みにとらわれない柔軟な発想を取り入れながら、戦略・体験・ビジュアルを横断したアプローチで、長く価値が続くデザインをつくります。一つひとつの判断に意味を持たせ、細部まで一貫した視点で形にしていきます。",
 ];
 
 export const APPROACH_EN = [
-  "We begin by identifying the essence of each challenge and vision, distilling complex ideas into a clear perspective. Looking beyond surface-level outputs, we carefully clarify the thinking, intentions, and purpose behind a brand to define the direction that truly matters.",
-  "By embracing ideas unconstrained by convention, we take a holistic approach that spans strategy, experience, and visual design to create work with lasting value. Through close collaboration and continuous dialogue with our clients, we shape every detail with clarity, consistency, and purpose.",
+  "We identify the essence of each challenge and vision, distilling complex, interconnected elements into a clear perspective. By looking beyond surface-level outputs to the thinking and purpose behind them, we define the direction that truly serves each brand.",
+  "With an open-minded approach that challenges existing conventions, we connect strategy, experience, and visual expression to create design with lasting value. Every decision is intentional, shaped by a consistent point of view and carried through to the smallest details.",
 ];
 
 // bodyJa/bodyEn are arrays of paragraphs (not a single string) — per Figma
