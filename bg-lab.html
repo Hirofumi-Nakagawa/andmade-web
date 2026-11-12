@@ -11,23 +11,39 @@
   さりげない動き」を、サイトに組み込む前に単体で検証するためのページ。
   このファイルをブラウザで直接開くだけで動く（サーバー不要・依存ライブラリなし）。
 
-  仕組み:
-  - WebGL のフラグメントシェーダー 1 枚だけで全画面を描画。
+  モード（画面右上のボタンで切替）:
+  - A ワープ色面 … 現行 About / Contact 背景そのもの。
     fbm(フラクタルノイズ)のドメインワープで色面を作り、ストリーク(方向指定可)で
     モーションブラーしたような流れを出し、最後にフィルムグレインを乗せる。
-    (「花オブジェクト」機能は削除 — 参考画像の方向性が「色面グラデの境界を
-    調整して作る」に固まったため。)
-  - グラデの境界は「境界の幅」でくっきり↔なだらかを調整でき、「にじみ」系の
+    グラデの境界は「境界の幅」でくっきり↔なだらかを調整でき、「にじみ」系の
     3スライダーでエッジを粒状に溶かせる — イースターエッグ背景ロゴの
     ディゾルブ(グレインでエッジが崩れ、ストリーク軸に沿って伸びる)と同じ手法。
+  - B 溶け合い … 5色それぞれに独立した「場」を持たせ、**重みを正規化して
+    混ぜる**(softmax)。A が「上の色で順に塗り重ねる」のに対して、B は全色が
+    常に同時に効いていて、混ざり具合だけが場所ごとに変わる。「溶け合い」を
+    絞ると1色が勝って境界がくっきりし、広げると全色が平均に寄って濁る。
+    スキージで引いたような縦の垂れ(ドリップ)を足せる。
+  - C 水彩 … 絵の具を紙に落として滲ませる方の作り。各ウォッシュのマスクを
+    **乗算**で紙の上に重ねるので、重なった所が自然に濃く・別の色相になる
+    (A/B の線形補間では出ない)。水彩らしさの要は輪郭の縁が濃くなること
+    (顔料が乾き際に溜まる現象)で、「縁の濃さ」がそれ。紙の粒状感は
+    吸い込みムラとして濃度側に効く。パレットの1色目が紙の色になる。
+
+  共通の仕組み:
+  - WebGL のフラグメントシェーダー 1 枚だけで全画面を描画。モードごとに
+    main() だけ差し替えた別プログラムを3本作り、ノイズ関数とユニフォーム宣言は
+    共有している(COMMON)。
   - 画像アセットは一切使わない(現行 Contact 背景の「画像を重ねて動かす」方式とは
     根本的に別物)。動きはノイズ空間をゆっくり滑らせているだけなので単調にならない。
   - 描画コスト: フルスクリーン 1 パス + ノイズ計算のみ。
     さらに「解像度スケール」で内部解像度を落とせる(軽い + タダでソフトになる)。
+  - モードごとに調整値は別々に保持される。切り替えて戻しても、そのモードで
+    触っていた値はそのまま残る(見比べ用)。
 
   サイトへの組み込み方(検証で方向性が固まったら):
-  - 右下の「設定をコピー」で現在の全パラメータが JSON でクリップボードに入る。
-  - この <script> 内の FRAG(フラグメントシェーダー)と、その JSON の値を
+  - 右下の「設定をコピー」で現在の全パラメータが JSON でクリップボードに入る
+    (どのモードかは "mode" に入る)。
+  - この <script> 内の COMMON + FRAG_<モード> と、その JSON の値を
     そのまま React コンポーネント(<canvas> + useEffect)に移植すればよい。
 -->
 <style>
@@ -76,6 +92,14 @@
   #hint { position: fixed; left: 16px; bottom: 12px; color: rgba(255,255,255,.4);
           font: 10px/1 -apple-system, sans-serif; letter-spacing: .06em; z-index: 10; }
   .hidden { display: none !important; }
+
+  /* ---- モード切替 ---- */
+  #modes { display: flex; gap: 6px; margin-bottom: 4px; }
+  #modes button {
+    flex: 1; padding: 5px 0; font-size: 10px; letter-spacing: .06em;
+  }
+  #modes button.on { background: #eee; color: #111; border-color: #eee; font-weight: 600; }
+  #modeDesc { color: #888; margin: 6px 0 2px; min-height: 2.4em; }
 </style>
 </head>
 <body>
@@ -84,35 +108,75 @@
 <div id="panel">
   <h1>BACKGROUND LAB</h1>
 
+  <div id="modes">
+    <button data-mode="A">A ワープ色面</button>
+    <button data-mode="B">B 溶け合い</button>
+    <button data-mode="C">C 水彩</button>
+  </div>
+  <div id="modeDesc"></div>
+
   <label>パレット
     <select id="palette"></select>
   </label>
   <div id="swatches">
     <input type="color" data-c="0" /><input type="color" data-c="1" /><input type="color" data-c="2" /><input type="color" data-c="3" /><input type="color" data-c="4" />
   </div>
+  <div class="note mode-C">C では1色目（左端）が<strong>紙の色</strong>、残り4色が絵の具になる</div>
 
   <label>速度 <span class="row"><input type="range" id="speed"    min="0"    max="0.30" step="0.005" /><output></output></span></label>
   <label>スケール（模様の大きさ）<span class="row"><input type="range" id="scale" min="0.5" max="6" step="0.1" /><output></output></span></label>
   <label>ワープ（ゆらぎの複雑さ）<span class="row"><input type="range" id="warp" min="0" max="4" step="0.1" /><output></output></span></label>
   <label>形の複雑さ（ディテール層数）<span class="row"><input type="range" id="octaves" min="1" max="4" step="1" /><output></output></span></label>
   <label>コントラスト <span class="row"><input type="range" id="contrast" min="0.5" max="2" step="0.05" /><output></output></span></label>
+  <label class="mode-B mode-C">彩度 <span class="row"><input type="range" id="saturation" min="0" max="2" step="0.05" /><output></output></span></label>
   <label>カーソル反応（触れた所が歪む）<span class="row"><input type="range" id="cursorStrength" min="0" max="2" step="0.05" /><output></output></span></label>
+
+  <!-- ===== B 専用 ===== -->
+  <div class="mode-B">
+    <h2>溶け合い（B）</h2>
+    <label>溶け合いの強さ（小=1色が勝つ / 大=平均に寄る）<span class="row"><input type="range" id="bBleed" min="0.02" max="0.6" step="0.01" /><output></output></span></label>
+    <label>垂れ（スキージで引いた感じ）<span class="row"><input type="range" id="bDrip" min="0" max="2" step="0.05" /><output></output></span></label>
+    <label>色の偏り（1色に寄る↔均等）<span class="row"><input type="range" id="bSpread" min="0" max="1" step="0.05" /><output></output></span></label>
+    <div class="note">5色ぜんぶが常に効いていて、場所ごとの配合だけが変わる方式。溶け合いを絞ると境界がくっきりし、広げると混ざって濁る。ブラー（ストリーク）の向きが垂れの向きになる</div>
+  </div>
+
+  <!-- ===== C 専用 ===== -->
+  <div class="mode-C">
+    <h2>水彩（C）</h2>
+    <label>塗る面積（紙の残り方）<span class="row"><input type="range" id="cCoverage" min="0.05" max="1" step="0.01" /><output></output></span></label>
+    <label>滲みの幅（にじみ出しの広さ）<span class="row"><input type="range" id="cBloom" min="0.02" max="0.5" step="0.01" /><output></output></span></label>
+    <label>縁の濃さ（乾き際の顔料溜まり）<span class="row"><input type="range" id="cEdge" min="0" max="3" step="0.05" /><output></output></span></label>
+    <label>絵の具の濃さ <span class="row"><input type="range" id="cOpacity" min="0" max="1" step="0.02" /><output></output></span></label>
+    <label>紙の粒状感（吸い込みムラ）<span class="row"><input type="range" id="cGranule" min="0" max="1" step="0.02" /><output></output></span></label>
+    <label>重ねる枚数 <span class="row"><input type="range" id="cWashes" min="1" max="4" step="1" /><output></output></span></label>
+    <label>呼吸（じわっと広がる揺らぎ）<span class="row"><input type="range" id="cBreath" min="0" max="0.15" step="0.005" /><output></output></span></label>
+    <div class="note">各ウォッシュを<strong>乗算</strong>で紙に重ねるので、重なった所が自然に濃く別の色相になる。縁の濃さを上げるほど「水彩らしさ」が出るが、上げすぎると輪郭線に見える</div>
+  </div>
 
   <h2>ブラー（ストリーク）</h2>
   <label>強さ <span class="row"><input type="range" id="streak" min="0" max="6" step="0.1" /><output></output></span></label>
   <label>向き（度 / 90=縦）<span class="row"><input type="range" id="blurAngle" min="0" max="180" step="1" /><output></output></span></label>
 
-  <h2>グラデの境界</h2>
-  <label>境界の幅（小=くっきり）<span class="row"><input type="range" id="edgeSoft" min="0.05" max="2" step="0.05" /><output></output></span></label>
+  <!-- ===== A 専用 ===== -->
+  <div class="mode-A">
+    <h2>グラデの境界</h2>
+    <label>境界の幅（小=くっきり）<span class="row"><input type="range" id="edgeSoft" min="0.05" max="2" step="0.05" /><output></output></span></label>
+  </div>
+
+  <h2>にじみ（エッジのディゾルブ）</h2>
   <label>にじみ量（ディゾルブ）<span class="row"><input type="range" id="edgeNoise" min="0" max="0.6" step="0.01" /><output></output></span></label>
   <label>にじみの粒度（px）<span class="row"><input type="range" id="edgeNoiseScale" min="1" max="10" step="0.5" /><output></output></span></label>
   <label>にじみの伸び（ブラー向きに沿う）<span class="row"><input type="range" id="edgeStretch" min="0" max="12" step="0.5" /><output></output></span></label>
-  <div class="colorRow"><input type="color" id="lineColor" /><span>境界線の色</span></div>
-  <label>境界線の太さ（0で無し）<span class="row"><input type="range" id="lineWidth" min="0" max="0.2" step="0.005" /><output></output></span></label>
-  <label>境界線の透過 <span class="row"><input type="range" id="lineAlpha" min="0" max="1" step="0.05" /><output></output></span></label>
-  <label>境界線のカバー率（線が付く割合）<span class="row"><input type="range" id="lineCoverage" min="0" max="1" step="0.05" /><output></output></span></label>
-  <label>境界線のボケ（0=くっきり）<span class="row"><input type="range" id="lineBlur" min="0" max="1" step="0.05" /><output></output></span></label>
-  <div class="note">にじみ=エッグ背景ロゴと同じ「グレインでエッジが溶ける」手法。境界の幅を狭めてにじみを足すと参考画像の質感に寄る。境界線は色面の境目に沿って引かれ、にじみの影響も受ける</div>
+
+  <!-- ===== A 専用 ===== -->
+  <div class="mode-A">
+    <div class="colorRow"><input type="color" id="lineColor" /><span>境界線の色</span></div>
+    <label>境界線の太さ（0で無し）<span class="row"><input type="range" id="lineWidth" min="0" max="0.2" step="0.005" /><output></output></span></label>
+    <label>境界線の透過 <span class="row"><input type="range" id="lineAlpha" min="0" max="1" step="0.05" /><output></output></span></label>
+    <label>境界線のカバー率（線が付く割合）<span class="row"><input type="range" id="lineCoverage" min="0" max="1" step="0.05" /><output></output></span></label>
+    <label>境界線のボケ（0=くっきり）<span class="row"><input type="range" id="lineBlur" min="0" max="1" step="0.05" /><output></output></span></label>
+    <div class="note">にじみ=エッグ背景ロゴと同じ「グレインでエッジが溶ける」手法。境界の幅を狭めてにじみを足すと参考画像の質感に寄る。境界線は色面の境目に沿って引かれ、にじみの影響も受ける</div>
+  </div>
 
   <h2>画面上部の色</h2>
   <div class="colorRow"><input type="color" id="topColor" /><span>上部の色</span></div>
@@ -139,14 +203,18 @@
   </div>
   <div id="stats"><span id="fps">-- fps</span><span id="res">--</span></div>
 </div>
-<div id="hint">H: UI表示切替 / Space: 一時停止</div>
+<div id="hint">H: UI表示切替 / Space: 一時停止 / 1･2･3: モード切替</div>
 
 <script>
 "use strict";
 
-/* ================= フラグメントシェーダー =================
-   サイトに組み込むときはこの文字列をそのまま移植する。 */
-const FRAG = `
+/* ================= 共通シェーダー部 =================
+   ユニフォーム宣言とノイズ関数。3モードで同じものを使うのでここに出してある。
+   モードによっては使わないユニフォームもあるが、未使用のものは GLSL
+   コンパイラに落とされて getUniformLocation が null を返すだけ。null を
+   gl.uniform* に渡すのは仕様上の no-op なので、JS 側の送信コードは
+   モードで分岐せずそのまま全部送ってよい。 */
+const COMMON = `
 precision highp float;
 
 uniform vec2  u_res;        // 実描画解像度(px)
@@ -158,13 +226,14 @@ uniform float u_warp;       // ドメインワープ強度
 uniform float u_streak;     // ストリーク(伸ばし)強度
 uniform float u_angle;      // ストリークの向き(度, 90=縦)
 uniform float u_contrast;   // 色のコントラスト
+uniform float u_saturation; // 彩度(B/Cのみ。1で素のまま)
 uniform vec2  u_mouse;          // カーソル位置(uv, 左下原点, JS側でスムージング済み)
 uniform float u_cursorStrength; // カーソル周辺の局所歪みの強さ(0で無反応)
 uniform int   u_octaves;        // fbmのディテール層数(少ないほどシンプルな形)
 uniform float u_grain;      // グレイン量
 uniform float u_grainSize;  // グレイン1粒のpxサイズ
 uniform float u_grainFps;   // グレインの更新頻度(0で静止)
-uniform vec3  u_c0, u_c1, u_c2, u_c3, u_c4; // パレット5色
+uniform vec3  u_c0, u_c1, u_c2, u_c3, u_c4; // パレット5色(Cでは u_c0 = 紙の色)
 uniform vec3  u_topCol;     // 画面上部の色
 uniform float u_topRange;   // 上部グラデの範囲(0で無効)
 uniform float u_topMix;     // 上部グラデの強さ
@@ -179,6 +248,20 @@ uniform float u_lineWidth;      // 境界線の太さ(場の値単位, 0で無�
 uniform float u_lineAlpha;      // 境界線の不透明度(0..1)
 uniform float u_lineCoverage;   // 境界のうち線が付く割合(1で全周, 0.4で4割くらい)
 uniform float u_lineBlur;       // 線のボケ(0=輪郭くっきりの帯, 1=中心から端まで全ボケ)
+
+// B(溶け合い)専用
+uniform float u_bBleed;   // 重みの温度。小さいほど1色が勝ち、大きいほど平均に寄る
+uniform float u_bDrip;    // 縦の垂れ(スキージ)の強さ
+uniform float u_bSpread;  // 各色の場に与えるばらつき(0で全色ほぼ同条件)
+
+// C(水彩)専用
+uniform float u_cCoverage; // 塗る面積(しきい値)
+uniform float u_cBloom;    // ウォッシュ境界の滲み幅
+uniform float u_cEdge;     // 乾き際の縁の濃さ
+uniform float u_cOpacity;  // 絵の具の濃さ(乗算の効き)
+uniform float u_cGranule;  // 紙の粒状感(吸い込みムラ)
+uniform int   u_cWashes;   // 重ねるウォッシュの枚数
+uniform float u_cBreath;   // ウォッシュがじわっと伸縮する量
 
 // ---- value noise + fbm（定番の軽量実装）----
 float hash(vec2 p) {
@@ -214,6 +297,65 @@ mat2 rot(float a) {
   return mat2(c, -s, s, c);
 }
 
+// 彩度調整(B/C)。輝度(Rec.709)を軸に寄せる/離す。
+vec3 satAdjust(vec3 c, float s) {
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  return mix(vec3(l), c, s);
+}
+
+// 「にじみ(ディゾルブ)」の値。3モード共通。
+// エッグ背景ロゴのブラーと同じ考え方: ガウスぼかしではなく、粒(グレイン)
+// でエッジそのものを崩す。ストリーク軸に沿って引き伸ばした座標で
+// グレインをサンプルし、その値を smoothstep に入る「場」に足すことで、
+// 色面の境界だけが粒状に溶けて伸びる(色面の内部はほぼ変化しない —
+// smoothstep の遷移帯の中でしか値の揺れが効かないため)。
+// グレインの更新はフィルムグレインと同じ u_grainFps に同期。
+float edgeDissolve(mat2 R) {
+  if (u_edgeNoise <= 0.0) return 0.0;
+  float eFrame = u_grainFps > 0.0 ? floor(u_time * u_grainFps) : 0.0;
+  vec2 gp = R * gl_FragCoord.xy;
+  gp.y /= 1.0 + u_edgeStretch;
+  gp = floor(gp / max(u_edgeNoiseScale, 1.0));
+  float en = mix(hash(gp + fract(eFrame * 0.1031) * vec2(19.3, 7.7)),
+                 hash(gp * 0.37 + 13.7), 0.5);
+  return (en - 0.5) * u_edgeNoise;
+}
+
+// カーソルの局所歪み。3モード共通。
+// 全体を平行移動させるのではなく、カーソルが触れた場所の揺らぎだけを
+// 局所的に歪ませる — per direct follow-up ("カーソルが揺らぎに触れたら、
+// 揺らぎが少し歪むとか、そういう感じ")。カーソルからの距離のガウス減衰内
+// だけ、サンプル位置を放射方向に押し出す(レンズで押したような膨らみ)。
+// dvec は中心でゼロになるので正規化不要 = NaN も出ない。
+// 位置はJS側でスムージング済みなので、歪みもゆったり追従する。
+vec2 cursorPush(vec2 uv, float aspect) {
+  vec2 mp = u_mouse - 0.5;
+  mp.x *= aspect;
+  vec2 dvec = (uv - 0.5) * vec2(aspect, 1.0) - mp;
+  float infl = exp(-dot(dvec, dvec) / (2.0 * 0.15 * 0.15));
+  return dvec * infl * u_cursorStrength;
+}
+
+// 画面上部の色 + フィルムグレイン。3モード共通の仕上げ。
+vec3 finish(vec3 col, vec2 uv) {
+  // uv.y=1(上端)に向かって u_topCol へ溶かす。範囲0で完全無効。
+  if (u_topRange > 0.0) {
+    float topM = smoothstep(1.0 - u_topRange, 1.0, uv.y);
+    col = mix(col, u_topCol, topM * u_topMix);
+  }
+  // 表示ピクセル単位のホワイトノイズを u_grainFps で更新
+  // (毎フレーム更新よりチラつきが落ち着き、フィルムっぽくなる。0で静止)
+  float frame = u_grainFps > 0.0 ? floor(u_time * u_grainFps) : 0.0;
+  vec2 gp = floor(gl_FragCoord.xy / u_grainSize);
+  float g = hash(gp + fract(frame * 0.1031) * vec2(37.7, 17.3)) - 0.5;
+  return col + g * u_grain;
+}
+`;
+
+/* ================= A: ワープ色面（現行の About / Contact 背景） =================
+   ここは既存実装と同一。サイトに入っているものと1対1で対応させておきたいので、
+   共通化のために関数へ切り出した部分(にじみ/カーソル/仕上げ)以外は触らない。 */
+const FRAG_A = COMMON + `
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
   float aspect = u_res.x / u_res.y;
@@ -225,17 +367,7 @@ void main() {
   // ---- ノイズ色面 ----
   vec2 p = uv;
   p.x *= aspect;
-  // カーソル反応: 全体を平行移動させるのではなく、カーソルが触れた場所の
-  // 揺らぎだけを局所的に歪ませる — per direct follow-up ("カーソルが揺らぎに
-  // 触れたら、揺らぎが少し歪むとか、そういう感じ")。カーソルからの距離の
-  // ガウス減衰内だけ、サンプル位置を放射方向に押し出す(レンズで押した
-  // ような膨らみ)。dvec は中心でゼロになるので正規化不要 = NaN も出ない。
-  // 位置はJS側でスムージング済みなので、歪みもゆったり追従する。
-  vec2 mp = u_mouse - 0.5;
-  mp.x *= aspect;
-  vec2 dvec = (uv - 0.5) * vec2(aspect, 1.0) - mp;
-  float infl = exp(-dot(dvec, dvec) / (2.0 * 0.15 * 0.15));
-  p += dvec * infl * u_cursorStrength;
+  p += cursorPush(uv, aspect);
   p = R * p;                              // ストリーク軸を回転
   p.y /= 1.0 + u_streak;                  // 軸に沿って引き伸ばす→流れたブラー感
   p = p * u_scale + u_seed;               // スケール + シードオフセット
@@ -251,23 +383,7 @@ void main() {
                 fbm(p + u_warp * q + vec2(8.3, 2.8) - t * 0.12));
   float f = fbm(p + u_warp * r);
 
-  // ---- 境界のにじみ(ディゾルブ) ----
-  // エッグ背景ロゴのブラーと同じ考え方: ガウスぼかしではなく、粒(グレイン)
-  // でエッジそのものを崩す。ストリーク軸に沿って引き伸ばした座標で
-  // グレインをサンプルし、その値を smoothstep に入る「場」に足すことで、
-  // 色面の境界だけが粒状に溶けて伸びる(色面の内部はほぼ変化しない —
-  // smoothstep の遷移帯の中でしか値の揺れが効かないため)。
-  // グレインの更新はフィルムグレインと同じ u_grainFps に同期。
-  float dn = 0.0;
-  if (u_edgeNoise > 0.0) {
-    float eFrame = u_grainFps > 0.0 ? floor(u_time * u_grainFps) : 0.0;
-    vec2 gp = R * gl_FragCoord.xy;
-    gp.y /= 1.0 + u_edgeStretch;
-    gp = floor(gp / max(u_edgeNoiseScale, 1.0));
-    float en = mix(hash(gp + fract(eFrame * 0.1031) * vec2(19.3, 7.7)),
-                   hash(gp * 0.37 + 13.7), 0.5);
-    dn = (en - 0.5) * u_edgeNoise;
-  }
+  float dn = edgeDissolve(R);
 
   // 5色を f / q / r の別々の場で重ねる(1つの値だけで塗り分けると
   // 等高線っぽい縞が出るため、互いに独立な場で混ぜる)。
@@ -308,22 +424,199 @@ void main() {
     col = mix(col, u_lineColor, lineM * u_lineAlpha);
   }
 
-  // ---- 画面上部の色 ----
-  // uv.y=1(上端)に向かって u_topCol へ溶かす。範囲0で完全無効。
-  if (u_topRange > 0.0) {
-    float topM = smoothstep(1.0 - u_topRange, 1.0, uv.y);
-    col = mix(col, u_topCol, topM * u_topMix);
+  gl_FragColor = vec4(finish(col, uv), 1.0);
+}
+`;
+
+/* ================= B: 溶け合い =================
+   A との本質的な違いは合成方法。A は「下地の上に次の色を alpha で乗せる」を
+   4回繰り返す順序依存の塗り重ねで、最後に乗せた色ほど強い。B は5色それぞれに
+   独立した場 f0..f4 を持たせ、**重み付き平均**で一度に混ぜる(順序に依らない)。
+
+   重みは exp((f - 中心) / bleed) の正規化 — いわゆる softmax。
+   bleed が小さいと一番大きい場の色がほぼ総取りになり、色面の境界が
+   くっきり出る。大きくすると5色が均等に近づき、全体が平均色(=濁り)に寄る。
+   その中間に「複数色が重なって溶け合っている」帯がある、という作り。
+
+   指数は桁が飛びやすいので、最大値を引いてから exp に入れる(定番の
+   オーバーフロー回避)。引いた分は正規化で相殺されるので結果は変わらない。
+
+   垂れ(u_bDrip): ストリーク軸に直交する方向の位置だけで決まるノイズを
+   軸方向のオフセットとして足す。「同じ横位置なら同じだけ下にずれる」ので、
+   絵の具をスキージで縦に引いたような筋になる。 */
+const FRAG_B = COMMON + `
+// 5色ぶんの場をまとめて評価して重み付き平均を返す。
+vec3 blendAll(vec2 sp, float dn, out float spread) {
+  // 各色の場。オフセットは互いに素になるよう適当に離してある
+  // (近いと場どうしが相関して、特定の2色だけが組になって出てしまう)。
+  // u_bSpread は各場に固定のバイアスを与えるもので、0 のとき全色が同条件、
+  // 上げるほど出現量に差が付く(1色が広く、別の1色が差し色になる)。
+  // サンプル倍率も色ごとに変えてある。同じ倍率だと塊の大きさが揃って
+  // 「同じ形を色違いで並べた」ように見えるが、ずらすと大きな面の中に
+  // 小さな差し色が入る関係ができて、参考画像の塊感に近くなる。
+  float f0 = fbm(sp * 0.78 + vec2( 0.0,  0.0)) + dn;
+  float f1 = fbm(sp * 1.13 + vec2(11.3,  4.1)) + dn + u_bSpread *  0.10;
+  float f2 = fbm(sp * 0.91 + vec2( 3.7, 19.5)) + dn + u_bSpread * -0.06;
+  float f3 = fbm(sp * 1.37 + vec2(23.1,  8.8)) + dn + u_bSpread *  0.04;
+  float f4 = fbm(sp * 0.64 + vec2( 7.9, 31.2)) + dn + u_bSpread * -0.12;
+
+  float m = max(max(max(f0, f1), max(f2, f3)), f4);
+  float k = max(u_bBleed, 0.005);
+  float w0 = exp((f0 - m) / k);
+  float w1 = exp((f1 - m) / k);
+  float w2 = exp((f2 - m) / k);
+  float w3 = exp((f3 - m) / k);
+  float w4 = exp((f4 - m) / k);
+  float sum = w0 + w1 + w2 + w3 + w4;
+
+  // 何色が実際に効いているか(1に近いほど単色、大きいほど混ざっている)。
+  // 逆参加率 1/Σp^2 — 呼び出し側ではコントラストの効かせ方に使う。
+  vec3 n0 = vec3(w0, w1, w2) / sum;
+  vec2 n1 = vec2(w3, w4) / sum;
+  spread = 1.0 / max(dot(n0, n0) + dot(n1, n1), 1e-4);
+
+  return (u_c0 * w0 + u_c1 * w1 + u_c2 * w2 + u_c3 * w3 + u_c4 * w4) / sum;
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  float aspect = u_res.x / u_res.y;
+
+  float ang = radians(u_angle - 90.0);
+  mat2 R = rot(ang);
+
+  vec2 p = uv;
+  p.x *= aspect;
+  p += cursorPush(uv, aspect);
+  p = R * p;
+  p.y /= 1.0 + u_streak;
+
+  float t = u_time * u_speed;
+
+  // 垂れ: 軸直交方向(p.x)だけに依存するノイズを軸方向へのオフセットにする。
+  // 時間を第2成分に入れているので、筋の位置がゆっくり入れ替わる。
+  if (u_bDrip > 0.0) {
+    float d = fbm(vec2(p.x * u_scale * 0.7, t * 0.25 + 40.0));
+    p.y -= (d - 0.5) * u_bDrip;
   }
 
-  // ---- フィルムグレイン ----
-  // 表示ピクセル単位のホワイトノイズを u_grainFps で更新
-  // (毎フレーム更新よりチラつきが落ち着き、フィルムっぽくなる。0で静止)
-  float frame = u_grainFps > 0.0 ? floor(u_time * u_grainFps) : 0.0;
-  vec2 gp = floor(gl_FragCoord.xy / u_grainSize);
-  float g = hash(gp + fract(frame * 0.1031) * vec2(37.7, 17.3)) - 0.5;
-  col += g * u_grain;
+  vec2 q0 = p * u_scale + u_seed;
 
-  gl_FragColor = vec4(col, 1.0);
+  // ドメインワープは1段。A は2段でかなり捻れるが、B は「大きな色の塊が
+  // ゆっくり融け合う」ほうを見せたいので、形を壊しすぎない1段にしてある。
+  vec2 w = vec2(fbm(q0 + vec2(0.0, 0.0) + t * 0.10),
+                fbm(q0 + vec2(5.2, 1.3) - t * 0.07));
+  vec2 sp = q0 + u_warp * w;
+
+  float dn = edgeDissolve(R);
+
+  float spread;
+  vec3 col = blendAll(sp, dn, spread);
+
+  // コントラストは「混ざっている所ほど弱く」効かせる。全面に均一に掛けると、
+  // 混色でできた中間色まで持ち上がって色がきつくなるため。
+  float cw = mix(u_contrast, 1.0, clamp((spread - 1.0) / 3.0, 0.0, 1.0));
+  col = (col - 0.5) * cw + 0.5;
+  col = satAdjust(col, u_saturation);
+
+  gl_FragColor = vec4(finish(col, uv), 1.0);
+}
+`;
+
+/* ================= C: 水彩 =================
+   紙(u_c0)の上に、絵の具のウォッシュを**乗算**で重ねる。
+   乗算にしているのが肝で、A/B の線形補間だと重なった所は2色の中間色に
+   しかならないが、乗算だと赤+青が暗い紫になるなど、実際に絵の具を
+   重ねたときの減算混色に近い挙動になる。重なりが濃くなるのも自動。
+
+   水彩らしさの正体はほぼ「縁」。水が乾くときに顔料が輪郭へ運ばれて
+   溜まるので、ウォッシュの内側より境界線上が濃くなる。ここでは場の値が
+   しきい値に近いほど1に近くなるガウス状の帯 rim を作って濃度に足している。
+
+   紙の粒状感は、濃度そのものを低周波ノイズで揺らすことで表現する
+   (色を白くするのではなく「吸い込み量のムラ」として効かせる)。 */
+const FRAG_C = COMMON + `
+// ウォッシュ1枚ぶんの濃度。 field はこのウォッシュの場、 thr はしきい値。
+// 戻り値は 1 を超えうる(濃度であって不透明度ではない — 下の pow 合成参照)。
+float washDensity(float field, float thr, float granule) {
+  float b = max(u_cBloom, 0.01);
+  // 本体: しきい値を超えた側が塗られている領域。
+  float body = smoothstep(thr - b, thr + b, field);
+  // 縁: しきい値のごく近傍だけ立ち上がるガウス。b に比例させているので、
+  // 滲みを広げると縁も一緒に広がる(細い線のまま取り残されない)。
+  float d = (field - thr) / (b * 0.75);
+  float rim = exp(-d * d);
+  return max((body + rim * u_cEdge) * granule, 0.0);
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  float aspect = u_res.x / u_res.y;
+
+  float ang = radians(u_angle - 90.0);
+  mat2 R = rot(ang);
+
+  vec2 p = uv;
+  p.x *= aspect;
+  p += cursorPush(uv, aspect);
+  p = R * p;
+  p.y /= 1.0 + u_streak;
+  vec2 q0 = p * u_scale + u_seed;
+
+  float t = u_time * u_speed;
+
+  vec2 w = vec2(fbm(q0 + vec2(0.0, 0.0) + t * 0.08),
+                fbm(q0 + vec2(5.2, 1.3) - t * 0.06));
+  vec2 sp = q0 + u_warp * w;
+
+  float dn = edgeDissolve(R);
+
+  // 紙の目。表示ピクセル基準の細かいノイズと、ノイズ空間基準の粗いムラを
+  // 混ぜる(前者が紙の繊維、後者が水たまりのムラ)。1.0 を中心に振れるので
+  // u_cGranule=0 ならちょうど 1.0 = 無効。
+  float fine   = noise(gl_FragCoord.xy / 2.5);
+  float coarse = fbm(sp * 0.6 + vec2(61.3, 17.9));
+  float granule = 1.0 + (mix(fine, coarse, 0.5) - 0.5) * u_cGranule * 1.2;
+
+  vec3 col = u_c0;  // 紙
+
+  // ウォッシュを順に乗算で重ねる。枚数は u_cWashes。
+  // GLSL ES 1.00 はループ上限が定数必須なので、A の fbm と同じ break 方式。
+  for (int i = 0; i < 4; i++) {
+    if (i >= u_cWashes) break;
+
+    // 枚ごとに位置と倍率をずらす。倍率を変えておかないと全部が同じ形に
+    // なり、重なりが「ぴったり同心」になって濁るだけになる。
+    vec2 off = vec2(13.1, 5.7) * float(i + 1) + vec2(0.0, 7.3);
+    float field = fbm(sp * (0.8 + 0.22 * float(i)) + off) + dn;
+
+    // しきい値 = 塗る面積。高いほど塗られる範囲が狭くなる(紙が多く残る)。
+    // 全面が塗り重なると乗算で真っ黒に潰れるので、ここが水彩らしさの
+    // 分かれ目になる。
+    //
+    // 呼吸: しきい値をゆっくり上下させると、塗り面の輪郭が外へ内へと
+    // じわじわ動く(「滲みが広がっていく」ように見える)。枚ごとに位相を
+    // ずらして、全部が同時に膨らまないようにする。
+    float thr = mix(0.78, 0.34, u_cCoverage)
+              - u_cBreath * sin(u_time * u_speed * 2.0 + float(i) * 1.9);
+
+    float dens = washDensity(field, thr, granule) * u_cOpacity;
+
+    vec3 pig = i == 0 ? u_c1 : (i == 1 ? u_c2 : (i == 2 ? u_c3 : u_c4));
+    // 顔料の重なりは Beer–Lambert(透過率の冪乗)で合成する。
+    //   col *= pig^dens
+    // dens=0 で下地そのまま、1 で顔料色そのもの、1を超えるとさらに濃くなる。
+    // mix(白, 顔料, 不透明度) の線形合成だと濃度1で頭打ちになり、
+    // 「乾き際の縁だけ内側より濃い」という水彩の肝が出せない。冪乗なら
+    // 縁(rimで dens>1)が自然に内側より暗くなり、薄い所もきれいに紙へ
+    // 戻っていく。max は pow の 0 の冪でのゼロ割れ回避。
+    col *= pow(max(pig, vec3(0.004)), vec3(dens));
+  }
+
+  col = (col - 0.5) * u_contrast + 0.5;
+  col = satAdjust(col, u_saturation);
+
+  gl_FragColor = vec4(finish(col, uv), 1.0);
 }
 `;
 
@@ -332,8 +625,16 @@ attribute vec2 a_pos;
 void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
 `;
 
+const MODE_DESC = {
+  A: "現行の About / Contact 背景。色を順に塗り重ねる方式。",
+  B: "5色を重み付き平均で同時に混ぜる。溶け合いの幅で境界の出方が決まる。",
+  C: "紙の上に絵の具のウォッシュを乗算で重ねる。縁の濃さが水彩らしさの要。",
+};
+
 /* ================= パレットプリセット =================
-   添付リファレンス4枚 + サイト既存トーンから起こした5色組。 */
+   添付リファレンス + サイト既存トーンから起こした5色組。
+   モードに依らずどれでも選べる(組み合わせの検証用)。
+   C では1色目が紙の色として使われる。 */
 const PALETTES = {
   "sky（blue×purple）":        ["#87b1db", "#438ed0", "#dfa7da", "#85a7dd", "#d6e3f6"],
   "Silk（ピンク×オレンジ）":   ["#eae3d8", "#dd6da2", "#e2892f", "#b3a0cf", "#57384c"],
@@ -342,14 +643,21 @@ const PALETTES = {
   "Dusk（夜×橙×青）":          ["#232920", "#d98e2b", "#8fa3c9", "#47523c", "#ded6c6"],
   "Cream（サイト基調・淡）":   ["#f6f6f4", "#e4ddd2", "#cdbfae", "#b0b7a8", "#8f8779"],
   "Contact（黒ベース）":       ["#000000", "#141b1f", "#002324", "#00143d", "#0b1028"],
+  // ---- B 向け(高彩度・白地) ----
+  "Smear（高彩度・白地）":     ["#f4f3f0", "#ff3b14", "#0b5fd8", "#ffd21e", "#ff8ab0"],
+  "Smear（赤×青×黒）":         ["#eceae5", "#e8381f", "#1736a8", "#1a1a1a", "#4fc8d8"],
+  // ---- C 向け(1色目=紙) ----
+  "Bloom（水彩・暖）":         ["#f3efe6", "#e8431d", "#f2a71b", "#d9418c", "#1d3f96"],
+  "Bloom（水彩・寒）":         ["#f1f0ec", "#1b3f8f", "#1f9d94", "#7a53b8", "#2f6b3a"],
 };
 
 /* パレット固有の推奨パラメータ一式 — パレット選択時に色と一緒に全スライダー
-   へ反映される(定義がないパレットは従来通り色だけ変わる)。どちらも実際に
-   サイトへ組み込み済みの現行値そのまま:
+   へ反映される(定義がないパレットは従来通り色だけ変わる)。
+   sky / Contact はどちらも実際にサイトへ組み込み済みの現行値そのまま:
      sky              → components/about-blend-background.tsx の SETTINGS
      Contact（黒ベース）→ components/contact-blend-background.tsx の SETTINGS
-   どちらかを触ったらもう片方も合わせること。 */
+   どちらかを触ったらもう片方も合わせること。
+   Smear / Bloom は B / C 用の出発点(組み込み先はまだ無い)。 */
 const PRESET_PARAMS = {
   "sky（blue×purple）": {
     speed: 0.15, scale: 3.5, warp: 1.2, octaves: 2, streak: 3.5, blurAngle: 90,
@@ -369,6 +677,60 @@ const PRESET_PARAMS = {
     edgeSoft: 0.45, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
     lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
   },
+  "Smear（高彩度・白地）": {
+    speed: 0.08, scale: 2.3, warp: 1.6, octaves: 2, streak: 0.9, blurAngle: 90,
+    contrast: 1.0, saturation: 1.15, cursorStrength: 0.12,
+    grain: 0.05, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    topColor: "#ffffff", topRange: 0, topMix: 1,
+    edgeNoise: 0.02, edgeNoiseScale: 1.5, edgeStretch: 4,
+    bBleed: 0.07, bDrip: 0.45, bSpread: 0.35,
+  },
+  "Smear（赤×青×黒）": {
+    speed: 0.07, scale: 2.0, warp: 2.0, octaves: 2, streak: 1.4, blurAngle: 90,
+    contrast: 1.05, saturation: 1.1, cursorStrength: 0.12,
+    grain: 0.05, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    topColor: "#ffffff", topRange: 0, topMix: 1,
+    edgeNoise: 0.03, edgeNoiseScale: 2, edgeStretch: 6,
+    bBleed: 0.06, bDrip: 0.9, bSpread: 0.5,
+  },
+  "Bloom（水彩・暖）": {
+    speed: 0.05, scale: 2.1, warp: 1.1, octaves: 3, streak: 0, blurAngle: 90,
+    contrast: 1.0, saturation: 1.05, cursorStrength: 0.08,
+    grain: 0.035, grainSize: 1, grainFps: 8, renderScale: 0.8,
+    topColor: "#ffffff", topRange: 0, topMix: 1,
+    edgeNoise: 0.02, edgeNoiseScale: 1.5, edgeStretch: 0,
+    cCoverage: 0.30, cBloom: 0.13, cEdge: 1.1, cOpacity: 0.55, cGranule: 0.35, cWashes: 4, cBreath: 0.03,
+  },
+  "Bloom（水彩・寒）": {
+    speed: 0.045, scale: 1.8, warp: 1.3, octaves: 3, streak: 0, blurAngle: 90,
+    contrast: 1.0, saturation: 1.0, cursorStrength: 0.08,
+    grain: 0.035, grainSize: 1, grainFps: 8, renderScale: 0.8,
+    topColor: "#ffffff", topRange: 0, topMix: 1,
+    edgeNoise: 0.015, edgeNoiseScale: 1.5, edgeStretch: 0,
+    cCoverage: 0.34, cBloom: 0.16, cEdge: 1.4, cOpacity: 0.55, cGranule: 0.45, cWashes: 3, cBreath: 0.04,
+  },
+};
+
+/* モードごとの初期状態。パレットも一緒に切り替わるので、モードボタンを
+   押すだけでそれらしい見た目から始まる。 */
+const MODE_INIT = {
+  A: "sky（blue×purple）",
+  B: "Smear（高彩度・白地）",
+  C: "Bloom（水彩・暖）",
+};
+
+/* 全パラメータの既定値。モードを跨いでも undefined が出ないよう、
+   A/B/C すべてのキーをここに揃えておく(B のスライダーを触らずに
+   C へ行って戻ってきても値が残る)。 */
+const BASE_PARAMS = {
+  speed: 0.15, scale: 3.5, warp: 1.2, octaves: 2, streak: 3.5, blurAngle: 90,
+  contrast: 1.15, saturation: 1, cursorStrength: 0.1,
+  grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
+  topColor: "#ebfdff", topRange: 0.9, topMix: 1,
+  edgeSoft: 0.1, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
+  lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
+  bBleed: 0.09, bDrip: 0.55, bSpread: 0.35,
+  cCoverage: 0.32, cBloom: 0.13, cEdge: 1.0, cOpacity: 0.6, cGranule: 0.35, cWashes: 4, cBreath: 0.03,
 };
 
 /* ================= WebGL セットアップ ================= */
@@ -384,45 +746,71 @@ function compile(type, src) {
   }
   return s;
 }
-const prog = gl.createProgram();
-gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
-gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
-gl.linkProgram(prog);
-if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-  throw new Error(gl.getProgramInfoLog(prog));
+
+const UNIFORM_NAMES = [
+  "u_res","u_time","u_seed","u_speed","u_scale","u_warp","u_streak","u_angle",
+  "u_contrast","u_saturation","u_mouse","u_cursorStrength","u_octaves",
+  "u_grain","u_grainSize","u_grainFps",
+  "u_c0","u_c1","u_c2","u_c3","u_c4",
+  "u_topCol","u_topRange","u_topMix",
+  "u_edgeSoft","u_edgeNoise","u_edgeNoiseScale","u_edgeStretch",
+  "u_lineColor","u_lineWidth","u_lineAlpha","u_lineCoverage","u_lineBlur",
+  "u_bBleed","u_bDrip","u_bSpread",
+  "u_cCoverage","u_cBloom","u_cEdge","u_cOpacity","u_cGranule","u_cWashes","u_cBreath",
+];
+
+// モードごとに1本ずつプログラムを作って持っておく(切替のたびに
+// コンパイルし直すと一瞬止まるため)。使っていないユニフォームの
+// ロケーションは null になるが、gl.uniform*(null, ...) は no-op なので
+// 送信側は分岐不要。
+const vert = compile(gl.VERTEX_SHADER, VERT);
+function buildProgram(frag) {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vert);
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(prog));
+  }
+  const U = {};
+  for (const name of UNIFORM_NAMES) U[name] = gl.getUniformLocation(prog, name);
+  return { prog, U };
 }
-gl.useProgram(prog);
+const PROGRAMS = { A: buildProgram(FRAG_A), B: buildProgram(FRAG_B), C: buildProgram(FRAG_C) };
 
 // フルスクリーン三角形(クアッドより1頂点少なく、定番の省コスト手法)
 const buf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, buf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-const loc = gl.getAttribLocation(prog, "a_pos");
-gl.enableVertexAttribArray(loc);
-gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-
-const U = {};
-for (const name of ["u_res","u_time","u_seed","u_speed","u_scale","u_warp","u_streak","u_angle",
-                    "u_contrast","u_mouse","u_cursorStrength","u_octaves",
-                    "u_grain","u_grainSize","u_grainFps",
-                    "u_c0","u_c1","u_c2","u_c3","u_c4",
-                    "u_topCol","u_topRange","u_topMix",
-                    "u_edgeSoft","u_edgeNoise","u_edgeNoiseScale","u_edgeStretch",
-                    "u_lineColor","u_lineWidth","u_lineAlpha","u_lineCoverage","u_lineBlur"]) {
-  U[name] = gl.getUniformLocation(prog, name);
+// 頂点属性の場所はプログラムごとに取り直す(同じシェーダーソースでも
+// 0 番に来る保証は無い)。
+function bindAttrib(prog) {
+  gl.useProgram(prog);
+  const loc = gl.getAttribLocation(prog, "a_pos");
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 }
 
 /* ================= パラメータと UI ================= */
-// 起動時のデフォルトは About ページに組み込み済みの現行値そのまま
-// (= PRESET_PARAMS["sky（blue×purple）"] + sky パレットの5色)。
-// Contact の現行値はパレットを「Contact（黒ベース）」に切り替えると入る。
-// seed だけは実機側がマウント毎ランダムなのでラボ用の固定値。
-const params = {
-  palette: "sky（blue×purple）",
-  colors: PALETTES["sky（blue×purple）"].slice(),
-  ...PRESET_PARAMS["sky（blue×purple）"],
-  seed: 99.59266902583109,
-};
+function makeParams(mode) {
+  const palette = MODE_INIT[mode];
+  return {
+    mode,
+    palette,
+    colors: PALETTES[palette].slice(),
+    ...BASE_PARAMS,
+    ...(PRESET_PARAMS[palette] || {}),
+    // seed だけは実機側がマウント毎ランダムなのでラボ用の固定値。
+    seed: 99.59266902583109,
+  };
+}
+
+// モードごとの調整値を別々に保持する — 切り替えて戻しても、そのモードで
+// 触っていた値がそのまま残る(3種を同条件で見比べるためのツールなので、
+// 行き来するたびに初期化されると使い物にならない)。
+const modeState = { A: makeParams("A"), B: makeParams("B"), C: makeParams("C") };
+let params = modeState.A;
+let active = PROGRAMS.A;
 
 function hexToRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -458,9 +846,12 @@ swatches.forEach((el) => {
 });
 
 // スライダー一括バインド
-const sliders = ["speed","scale","warp","octaves","streak","blurAngle","contrast","cursorStrength",
+const sliders = ["speed","scale","warp","octaves","streak","blurAngle","contrast","saturation","cursorStrength",
                  "grain","grainSize","grainFps","renderScale",
-                 "topRange","topMix","edgeSoft","edgeNoise","edgeNoiseScale","edgeStretch","lineWidth","lineAlpha","lineCoverage","lineBlur"];
+                 "topRange","topMix","edgeSoft","edgeNoise","edgeNoiseScale","edgeStretch",
+                 "lineWidth","lineAlpha","lineCoverage","lineBlur",
+                 "bBleed","bDrip","bSpread",
+                 "cCoverage","cBloom","cEdge","cOpacity","cGranule","cWashes","cBreath"];
 for (const key of sliders) {
   const el = document.getElementById(key);
   el.value = params[key];
@@ -480,8 +871,8 @@ for (const key of ["topColor", "lineColor"]) {
   el.addEventListener("input", () => { params[key] = el.value; });
 }
 
-// params → UI の一括同期(プリセット適用時用) — 各スライダーの値と数値表示、
-// 単色ピッカーを現在のparamsに合わせ直す。
+// params → UI の一括同期(プリセット適用時・モード切替時用) — 各スライダーの
+// 値と数値表示、単色ピッカー、パレット選択を現在のparamsに合わせ直す。
 function syncControls() {
   for (const key of sliders) {
     const el = document.getElementById(key);
@@ -491,6 +882,35 @@ function syncControls() {
   for (const key of ["topColor", "lineColor"]) {
     document.getElementById(key).value = params[key];
   }
+  paletteSel.value = params.palette;
+  syncSwatches();
+}
+
+/* ---- モード切替 ---- */
+// モード固有のコントロールは .mode-A / .mode-B / .mode-C を付けてあり、
+// 現在のモードのものだけ表示する。
+function applyMode(mode) {
+  modeState[params.mode] = params;   // 今のモードの調整値を退避
+  params = modeState[mode];          // 新しいモードの値を復帰
+  active = PROGRAMS[mode];
+  bindAttrib(active.prog);
+
+  // 「現在のモードのクラスを持っているか」で1要素ずつ決める。
+  // モードごとに querySelectorAll を回して toggle すると、複数モードに
+  // 属する要素(彩度スライダーは B と C の両方)が最後のループで消される。
+  for (const el of document.querySelectorAll(".mode-A, .mode-B, .mode-C")) {
+    el.classList.toggle("hidden", !el.classList.contains("mode-" + mode));
+  }
+  for (const btn of document.querySelectorAll("#modes button")) {
+    btn.classList.toggle("on", btn.dataset.mode === mode);
+  }
+  document.getElementById("modeDesc").textContent = MODE_DESC[mode];
+
+  syncControls();
+  resize();
+}
+for (const btn of document.querySelectorAll("#modes button")) {
+  btn.addEventListener("click", () => applyMode(btn.dataset.mode));
 }
 
 // カーソル追従(uv, 左下原点)。フレーム毎に指数スムージングして u_mouse へ —
@@ -524,6 +944,9 @@ document.getElementById("toggleUi").addEventListener("click", toggleUi);
 window.addEventListener("keydown", (e) => {
   if (e.key === "h" || e.key === "H") toggleUi();
   if (e.key === " ") { e.preventDefault(); togglePause(); }
+  if (e.key === "1") applyMode("A");
+  if (e.key === "2") applyMode("B");
+  if (e.key === "3") applyMode("C");
 });
 
 /* ================= リサイズ / 描画ループ ================= */
@@ -537,8 +960,7 @@ function resize() {
   document.getElementById("res").textContent = w + "×" + h;
 }
 window.addEventListener("resize", resize);
-resize();
-syncSwatches();
+applyMode("A");   // 初期モード。resize() と syncControls() もこの中で走る。
 
 // FPS 計測(指数移動平均でならす)
 let fpsEma = 60;
@@ -552,6 +974,8 @@ function frame(now) {
   if (dt > 0) fpsEma = fpsEma * 0.95 + (1 / dt) * 0.05;
   document.getElementById("fps").textContent = fpsEma.toFixed(0) + " fps";
 
+  const U = active.U;
+  gl.useProgram(active.prog);
   gl.uniform2f(U.u_res, canvas.width, canvas.height);
   gl.uniform1f(U.u_time, shownTime);
   gl.uniform1f(U.u_seed, params.seed);
@@ -561,6 +985,7 @@ function frame(now) {
   gl.uniform1f(U.u_streak, params.streak);
   gl.uniform1f(U.u_angle, params.blurAngle);
   gl.uniform1f(U.u_contrast, params.contrast);
+  gl.uniform1f(U.u_saturation, params.saturation);
   mouseSmoothed[0] += (mouseTarget[0] - mouseSmoothed[0]) * 0.04;
   mouseSmoothed[1] += (mouseTarget[1] - mouseSmoothed[1]) * 0.04;
   gl.uniform2f(U.u_mouse, mouseSmoothed[0], mouseSmoothed[1]);
@@ -588,6 +1013,16 @@ function frame(now) {
   gl.uniform1f(U.u_lineAlpha, params.lineAlpha);
   gl.uniform1f(U.u_lineCoverage, params.lineCoverage);
   gl.uniform1f(U.u_lineBlur, params.lineBlur);
+  gl.uniform1f(U.u_bBleed, params.bBleed);
+  gl.uniform1f(U.u_bDrip, params.bDrip);
+  gl.uniform1f(U.u_bSpread, params.bSpread);
+  gl.uniform1f(U.u_cCoverage, params.cCoverage);
+  gl.uniform1f(U.u_cBloom, params.cBloom);
+  gl.uniform1f(U.u_cEdge, params.cEdge);
+  gl.uniform1f(U.u_cOpacity, params.cOpacity);
+  gl.uniform1f(U.u_cGranule, params.cGranule);
+  gl.uniform1i(U.u_cWashes, Math.round(params.cWashes));
+  gl.uniform1f(U.u_cBreath, params.cBreath);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
   requestAnimationFrame(frame);
