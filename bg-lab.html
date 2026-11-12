@@ -644,7 +644,9 @@ const PALETTES = {
   "Cream（サイト基調・淡）":   ["#f6f6f4", "#e4ddd2", "#cdbfae", "#b0b7a8", "#8f8779"],
   "Contact（黒ベース）":       ["#000000", "#141b1f", "#002324", "#00143d", "#0b1028"],
   // ---- B 向け(高彩度・白地) ----
-  "Smear（高彩度・白地）":     ["#f4f3f0", "#ff3b14", "#0b5fd8", "#ffd21e", "#ff8ab0"],
+  // 貼付のグリッチ風リファレンスから起こした5色。淡い地に、ピンク・藤・
+  // ターコイズの虹彩系を並べ、差し色だけ高彩度の朱にしてある。
+  "Smear（虹彩・淡地）":       ["#e9e3db", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
   "Smear（赤×青×黒）":         ["#eceae5", "#e8381f", "#1736a8", "#1a1a1a", "#4fc8d8"],
   // ---- C 向け(1色目=紙) ----
   "Bloom（水彩・暖）":         ["#f3efe6", "#e8431d", "#f2a71b", "#d9418c", "#1d3f96"],
@@ -677,13 +679,21 @@ const PRESET_PARAMS = {
     edgeSoft: 0.45, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
     lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
   },
-  "Smear（高彩度・白地）": {
-    speed: 0.08, scale: 2.3, warp: 1.6, octaves: 2, streak: 0.9, blurAngle: 90,
-    contrast: 1.0, saturation: 1.15, cursorStrength: 0.12,
-    grain: 0.05, grainSize: 1, grainFps: 12, renderScale: 0.7,
-    topColor: "#ffffff", topRange: 0, topMix: 1,
-    edgeNoise: 0.02, edgeNoiseScale: 1.5, edgeStretch: 4,
-    bBleed: 0.07, bDrip: 0.45, bSpread: 0.35,
+  // B の既定値。ラボで詰めた設定をそのまま持ってきたもの(直接の指示)。
+  // C 専用の値(cBloom 等)は意図的に入れていない — PRESET_PARAMS は
+  // モードに依らずパレット選択時に適用されるので、ここに C の値を書くと
+  // C モードでこのパレットを選んだ瞬間に C 側の調整が巻き戻ってしまう。
+  "Smear（虹彩・淡地）": {
+    speed: 0.08, scale: 4.5, warp: 0.2, octaves: 2, streak: 2, blurAngle: 90,
+    contrast: 1, saturation: 1.15, cursorStrength: 0.15,
+    grain: 0.08, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    topColor: "#ffffff", topRange: 0.4, topMix: 0.5,
+    edgeSoft: 0.45, edgeNoise: 0.1, edgeNoiseScale: 2, edgeStretch: 4,
+    lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
+    bBleed: 0.09, bDrip: 0.5, bSpread: 0.4,
+    // この構図ありきで詰めた値なので、シードも一緒に固定する。
+    // 別の出方を見たいときは「シード変更」ボタン。
+    seed: 75.33248802042414,
   },
   "Smear（赤×青×黒）": {
     speed: 0.07, scale: 2.0, warp: 2.0, octaves: 2, streak: 1.4, blurAngle: 90,
@@ -715,7 +725,7 @@ const PRESET_PARAMS = {
    押すだけでそれらしい見た目から始まる。 */
 const MODE_INIT = {
   A: "sky（blue×purple）",
-  B: "Smear（高彩度・白地）",
+  B: "Smear（虹彩・淡地）",
   C: "Bloom（水彩・暖）",
 };
 
@@ -798,10 +808,12 @@ function makeParams(mode) {
     mode,
     palette,
     colors: PALETTES[palette].slice(),
+    // seed は実機側がマウント毎ランダムなのでラボ用の固定値。プリセットが
+    // 自前の seed を持っている場合(構図ごと詰めたもの)はそちらが勝つよう、
+    // BASE_PARAMS 側に置いてプリセットを後に展開している。
+    seed: 99.59266902583109,
     ...BASE_PARAMS,
     ...(PRESET_PARAMS[palette] || {}),
-    // seed だけは実機側がマウント毎ランダムなのでラボ用の固定値。
-    seed: 99.59266902583109,
   };
 }
 
