@@ -469,7 +469,11 @@ vec3 blendAll(vec2 sp, float dn, out float spread) {
   // 1色目だけ u_bGround の下駄を履く。softmax は値が大きいほど勝つので、
   // ここを上げると地の色が占める面積が広がる(他4色は相対的に差し色側へ
   // 退く)。色を変えずに「地をどれだけ残すか」だけ動かしたいとき用。
-  float f0 = fbm(sp * 0.78 + vec2( 0.0,  0.0)) + dn + u_bGround;
+  // 地の倍率 0.78 → 2.20。下駄(u_bGround)は面積の平均を、倍率はシードごとの
+  // 振れ幅を決める。0.78 は画面に収まる波の数が少なく、20シードで 43〜93% と
+  // 大きくぶれた。2.20 なら同じ平均でも振れ幅が半分になる。
+  // about-blend-background.tsx の f0 の行も参照。
+  float f0 = fbm(sp * 2.20 + vec2( 0.0,  0.0)) + dn + u_bGround;
   float f1 = fbm(sp * 1.13 + vec2(11.3,  4.1)) + dn + u_bSpread *  0.10;
   float f2 = fbm(sp * 0.91 + vec2( 3.7, 19.5)) + dn + u_bSpread * -0.06;
   float f3 = fbm(sp * 1.37 + vec2(23.1,  8.8)) + dn + u_bSpread *  0.04;
@@ -792,7 +796,7 @@ const PRESET_PARAMS = {
     topColor: "#eae8e3", topRange: 0.5, topMix: 0.75,
     edgeSoft: 0.45, edgeNoise: 0.1, edgeNoiseScale: 2, edgeStretch: 4,
     lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
-    bBleed: 0.05, bDrip: 0.4, bSpread: 0.35, bGround: 0.35, bClean: 0.85,
+    bBleed: 0.05, bDrip: 0.4, bSpread: 0.35, bGround: 0.29, bClean: 0.85,
     // この構図ありきで詰めた値なので、シードも一緒に固定する。
     // 別の出方を見たいときは「シード変更」ボタン。
     seed: 75.33248802042414,
