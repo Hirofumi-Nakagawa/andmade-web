@@ -473,9 +473,14 @@ vec3 blendAll(vec2 sp, float dn, out float spread) {
   float f1 = fbm(sp * 1.13 + vec2(11.3,  4.1)) + dn + u_bSpread *  0.10;
   float f2 = fbm(sp * 0.91 + vec2( 3.7, 19.5)) + dn + u_bSpread * -0.06;
   float f3 = fbm(sp * 1.37 + vec2(23.1,  8.8)) + dn + u_bSpread *  0.04;
-    // 5色目は係数を大きめに振ってある — 差し色として少量だけ出したい枠
-  // （-0.12 → -0.50 → -0.40、直接の指示で赤の面積を調整したときの経緯）。
-  float f4 = fbm(sp * 0.64 + vec2( 7.9, 31.2)) + dn + u_bSpread * -0.40;
+    // 5色目は「差し色」の枠。倍率を他より大きく（＝塊を小さく）してある
+  // ので、よく顔を出すわりに画面を占領しない。
+  // 係数と倍率の役割の違い: 係数は出る/出ないの頻度、倍率は出たときの
+  // 塊の大きさ。倍率 0.64 のままだと、出るときに画面を縦断する面積に
+  // なってしまい、係数をいくら下げても「たまに大きく出る」にしかならない
+  // （About の2番目の背景でこれを詰めたときの実測。
+  //   about-blend-background.tsx の同じ行のコメント参照）。
+  float f4 = fbm(sp * 1.30 + vec2( 7.9, 31.2)) + dn + u_bSpread * -0.12;
 
   float m = max(max(max(f0, f1), max(f2, f3)), f4);
   float k = max(u_bBleed, 0.005);
