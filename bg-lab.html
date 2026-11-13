@@ -144,7 +144,7 @@
   <!-- ===== C 専用 ===== -->
   <div class="mode-C">
     <h2>水彩（C）</h2>
-    <label>塗る面積（紙の残り方）<span class="row"><input type="range" id="cCoverage" min="0.05" max="1" step="0.01" /><output></output></span></label>
+    <label>塗る面積（紙の残り方）<span class="row"><input type="range" id="cCoverage" min="0" max="1" step="0.01" /><output></output></span></label>
     <label>滲みの幅（にじみ出しの広さ）<span class="row"><input type="range" id="cBloom" min="0.02" max="0.5" step="0.01" /><output></output></span></label>
     <label>縁の濃さ（乾き際の顔料溜まり）<span class="row"><input type="range" id="cEdge" min="0" max="3" step="0.05" /><output></output></span></label>
     <label>絵の具の濃さ <span class="row"><input type="range" id="cOpacity" min="0" max="1" step="0.02" /><output></output></span></label>
@@ -625,10 +625,14 @@ void main() {
     // しきい値 = 塗る面積。高いほど塗られる範囲が狭くなる(紙が多く残る)。
     // 紙がどれだけ残るかで水彩らしさが決まるので、ここが主レバー。
     //
+    // 上端は 0.78 → 0.92（直接の指示「紙のエリアをもっと多く」）。
+    // fbm の値域が 0..1 なので、0.78 だとスライダーを最小にしても
+    // 塗られる面積がそれなりに残り、「もっと紙を見せる」ができなかった。
+    //
     // 呼吸: しきい値をゆっくり上下させると、塗り面の輪郭が外へ内へと
     // じわじわ動く(「滲みが広がっていく」ように見える)。枚ごとに位相を
     // ずらして、全部が同時に膨らまないようにする。
-    float thr = mix(0.78, 0.34, u_cCoverage)
+    float thr = mix(0.92, 0.34, u_cCoverage)
               - u_cBreath * sin(u_time * u_speed * 2.0 + float(i) * 1.9);
 
     float dens = washDensity(field, thr, granule) * u_cOpacity;
@@ -688,13 +692,11 @@ const PALETTES = {
   // ---- B 向け(高彩度・白地) ----
   // 貼付のグリッチ風リファレンスから起こした5色。ピンク・藤・ターコイズの
   // 虹彩系を並べ、差し色だけ高彩度の朱にしてある。
-  // 地は #f6f6f4 — サイトの背景色（app/globals.css の --background、
-  // layout.tsx の themeColor と同じ値）。純白ではなくこちらに合わせて
-  // あるのは、背景として敷いたときに地の部分がページの余白と地続きに
-  // 見えるようにするため（直接の指示）。**globals.css 側を変えたら
-  // ここも合わせること。**
+  // 地は #eae8e3。出発点はサイトの背景色 #f6f6f4（app/globals.css の
+  // --background）だったが、直接の指示で一段濃くしてある。色面が淡いぶん
+  // 地まで明るいと全体が白飛びして見えるため。
   // 地の占める割合は「地（1色目）の面積」スライダーで動かす。
-  "Smear（虹彩・淡地）":       ["#f6f6f4", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
+  "Smear（虹彩・淡地）":       ["#eae8e3", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
   "Smear（赤×青×黒）":         ["#eceae5", "#e8381f", "#1736a8", "#1a1a1a", "#4fc8d8"],
   // ---- C 向け(1色目=紙) ----
   "Bloom（水彩・暖）":         ["#fff7e5", "#ff441a", "#f352ff", "#ff75ba", "#2e93ff"],
@@ -743,10 +745,10 @@ const PRESET_PARAMS = {
   "Smear（虹彩・淡地）": {
     speed: 0.1, scale: 3.5, warp: 2, octaves: 2, streak: 2, blurAngle: 90,
     contrast: 1.5, saturation: 1.15, cursorStrength: 0.15,
-    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
-    // 上部へ溶かす色も地と同じ #f6f6f4。白のままだと画面上端だけが
-    // ページの背景より明るく浮く。
-    topColor: "#f6f6f4", topRange: 0.5, topMix: 0.75,
+    // グレインだけ全体の統一値 0.06 から外して 0.08（直接の指示）。
+    grain: 0.08, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    // 上部へ溶かす色は地と同じ。ここだけ明るいと画面上端が浮く。
+    topColor: "#eae8e3", topRange: 0.5, topMix: 0.75,
     edgeSoft: 0.45, edgeNoise: 0.1, edgeNoiseScale: 2, edgeStretch: 4,
     lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
     bBleed: 0.05, bDrip: 0.4, bSpread: 0.35, bGround: 0.18,
@@ -772,7 +774,7 @@ const PRESET_PARAMS = {
     topColor: "#ffffff", topRange: 0.5, topMix: 0.5,
     edgeSoft: 0.1, edgeNoise: 0.08, edgeNoiseScale: 1.5, edgeStretch: 0,
     lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
-    cCoverage: 0.05, cBloom: 0.2, cEdge: 0.2, cOpacity: 0.74, cGranule: 0.58, cWashes: 4, cBreath: 0.1,
+    cCoverage: 0.14, cBloom: 0.2, cEdge: 0.2, cOpacity: 0.74, cGranule: 0.58, cWashes: 4, cBreath: 0.1,
     // 重なりを暗くしない側に寄せてある(直接の指示「重なり部分が暗くて
     // 濁る」への対処)。絵の具らしく濁らせたいときだけ上げる。
     cStack: 0.15, cMixSharp: 0.55,
@@ -783,7 +785,7 @@ const PRESET_PARAMS = {
     grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.8,
     topColor: "#ffffff", topRange: 0, topMix: 1,
     edgeNoise: 0.015, edgeNoiseScale: 1.5, edgeStretch: 0,
-    cCoverage: 0.34, cBloom: 0.16, cEdge: 1.4, cOpacity: 0.55, cGranule: 0.45, cWashes: 3, cBreath: 0.04,
+    cCoverage: 0.50, cBloom: 0.16, cEdge: 1.4, cOpacity: 0.55, cGranule: 0.45, cWashes: 3, cBreath: 0.04,
     cStack: 0.25, cMixSharp: 0.4,
   },
 };
@@ -807,7 +809,7 @@ const BASE_PARAMS = {
   edgeSoft: 0.1, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
   lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
   bBleed: 0.09, bDrip: 0.55, bSpread: 0.35, bGround: 0,
-  cCoverage: 0.32, cBloom: 0.13, cEdge: 1.0, cOpacity: 0.6, cGranule: 0.35, cWashes: 4, cBreath: 0.03,
+  cCoverage: 0.48, cBloom: 0.13, cEdge: 1.0, cOpacity: 0.6, cGranule: 0.35, cWashes: 4, cBreath: 0.03,
   cStack: 0.25, cMixSharp: 0.4,
 };
 

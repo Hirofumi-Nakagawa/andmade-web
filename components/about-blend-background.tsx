@@ -309,7 +309,10 @@ void main() {
    u_reveal（登場アニメ）も 1 と同じく s = max(settle, 1 - reveal) で共有。 */
 
 const SETTINGS_2 = {
-  colors: ["#f6f6f4", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
+  // 地（= settle の収束先）は #eae8e3。出発点はサイトの背景色 #f6f6f4
+  // だったが、色面が淡いぶん地まで明るいと白飛びして見えるので一段
+  // 濃くしてある（直接の指示）。bg-lab の Smear（虹彩・淡地）と同値。
+  colors: ["#eae8e3", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
   speed: 0.1,
   scale: 3.5,
   warp: 2,
@@ -317,11 +320,13 @@ const SETTINGS_2 = {
   contrast: 1.5,
   saturation: 1.15,
   cursorStrength: 0.15,
-  grain: 0.06,
+  // グレインだけ他バリアントの 0.06 から外して 0.08（直接の指示）。
+  grain: 0.08,
   grainSize: 1,
   grainFps: 12,
   renderScale: 0.7,
-  topColor: "#f6f6f4",
+  // 上部へ溶かす色は地と同じ。ここだけ明るいと画面上端が浮く。
+  topColor: "#eae8e3",
   topRange: 0.5,
   topMix: 0.75,
   edgeNoise: 0.1,
@@ -356,7 +361,9 @@ const SETTINGS_3 = {
   edgeNoise: 0.08,
   edgeNoiseScale: 1.5,
   edgeStretch: 0,
-  coverage: 0.05,
+  // 0.05 → 0.14（直接の指示「紙のエリアをもっと多く」）。しきい値への
+  // 写像の上端も bg-lab 側で 0.78 → 0.92 に広げてある（下の THR 参照）。
+  coverage: 0.14,
   bloom: 0.2,
   edge: 0.2,
   opacity: 0.74,
@@ -539,7 +546,7 @@ const float BREATH   = ${glf(SETTINGS_3.breath)};
 const float STACK    = ${glf(SETTINGS_3.stack)};
 const float MIX_POW  = ${glf(Math.round((1 + SETTINGS_3.mixSharp * 3) * 1e4) / 1e4)};
 // 塗る面積のしきい値（ラボの mix(0.78, 0.34, coverage) を焼き込んだもの）。
-const float THR = ${glf(Math.round((0.78 + (0.34 - 0.78) * SETTINGS_3.coverage) * 1e4) / 1e4)};
+const float THR = ${glf(Math.round((0.92 + (0.34 - 0.92) * SETTINGS_3.coverage) * 1e4) / 1e4)};
 const int WASHES = ${SETTINGS_3.washes};
 const vec3 C0 = ${glslColor(SETTINGS_3.colors[0])}; // 紙 = settleの収束先
 const vec3 C1 = ${glslColor(SETTINGS_3.colors[1])};
@@ -554,8 +561,8 @@ const float TOP_MIX   = ${glf(SETTINGS_3.topMix)};
 // 完全に消えて紙だけになる。THR + これ が**ちょうど**そこに届く量にする
 // ——大きすぎると途中で収束し切ってしまい、スクロールの後半は何も
 // 動かない（1.2 だと s=0.2 あたりで紙になっていた。実測で確認）。
-//   必要量 = 1.0 + BLOOM - THR = 1.0 + 0.2 - 0.758 ≒ 0.44
-const float SETTLE_THR = 0.46;
+//   必要量 = 1.0 + BLOOM - THR = 1.0 + 0.2 - 0.839 ≒ 0.36
+const float SETTLE_THR = 0.38;
 
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
