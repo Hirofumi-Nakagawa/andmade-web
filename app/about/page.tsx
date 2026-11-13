@@ -3,10 +3,11 @@ import { OGP_IMAGE, ORGANIZATION_ID, SITE_NAME, SITE_URL } from "@/lib/site";
 import { AboutBlendBackground } from "@/components/about-blend-background";
 import { AboutSection } from "@/components/about-section";
 import { AboutSideNav } from "@/components/about-side-nav";
+import { AboutGradSwitch } from "@/components/about-grad-switch";
 import { GrainOverlay } from "@/components/grain-overlay";
 import { HeaderSummon } from "@/components/header-summon";
 import { MobileAbout } from "@/components/mobile-about";
-import { PageBodyBackground } from "@/components/page-body-background";
+import { AboutBodyBackground } from "@/components/about-body-background";
 import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
 import { MediaLine } from "@/components/media-line";
 import { RevealOnMount } from "@/components/reveal-on-mount";
@@ -237,11 +238,13 @@ export default function About() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd) }}
       />
-      {/* #438ed0（旧 #3782c5、直接の指示で変更）— the colour the shader background settles to at full
-          scroll (AboutBlendBackground's own SETTINGS.colors[1]; keep the two
-          in step when retuning), so overscroll rubber-banding at the page's
-          ends blends with it rather than flashing the old pink. */}
-      <PageBodyBackground color="#438ed0" />
+      {/* ページ下端のオーバースクロール（ゴムのように引っ張られる領域）の色を、
+          背景がスクロールし切ったときの全面色に合わせる。以前はここに
+          #438ed0（バリアント1の収束色）を直接書いていたが、背景が3種から
+          選べるようになったので、選択を読んで色を出し分ける小さな
+          クライアントコンポーネントに逃がしてある
+          （components/about-body-background.tsx）。 */}
+      <AboutBodyBackground />
 
       {/* Shared between both trees below, so it renders once,
           unconditionally, rather than being split/duplicated the way the
@@ -323,6 +326,34 @@ export default function About() {
               詰めるためのもので、グリッドの値ではないので --scale/--grid-scale
               は掛けない（画面幅で増減させない）。リード文は別の箱なので
               動かない。 */}
+          {/* 背景グラデの切替（Figma node 1848:7）。この箱の右端は
+              198px*gs + 1218px*gs = 1416px*gs で、1440px 時に画面右 24px —
+              Figma の右端とちょうど一致するので right-0 でよい。
+
+              top は「見出し1行目のキャップ上端」に合わせる（Figma では
+              見出しの y と切替の y がどちらも 318）。この箱の上端は見出しの
+              **行ボックス**の上端なので、キャップ上端まではその差ぶん下がる:
+
+                ハーフレディング (54 - (ascent 50 + descent 15)) / 2 = -5.5px
+                ＋ アセントからキャップ上端まで (50 - 35.3) = 14.7px
+                = 9.2px
+
+              （50px / line-height 54px、akzidenz-grotesk-next-pro の実測値。
+               本番ページで canvas の TextMetrics と text-box-trim の実測の
+               両方から確認済み。見出しのサイズ・行間・書体を変えたら
+               測り直すこと。）切替側は text-box-trim が効いているので
+               ボックス上端＝キャップ上端、そのまま 9.2px 下げれば揃う。
+
+              リード文と同じ fadeOnly のフェードインで出す（見出しは
+              カーテンリビールなので、同じ方向に動かすとぶつかる）。 */}
+          <RevealOnMount
+            fadeOnly
+            className="absolute right-0 z-10"
+            style={{ top: "calc(9.2px * var(--scale))" }}
+          >
+            <AboutGradSwitch />
+          </RevealOnMount>
+
           <CurtainRevealLines
             as="h1"
             lines={HERO_LINES}

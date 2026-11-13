@@ -8,6 +8,7 @@ import { MobileAboutSection } from "@/components/mobile-about-section";
 import { RecentlyPlayedFlip } from "@/components/recently-played-flip";
 import { MobileAboutSideNav } from "@/components/mobile-about-side-nav";
 import { CurtainRevealLines } from "@/components/curtain-reveal-lines";
+import { AboutGradSwitch } from "@/components/about-grad-switch";
 import { RevealOnMount } from "@/components/reveal-on-mount";
 import { setFooterReady as broadcastFooterReady } from "@/lib/footer-mode-store";
 import { useNowPlaying } from "@/components/now-playing-provider";
@@ -338,6 +339,15 @@ export function MobileAbout() {
                   {HERO_LEAD_EN.join(" ")}
                 </p>
               </div>
+
+              {/* ★ 仮配置 — 背景グラデの切替（PC は Figma node 1848:7 の
+                  指定どおり FV 右上だが、SP の置き場所は指定が無い）。
+                  とりあえず英文リードの下、同じ左面に流し込んである。
+                  位置が決まったらこのブロックごと動かすこと。
+
+                  PC が 12px なのに対して SP は 13px — 周りの英文リードと
+                  同じサイズに合わせてある（SP は全体が少し大きい組み）。 */}
+              <AboutGradSwitch className="mt-[25px]" style={{ fontSize: 13 }} />
             </RevealOnMount>
           </div>
 

@@ -1,10 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
 import { fullViewportHeightPx, installViewportHeightVar } from "@/lib/viewport-height";
 import { useFadeIn } from "@/components/use-fade-in";
+import {
+  getAboutGradient,
+  getAboutGradientServerSnapshot,
+  resetAboutGradient,
+  subscribeAboutGradient,
+  type AboutGradientVariant,
+} from "@/lib/about-gradient-store";
 
 /**
  * About page's animated "colour blend" background — the production port of
@@ -286,6 +293,395 @@ void main() {
 }
 `;
 
+/* ============================================================================
+   バリアント 2 / 3 — FV の「Change Grad. 1 2 3」で切り替わる別案
+   ============================================================================
+   1（上の SETTINGS / FRAG_SRC）は従来どおり一切変えていない。2 と 3 は
+   bg-lab.html の B（溶け合い）/ C（水彩）モードの移植で、パラメータは
+   ラボで詰めた値そのまま（Smear（虹彩・淡地）/ Bloom（水彩・暖））。
+
+   スクロール収束（u_settle）の扱いも 1 と揃えてある — 1 が「C1 以外の色面が
+   縮んで消える」のに対し、
+     2 … 地（C0 = サイトの背景色）の重みを上げていく。softmax なので重みが
+         上がった色が面積を広げ、最後は地一色になる
+     3 … 塗る面積のしきい値を上げていく。ウォッシュが縮んで紙（C0）に戻る
+   どちらも「要素が小さくなっていく」読みで、全面クロスフェードではない。
+   u_reveal（登場アニメ）も 1 と同じく s = max(settle, 1 - reveal) で共有。 */
+
+const SETTINGS_2 = {
+  colors: ["#f6f6f4", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
+  speed: 0.1,
+  scale: 3.5,
+  warp: 2,
+  streak: 2,
+  contrast: 1.5,
+  saturation: 1.15,
+  cursorStrength: 0.15,
+  grain: 0.06,
+  grainSize: 1,
+  grainFps: 12,
+  renderScale: 0.7,
+  topColor: "#f6f6f4",
+  topRange: 0.5,
+  topMix: 0.75,
+  edgeNoise: 0.1,
+  edgeNoiseScale: 2,
+  edgeStretch: 4,
+  bleed: 0.05,
+  drip: 0.4,
+  spread: 0.35,
+  ground: 0.18,
+} as const;
+
+const SETTINGS_3 = {
+  colors: ["#fff7e5", "#ff441a", "#f352ff", "#ff75ba", "#2e93ff"],
+  speed: 0.08,
+  scale: 2.8,
+  warp: 0.5,
+  streak: 0,
+  contrast: 1,
+  saturation: 1,
+  cursorStrength: 0.15,
+  grain: 0.06,
+  grainSize: 1,
+  grainFps: 12,
+  // ラボで詰めたときの値。1 なので内部解像度を落とさない＝バリアント1の
+  // 0.7 に比べて約2倍のピクセルを毎フレーム塗る。粒の細かさがこの値に
+  // 直結しているので下げると見た目が変わる。重い端末で問題が出たら
+  // ここを 0.8 あたりに下げて、グレイン量と合わせて見直すこと。
+  renderScale: 1,
+  topColor: "#ffffff",
+  topRange: 0.5,
+  topMix: 0.5,
+  edgeNoise: 0.08,
+  edgeNoiseScale: 1.5,
+  edgeStretch: 0,
+  coverage: 0.05,
+  bloom: 0.2,
+  edge: 0.2,
+  opacity: 0.74,
+  granule: 0.58,
+  washes: 4,
+  breath: 0.1,
+  stack: 0.15,
+  mixSharp: 0.55,
+} as const;
+
+/** バリアント2/3 で共通の前置き（ユニフォーム宣言とノイズ関数）。
+ *  1 の FRAG_SRC とは別に持っている — 1 を触らずに済ませるため。 */
+const COMMON_SRC = `
+precision highp float;
+uniform vec2  u_res;
+uniform float u_time;
+uniform vec2  u_mouse;
+uniform float u_settle;
+uniform float u_reveal;
+uniform float u_seed;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i),                 hash(i + vec2(1.0, 0.0)), u.x),
+             mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+             u.y);
+}
+// ラボの fbm(octaves=2) を展開したもの（1 の fbm2 と同一）。
+float fbm2(vec2 p) {
+  float v = 0.5 * noise(p);
+  v += 0.25 * noise(p * 2.03 + vec2(17.0, 9.0));
+  return v / 0.75;
+}
+vec3 satAdjust(vec3 c, float s) {
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  return mix(vec3(l), c, s);
+}
+`;
+
+const FRAG_SRC_2 = `${COMMON_SRC}
+const float SPEED    = ${glf(SETTINGS_2.speed)};
+const float SCALE    = ${glf(SETTINGS_2.scale)};
+const float WARP     = ${glf(SETTINGS_2.warp)};
+const float STREAK   = ${glf(SETTINGS_2.streak)};
+const float CONTRAST = ${glf(SETTINGS_2.contrast)};
+const float SAT      = ${glf(SETTINGS_2.saturation)};
+const float CURSOR   = ${glf(SETTINGS_2.cursorStrength)};
+const float GRAIN     = ${glf(SETTINGS_2.grain)};
+const float GRAIN_PX  = ${glf(SETTINGS_2.grainSize)};
+const float GRAIN_FPS = ${glf(SETTINGS_2.grainFps)};
+const float EDGE_NOISE    = ${glf(SETTINGS_2.edgeNoise)};
+const float EDGE_NOISE_PX = ${glf(SETTINGS_2.edgeNoiseScale)};
+const float EDGE_STRETCH  = ${glf(SETTINGS_2.edgeStretch)};
+const float BLEED  = ${glf(SETTINGS_2.bleed)};
+const float DRIP   = ${glf(SETTINGS_2.drip)};
+const float SPREAD = ${glf(SETTINGS_2.spread)};
+const float GROUND = ${glf(SETTINGS_2.ground)};
+const vec3 C0 = ${glslColor(SETTINGS_2.colors[0])}; // 地 = settleの収束先
+const vec3 C1 = ${glslColor(SETTINGS_2.colors[1])};
+const vec3 C2 = ${glslColor(SETTINGS_2.colors[2])};
+const vec3 C3 = ${glslColor(SETTINGS_2.colors[3])};
+const vec3 C4 = ${glslColor(SETTINGS_2.colors[4])};
+const vec3 TOP_COLOR  = ${glslColor(SETTINGS_2.topColor)};
+const float TOP_RANGE = ${glf(SETTINGS_2.topRange)};
+const float TOP_MIX   = ${glf(SETTINGS_2.topMix)};
+// settle で地の重みに足す量。
+// s=1 で**必ず**地一色になる必要があるので、他の色との場の差が最大
+// （fbm の値域 0..1 なので 1.0）になった場合でも地が勝つ量にしてある。
+// 0.45 だと、たまたま地の場が低く他の色が高い帯だけ色が残っていた
+// （実測で確認）。1.3 なら差の最大 1.0 を確実に上回る。
+//
+// ただし softmax は指数なので、線形に足すと早々に飽和して「序盤で白く
+// なり切って、あとは何も動かない」になる（1.3 を線形で足すと s=0.5 で
+// 既に全面が地だった。実測で確認）。実際に見た目が動くのは 0〜0.6 あたり
+// なので、s を2乗して序盤をゆるくし、終盤で確実に振り切らせる。
+const float SETTLE_GROUND = 1.3;
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  float aspect = u_res.x / u_res.y;
+  float s = max(u_settle, 1.0 - u_reveal);
+
+  vec2 mp = u_mouse - 0.5;
+  mp.x *= aspect;
+  vec2 dvec = (uv - 0.5) * vec2(aspect, 1.0) - mp;
+  float infl = exp(-dot(dvec, dvec) / (2.0 * 0.15 * 0.15));
+
+  vec2 p = uv;
+  p.x *= aspect;
+  p += dvec * infl * CURSOR;
+  p.y /= 1.0 + STREAK;
+
+  float t = u_time * SPEED;
+
+  // 垂れ（スキージ）: 軸直交方向だけに依存するノイズを軸方向のオフセットに。
+  float d = fbm2(vec2(p.x * SCALE * 0.7, t * 0.25 + 40.0));
+  p.y -= (d - 0.5) * DRIP;
+
+  vec2 q0 = p * SCALE + u_seed;
+  vec2 w = vec2(fbm2(q0 + t * 0.10),
+                fbm2(q0 + vec2(5.2, 1.3) - t * 0.07));
+  vec2 sp = q0 + WARP * w;
+
+  // 境界のにじみ（1 と同一の手法）。
+  float eFrame = floor(u_time * GRAIN_FPS);
+  vec2 egp = gl_FragCoord.xy;
+  egp.y /= 1.0 + EDGE_STRETCH;
+  egp = floor(egp / EDGE_NOISE_PX);
+  float en = mix(hash(egp + fract(eFrame * 0.1031) * vec2(19.3, 7.7)),
+                 hash(egp * 0.37 + 13.7), 0.5);
+  float dn = (en - 0.5) * EDGE_NOISE;
+
+  // 5色それぞれの場。倍率を変えて塊の大きさをばらけさせる（ラボと同一）。
+  float f0 = fbm2(sp * 0.78) + dn + GROUND + SETTLE_GROUND * s * s;
+  float f1 = fbm2(sp * 1.13 + vec2(11.3,  4.1)) + dn + SPREAD *  0.10;
+  float f2 = fbm2(sp * 0.91 + vec2( 3.7, 19.5)) + dn + SPREAD * -0.06;
+  float f3 = fbm2(sp * 1.37 + vec2(23.1,  8.8)) + dn + SPREAD *  0.04;
+  float f4 = fbm2(sp * 0.64 + vec2( 7.9, 31.2)) + dn + SPREAD * -0.12;
+
+  // softmax。最大値を引いてから exp に入れる（オーバーフロー回避。引いた分は
+  // 正規化で相殺されるので結果は変わらない）。
+  float m = max(max(max(f0, f1), max(f2, f3)), f4);
+  float w0 = exp((f0 - m) / BLEED);
+  float w1 = exp((f1 - m) / BLEED);
+  float w2 = exp((f2 - m) / BLEED);
+  float w3 = exp((f3 - m) / BLEED);
+  float w4 = exp((f4 - m) / BLEED);
+  float sum = w0 + w1 + w2 + w3 + w4;
+  vec3 col = (C0 * w0 + C1 * w1 + C2 * w2 + C3 * w3 + C4 * w4) / sum;
+
+  // 何色が実際に効いているか（逆参加率）。混ざっている所ほどコントラストを
+  // 弱める — 全面に均一に掛けると混色でできた中間色まで持ち上がるため。
+  vec3 n0 = vec3(w0, w1, w2) / sum;
+  vec2 n1 = vec2(w3, w4) / sum;
+  float spread = 1.0 / max(dot(n0, n0) + dot(n1, n1), 1e-4);
+  float cw = mix(CONTRAST, 1.0, clamp((spread - 1.0) / 3.0, 0.0, 1.0));
+  // settle でコントラスト・彩度とも 1.0 へ戻す — 収束後の全面色が
+  // 「補正済みの C0 もどき」ではなく C0 そのものになるように。
+  col = (col - 0.5) * mix(cw, 1.0, s) + 0.5;
+  col = satAdjust(col, mix(SAT, 1.0, s));
+
+  // 画面上部の色帯（1 と同じく u_settle のみに追従。登場アニメの影響は受けない）。
+  float topRange = TOP_RANGE * (1.0 - u_settle);
+  float topM = smoothstep(1.0 - max(topRange, 0.001), 1.0, uv.y);
+  col = mix(col, TOP_COLOR, topM * TOP_MIX * (1.0 - u_settle));
+
+  float gFrame = floor(u_time * GRAIN_FPS);
+  vec2 gp = floor(gl_FragCoord.xy / GRAIN_PX);
+  float g = hash(gp + fract(gFrame * 0.1031) * vec2(37.7, 17.3)) - 0.5;
+  col += g * GRAIN;
+
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+`;
+
+const FRAG_SRC_3 = `${COMMON_SRC}
+const float SPEED    = ${glf(SETTINGS_3.speed)};
+const float SCALE    = ${glf(SETTINGS_3.scale)};
+const float WARP     = ${glf(SETTINGS_3.warp)};
+const float STREAK   = ${glf(SETTINGS_3.streak)};
+const float CONTRAST = ${glf(SETTINGS_3.contrast)};
+const float SAT      = ${glf(SETTINGS_3.saturation)};
+const float CURSOR   = ${glf(SETTINGS_3.cursorStrength)};
+const float GRAIN     = ${glf(SETTINGS_3.grain)};
+const float GRAIN_PX  = ${glf(SETTINGS_3.grainSize)};
+const float GRAIN_FPS = ${glf(SETTINGS_3.grainFps)};
+const float EDGE_NOISE    = ${glf(SETTINGS_3.edgeNoise)};
+const float EDGE_NOISE_PX = ${glf(SETTINGS_3.edgeNoiseScale)};
+const float EDGE_STRETCH  = ${glf(SETTINGS_3.edgeStretch)};
+const float BLOOM    = ${glf(SETTINGS_3.bloom)};
+const float EDGE     = ${glf(SETTINGS_3.edge)};
+const float OPACITY  = ${glf(SETTINGS_3.opacity)};
+const float GRANULE  = ${glf(SETTINGS_3.granule)};
+const float BREATH   = ${glf(SETTINGS_3.breath)};
+const float STACK    = ${glf(SETTINGS_3.stack)};
+const float MIX_POW  = ${glf(Math.round((1 + SETTINGS_3.mixSharp * 3) * 1e4) / 1e4)};
+// 塗る面積のしきい値（ラボの mix(0.78, 0.34, coverage) を焼き込んだもの）。
+const float THR = ${glf(Math.round((0.78 + (0.34 - 0.78) * SETTINGS_3.coverage) * 1e4) / 1e4)};
+const int WASHES = ${SETTINGS_3.washes};
+const vec3 C0 = ${glslColor(SETTINGS_3.colors[0])}; // 紙 = settleの収束先
+const vec3 C1 = ${glslColor(SETTINGS_3.colors[1])};
+const vec3 C2 = ${glslColor(SETTINGS_3.colors[2])};
+const vec3 C3 = ${glslColor(SETTINGS_3.colors[3])};
+const vec3 C4 = ${glslColor(SETTINGS_3.colors[4])};
+const vec3 TOP_COLOR  = ${glslColor(SETTINGS_3.topColor)};
+const float TOP_RANGE = ${glf(SETTINGS_3.topRange)};
+const float TOP_MIX   = ${glf(SETTINGS_3.topMix)};
+// settle でしきい値に足す量。
+// しきい値が fbm の値域の上端（1.0）＋滲み幅ぶんを超えるとウォッシュが
+// 完全に消えて紙だけになる。THR + これ が**ちょうど**そこに届く量にする
+// ——大きすぎると途中で収束し切ってしまい、スクロールの後半は何も
+// 動かない（1.2 だと s=0.2 あたりで紙になっていた。実測で確認）。
+//   必要量 = 1.0 + BLOOM - THR = 1.0 + 0.2 - 0.758 ≒ 0.44
+const float SETTLE_THR = 0.46;
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / u_res;
+  float aspect = u_res.x / u_res.y;
+  float s = max(u_settle, 1.0 - u_reveal);
+
+  vec2 mp = u_mouse - 0.5;
+  mp.x *= aspect;
+  vec2 dvec = (uv - 0.5) * vec2(aspect, 1.0) - mp;
+  float infl = exp(-dot(dvec, dvec) / (2.0 * 0.15 * 0.15));
+
+  vec2 p = uv;
+  p.x *= aspect;
+  p += dvec * infl * CURSOR;
+  p.y /= 1.0 + STREAK;
+  vec2 q0 = p * SCALE + u_seed;
+
+  float t = u_time * SPEED;
+  vec2 w = vec2(fbm2(q0 + t * 0.08),
+                fbm2(q0 + vec2(5.2, 1.3) - t * 0.06));
+  vec2 sp = q0 + WARP * w;
+
+  float eFrame = floor(u_time * GRAIN_FPS);
+  vec2 egp = gl_FragCoord.xy;
+  egp.y /= 1.0 + EDGE_STRETCH;
+  egp = floor(egp / EDGE_NOISE_PX);
+  float en = mix(hash(egp + fract(eFrame * 0.1031) * vec2(19.3, 7.7)),
+                 hash(egp * 0.37 + 13.7), 0.5);
+  float dn = (en - 0.5) * EDGE_NOISE;
+
+  // 紙の目。細かいノイズ（繊維）と粗いムラ（水たまり）を混ぜる。
+  float fine   = noise(gl_FragCoord.xy / 2.5);
+  float coarse = fbm2(sp * 0.6 + vec2(61.3, 17.9));
+  float granule = 1.0 + (mix(fine, coarse, 0.5) - 0.5) * GRANULE * 1.2;
+
+  // 顔料は吸収（-log(色)）の空間で、重み付き平均を取ってから一度だけ乗せる。
+  // 1枚ずつ乗算していくと重なった所で吸収が青天井に積み上がって黒く潰れる。
+  vec3 absorb = vec3(0.0);
+  float wSum = 0.0;
+  float dSum = 0.0;
+  float dMax = 0.0;
+
+  for (int i = 0; i < 4; i++) {
+    if (i >= WASHES) break;
+
+    vec2 off = vec2(13.1, 5.7) * float(i + 1) + vec2(0.0, 7.3);
+    float field = fbm2(sp * (0.8 + 0.22 * float(i)) + off) + dn;
+
+    // 呼吸（輪郭がじわじわ出入りする）＋ settle（しきい値が上がって
+    // 塗り面が縮み、最後は紙だけになる）。
+    float thr = THR + SETTLE_THR * s
+              - BREATH * sin(u_time * SPEED * 2.0 + float(i) * 1.9);
+
+    float b = max(BLOOM, 0.01);
+    float body = smoothstep(thr - b, thr + b, field);
+    // 乾き際の縁に顔料が溜まるぶん。
+    float e = (field - thr) / (b * 0.75);
+    float rim = exp(-e * e);
+    float dens = max((body + rim * EDGE) * granule, 0.0) * OPACITY;
+
+    vec3 pig = i == 0 ? C1 : (i == 1 ? C2 : (i == 2 ? C3 : C4));
+    float ww = pow(dens, MIX_POW);
+    absorb += (-log(max(pig, vec3(0.004)))) * ww;
+    wSum += ww;
+    dSum += dens;
+    dMax = max(dMax, dens);
+  }
+
+  vec3 col = C0;  // 紙
+  if (dSum > 0.0) {
+    vec3 mixedAbsorb = absorb / max(wSum, 1e-5);
+    float thickness = mix(dMax, dSum, STACK);
+    col *= exp(-mixedAbsorb * thickness);
+  }
+
+  col = (col - 0.5) * mix(CONTRAST, 1.0, s) + 0.5;
+  col = satAdjust(col, mix(SAT, 1.0, s));
+
+  float topRange = TOP_RANGE * (1.0 - u_settle);
+  float topM = smoothstep(1.0 - max(topRange, 0.001), 1.0, uv.y);
+  col = mix(col, TOP_COLOR, topM * TOP_MIX * (1.0 - u_settle));
+
+  float gFrame = floor(u_time * GRAIN_FPS);
+  vec2 gp = floor(gl_FragCoord.xy / GRAIN_PX);
+  float g = hash(gp + fract(gFrame * 0.1031) * vec2(37.7, 17.3)) - 0.5;
+  col += g * GRAIN;
+
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+`;
+
+/** バリアントごとの描画設定。配列の添字は variant - 1。 */
+const VARIANTS = [
+  {
+    frag: FRAG_SRC,
+    renderScale: SETTINGS.renderScale,
+    /** ページ上部（グラデ上端）の色 → 収束先の色。ブラウザUIの色に使う。 */
+    uiFrom: SETTINGS.topColor,
+    uiTo: SETTINGS.colors[1],
+    /** 登場アニメで s をどこから動かすか（下の S_START の doc comment 参照）。 */
+    sStart: 0.36,
+  },
+  {
+    frag: FRAG_SRC_2,
+    renderScale: SETTINGS_2.renderScale,
+    uiFrom: SETTINGS_2.topColor,
+    uiTo: SETTINGS_2.colors[0],
+    // 2 / 3 は s の 0..1 全域が見た目に効く（1 のようにしきい値が色の値域の
+    // 外に出て「何も起きない区間」ができる構造ではない）ので、頭から動かす。
+    sStart: 1,
+  },
+  {
+    frag: FRAG_SRC_3,
+    renderScale: SETTINGS_3.renderScale,
+    uiFrom: SETTINGS_3.topColor,
+    uiTo: SETTINGS_3.colors[0],
+    sStart: 1,
+  },
+] as const;
+
+/** バリアントごとの「スクロールし切ったときの全面色」。配列の添字は
+ *  variant - 1。ページ下端のオーバースクロール領域の色に使う
+ *  （components/about-body-background.tsx）。VARIANTS.uiTo と同じもので、
+ *  外から読む用に名前を付けて出しているだけ。 */
+export const ABOUT_SETTLE_COLORS = VARIANTS.map((v) => v.uiTo);
+
 /**
  * ステータスバー / ツールバー周辺の色を、背景のスクロール状態に追従させる。
  *
@@ -300,9 +696,6 @@ void main() {
  * 収束する」という決まった変化をするので、その2色間を settle で補間すれば
  * 画面の上端・下端どちらでも隣接する実際の色とほぼ一致する。
  */
-const UI_COLOR_FROM = SETTINGS.topColor; // ページ上部：グラデ上端の淡い色
-const UI_COLOR_TO = SETTINGS.colors[1]; // 収束先：settle 完了時の全面色
-
 /** 直前に適用した値。同じ色を毎tick書き込んでも無駄なので差分だけ反映する。 */
 let appliedUiColor: string | null = null;
 /** 初回に上書きする前の theme-color。アンマウント時に戻すため保持する。 */
@@ -322,11 +715,14 @@ function mixHex(a: string, b: string, t: number): string {
   return `#${ch(ar, br)}${ch(ag, bg)}${ch(ab, bb)}`;
 }
 
-function syncBrowserUiColor(settle: number) {
+// バリアントごとに「上部の色」と「収束先の色」が違うので、どちらの色の間を
+// 補間するかは呼び出し側から渡す（VARIANTS の uiFrom / uiTo）。
+function syncBrowserUiColor(settle: number, variant: AboutGradientVariant) {
+  const { uiFrom, uiTo } = VARIANTS[variant - 1];
   // 1/32 に量子化 — 1pxスクロールごとに meta を書き換えると Safari 側が
   // 追従しきれずちらつくため。見た目には連続に見える粒度。
   const stepped = Math.round(Math.min(Math.max(settle, 0), 1) * 32) / 32;
-  const color = mixHex(UI_COLOR_FROM, UI_COLOR_TO, stepped);
+  const color = mixHex(uiFrom, uiTo, stepped);
   if (color === appliedUiColor) return;
   appliedUiColor = color;
 
@@ -365,6 +761,28 @@ export function AboutBlendBackground() {
   // component (and re-run nothing useful) 60x/sec while scrolling.
   const settleRef = useRef(0);
 
+  // FV の「Change Grad. 1 2 3」で選ばれているバリアント。
+  const variant = useSyncExternalStore(subscribeAboutGradient, getAboutGradient, getAboutGradientServerSnapshot);
+  // 描画ループは下の init effect の中で一度だけ組み立てるので、そこから
+  // 現在値を読むための ref。state を直接読むとループを張り直すことになり、
+  // 切り替えのたびに WebGL の初期化（＝シードと経過時間のリセット）が
+  // 走ってしまう。
+  const variantRef = useRef<AboutGradientVariant>(variant);
+  // 内部解像度がバリアントで違うので、切り替わったら resize をやり直す
+  // 必要がある。その関数を init effect から預かる。
+  const resizeRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    variantRef.current = variant;
+    resizeRef.current?.();
+    // ブラウザUIの色もバリアントで変わる。スクロールを待たずに即反映する。
+    syncBrowserUiColor(settleRef.current, variant);
+  }, [variant]);
+
+  // About を離れたら 1 に戻す（lib/about-gradient-store.ts の doc comment
+  // 参照 — モジュールスコープの値はクライアント遷移をまたいで生き残るため）。
+  useEffect(() => resetAboutGradient, []);
+
   // useCallback — a fresh function reference every render would re-fire
   // lenis-react's own effect on every render, not just real scroll ticks —
   // same convention as every other useLenis caller in this codebase (see
@@ -373,13 +791,13 @@ export function AboutBlendBackground() {
     const linear = Math.min(lenis.progress / SETTLE_FULL_PROGRESS_FRACTION, 1);
     const settle = linear ** SETTLE_EASE_POWER;
     settleRef.current = settle;
-    syncBrowserUiColor(settle);
+    syncBrowserUiColor(settle, variantRef.current);
   }, []);
   const lenis = useLenis(handleLenisScroll);
 
   // 初期表示ぶん（スクロールする前）の1回。アンマウント時は元の色に戻す。
   useEffect(() => {
-    syncBrowserUiColor(settleRef.current);
+    syncBrowserUiColor(settleRef.current, variantRef.current);
     return restoreBrowserUiColor;
   }, []);
 
@@ -430,39 +848,63 @@ export function AboutBlendBackground() {
       return shader;
     }
 
-    const vs = compile(gl.VERTEX_SHADER, VERT_SRC);
-    const fs = compile(gl.FRAGMENT_SHADER, FRAG_SRC);
-    const program = gl.createProgram();
-    if (!program) return;
-    gl.attachShader(program, vs);
-    gl.attachShader(program, fs);
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error(gl.getProgramInfoLog(program));
-      return;
-    }
-    gl.useProgram(program);
-
     // Fullscreen triangle (one fewer vertex than a quad — same trick the lab
-    // uses).
+    // uses). Shared by all three programs.
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const posLoc = gl.getAttribLocation(program, "a_position");
-    gl.enableVertexAttribArray(posLoc);
-    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-
-    const uRes = gl.getUniformLocation(program, "u_res");
-    const uTime = gl.getUniformLocation(program, "u_time");
-    const uMouse = gl.getUniformLocation(program, "u_mouse");
-    const uReveal = gl.getUniformLocation(program, "u_reveal");
-    const uSettle = gl.getUniformLocation(program, "u_settle");
 
     // Picked once per mount (i.e. once per visit to this page, since this
     // component remounts on navigation) — per direct follow-up ("毎回模様は
     // ランダムになるようにして"). Same 0..100 range the lab's own シード変更
-    // button uses. Set once here, never re-uploaded per frame.
-    gl.uniform1f(gl.getUniformLocation(program, "u_seed"), Math.random() * 100);
+    // button uses. Set once per program, never re-uploaded per frame.
+    // バリアントを切り替えても同じ構図のまま見比べられるよう、3本で共有する。
+    const seed = Math.random() * 100;
+
+    // 3バリアントぶんまとめてコンパイルしておく。切り替えのたびにコンパイル
+    // すると一瞬止まるため。頂点属性の位置はプログラムごとに取り直す
+    // （同じソースでも 0 番に来る保証は無い）。
+    const vs = compile(gl.VERTEX_SHADER, VERT_SRC);
+    type Built = {
+      program: WebGLProgram;
+      uRes: WebGLUniformLocation | null;
+      uTime: WebGLUniformLocation | null;
+      uMouse: WebGLUniformLocation | null;
+      uReveal: WebGLUniformLocation | null;
+      uSettle: WebGLUniformLocation | null;
+    };
+    function build(frag: string): Built | null {
+      const program = gl.createProgram();
+      if (!program) return null;
+      gl.attachShader(program, vs);
+      gl.attachShader(program, compile(gl.FRAGMENT_SHADER, frag));
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error(gl.getProgramInfoLog(program));
+        return null;
+      }
+      gl.useProgram(program);
+      const posLoc = gl.getAttribLocation(program, "a_position");
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.uniform1f(gl.getUniformLocation(program, "u_seed"), seed);
+      return {
+        program,
+        uRes: gl.getUniformLocation(program, "u_res"),
+        uTime: gl.getUniformLocation(program, "u_time"),
+        uMouse: gl.getUniformLocation(program, "u_mouse"),
+        uReveal: gl.getUniformLocation(program, "u_reveal"),
+        uSettle: gl.getUniformLocation(program, "u_settle"),
+      };
+    }
+    const built = VARIANTS.map((v) => build(v.frag));
+    // 1 すら作れない環境では描けるものが無いので何もしない（canvas は
+    // 透明のまま＝ページの地色が見える）。
+    if (!built[0]) return;
+    // 型を明示して束ね直す — 上のガードによる絞り込みは、下の関数宣言
+    // （render）の中までは効かない（このファイルの gl / canvas が同じ理由で
+    // 再束縛されているのと同じ事情）。
+    const fallback: Built = built[0];
 
     const mouseTarget: [number, number] = [0.5, 0.5];
     const mouseSmoothed: [number, number] = [0.5, 0.5];
@@ -473,18 +915,22 @@ export function AboutBlendBackground() {
     window.addEventListener("pointermove", handlePointerMove);
 
     function resize() {
-      // renderScale (0.7, from the lab settings) shrinks the internal buffer
+      // renderScale (from the lab settings) shrinks the internal buffer
       // — the lab's own "軽い + タダでソフトになる" lever, kept as-tuned.
       // Grain/dissolve pixel sizes are computed off gl_FragCoord (buffer
       // pixels), matching what the lab showed at this same renderScale.
+      // バリアントごとに値が違うので、切り替え時にもここを呼び直す。
+      const renderScale = VARIANTS[variantRef.current - 1].renderScale;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.max(1, Math.round(window.innerWidth * dpr * SETTINGS.renderScale));
+      canvas.width = Math.max(1, Math.round(window.innerWidth * dpr * renderScale));
       const viewportHeight = fullViewportHeightPx();
-      canvas.height = Math.max(1, Math.round(viewportHeight * dpr * SETTINGS.renderScale));
+      canvas.height = Math.max(1, Math.round(viewportHeight * dpr * renderScale));
       gl.viewport(0, 0, canvas.width, canvas.height);
     }
     window.addEventListener("resize", resize);
     resize();
+    // バリアント切替の effect から呼べるように預ける。
+    resizeRef.current = resize;
 
     const startTime = performance.now();
     let rafId = 0;
@@ -495,6 +941,13 @@ export function AboutBlendBackground() {
       // follows at the approved pace.
       mouseSmoothed[0] += (mouseTarget[0] - mouseSmoothed[0]) * 0.04;
       mouseSmoothed[1] += (mouseTarget[1] - mouseSmoothed[1]) * 0.04;
+
+      // 現在のバリアントのプログラムで描く。コンパイルに失敗したバリアント
+      // （端末依存で起こりうる）は 1 にフォールバックして、真っ黒な画面に
+      // ならないようにする。
+      const active = built[variantRef.current - 1] ?? fallback;
+      gl.useProgram(active.program);
+      const { uRes, uTime, uMouse, uReveal, uSettle } = active;
 
       gl.uniform2f(uRes, canvas.width, canvas.height);
       gl.uniform1f(uTime, t);
@@ -515,7 +968,10 @@ export function AboutBlendBackground() {
       // smootherstep（6t⁵-15t⁴+10t³）にする。この曲線は t=0 と t=1 の両端で
       // 速度も加速度も 0 なので、動き出しと止まりの両方が滑らかになる。
       // 可視範囲の通過に全体の6割強を使い、最後まで動きが残る。
-      const S_START = 0.36;
+      // バリアントごとに違う（VARIANTS の sStart）。上の説明は 1 の値
+      // 0.36 がどこから来たかの経緯で、2 / 3 はしきい値が色の値域の外に
+      // 出る構造ではないため 0..1 全域が効く＝1 を使う。
+      const S_START = VARIANTS[variantRef.current - 1].sStart;
       // ease-out（1-(1-t)^k）。smootherstep は両端の速度が 0 になるため
       // 止まり際は滑らかになったが、開き始めまで遅くなってしまった
       // （"フェードイン途中からグラデが表示されるタイミングが遅くなった"）。
