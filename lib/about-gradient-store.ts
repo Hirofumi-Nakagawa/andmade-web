@@ -6,13 +6,14 @@
  * 別々の木に居るので、props では繋げない。lib/footer-mode-store.ts と
  * まったく同じ形の購読ストアにして、どちらも useSyncExternalStore で読む。
  *
- * **保存しない。** リロードでもページ移動でも 1（既存の背景）に戻る
- * （直接の指示）。localStorage / sessionStorage は使わず、値はモジュール
- * スコープにだけ持つ。ただしモジュールスコープはクライアント遷移をまたいで
- * 生き残るので、About を離れて戻ってきたときに選択が残ってしまう。
- * それを防ぐため、背景コンポーネントがアンマウント時に
- * resetAboutGradient() を呼ぶ（footer-mode-store が各ページの unmount で
- * false に戻しているのと同じ考え方）。
+ * **保持の範囲はモジュールスコープそのもの**（直接の指示）:
+ *   ・別ページへ移動して About に戻る → 選んだ背景のまま
+ *     （クライアント遷移では JS のモジュールが生き続けるので何もしなくてよい）
+ *   ・リロード / 直接アクセス → 1（既存の背景）に戻る
+ *     （バンドルが読み直されてこの値が初期化されるので、これも自動）
+ *
+ * つまり localStorage / sessionStorage は使わない。使うとリロードでも
+ * 残ってしまい、「初めて開いた人が見る背景」が人によって変わる。
  */
 type Listener = () => void;
 
@@ -21,6 +22,7 @@ export type AboutGradientVariant = 1 | 2 | 3;
 
 export const ABOUT_GRADIENT_VARIANTS: readonly AboutGradientVariant[] = [1, 2, 3];
 
+/** リロード直後・初回アクセス時の背景。 */
 const DEFAULT_VARIANT: AboutGradientVariant = 1;
 
 let variant: AboutGradientVariant = DEFAULT_VARIANT;
@@ -30,11 +32,6 @@ export function setAboutGradient(value: AboutGradientVariant) {
   if (variant === value) return;
   variant = value;
   listeners.forEach((listener) => listener());
-}
-
-/** About を離れるときに呼ぶ。上の doc comment 参照。 */
-export function resetAboutGradient() {
-  setAboutGradient(DEFAULT_VARIANT);
 }
 
 export function subscribeAboutGradient(listener: Listener) {

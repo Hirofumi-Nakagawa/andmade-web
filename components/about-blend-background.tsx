@@ -8,7 +8,6 @@ import { useFadeIn } from "@/components/use-fade-in";
 import {
   getAboutGradient,
   getAboutGradientServerSnapshot,
-  resetAboutGradient,
   subscribeAboutGradient,
   type AboutGradientVariant,
 } from "@/lib/about-gradient-store";
@@ -904,10 +903,6 @@ export function AboutBlendBackground() {
     // 連打された場合は前の予約を捨てて測り直す（不透明度は 0 のまま）。
     return () => timers.forEach(window.clearTimeout);
   }, [variant]);
-
-  // About を離れたら 1 に戻す（lib/about-gradient-store.ts の doc comment
-  // 参照 — モジュールスコープの値はクライアント遷移をまたいで生き残るため）。
-  useEffect(() => resetAboutGradient, []);
 
   // useCallback — a fresh function reference every render would re-fire
   // lenis-react's own effect on every render, not just real scroll ticks —
