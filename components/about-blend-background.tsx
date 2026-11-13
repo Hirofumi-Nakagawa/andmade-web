@@ -364,11 +364,16 @@ const SETTINGS_3 = {
   grain: 0.06,
   grainSize: 1,
   grainFps: 12,
-  // ラボで詰めたときの値。1 なので内部解像度を落とさない＝バリアント1の
-  // 0.7 に比べて約2倍のピクセルを毎フレーム塗る。粒の細かさがこの値に
-  // 直結しているので下げると見た目が変わる。重い端末で問題が出たら
-  // ここを 0.8 あたりに下げて、グレイン量と合わせて見直すこと。
-  renderScale: 1,
+  // 1 → 0.7（直接の指示「挙動が重い」への対処）。ラボで詰めたときは 1
+  // だったが、1 だと 1440x900 / DPR2 で 5.18M ピクセルを毎フレーム塗る
+  // ことになり（他バリアントは 2.54M）、ウォッシュ4枚ぶんのノイズ計算と
+  // 合わさって実測 33fps まで落ちていた。0.7 で他バリアントと同じ
+  // 2.54M・60fps に揃う。
+  //
+  // グレインの粒は内部解像度に対する大きさなので、下げると画面上では
+  // 粗くなる — が、その粗さは 1 / 2 と同じ条件になるということでもある
+  // （3つを並べたときの見え方は揃う）。
+  renderScale: 0.7,
   topColor: "#ffffff",
   topRange: 0.5,
   topMix: 0.5,
@@ -987,8 +992,20 @@ export function AboutBlendBackground() {
     function build(frag: string): Built | null {
       const program = gl.createProgram();
       if (!program) return null;
+      // compile() は失敗時に throw する。ここで受けておかないと、
+      // バリアント1つのコンパイルが通らないだけで effect 全体が投げ、
+      // React のエラー境界まで上がって **About ページごと真っ白**になる
+      // （実際にシェーダーの編集ミスで一度そうなった）。背景が出ない
+      // だけで済むよう、ここで止めて null を返す。
+      let fs: WebGLShader;
+      try {
+        fs = compile(gl.FRAGMENT_SHADER, frag);
+      } catch (error) {
+        console.error(error);
+        return null;
+      }
       gl.attachShader(program, vs);
-      gl.attachShader(program, compile(gl.FRAGMENT_SHADER, frag));
+      gl.attachShader(program, fs);
       gl.linkProgram(program);
       if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
         console.error(gl.getProgramInfoLog(program));
