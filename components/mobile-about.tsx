@@ -346,8 +346,15 @@ export function MobileAbout() {
                   位置が決まったらこのブロックごと動かすこと。
 
                   PC が 12px なのに対して SP は 13px — 周りの英文リードと
-                  同じサイズに合わせてある（SP は全体が少し大きい組み）。 */}
-              <AboutGradSwitch className="mt-[25px]" style={{ fontSize: 13 }} />
+                  同じサイズに合わせてある（SP は全体が少し大きい組み）。
+
+                  numberGapPx — PC は Figma どおり 5px だが、SP は指で押すので
+                  14px に広げてある。当たり判定はこの間隔から決まる
+                  （about-grad-switch.tsx の hitPadX 参照）ので、狭いままだと
+                  隣の数字と判定がぶつかって押し間違える。
+
+                  上マージン 40px は直接の指示。 */}
+              <AboutGradSwitch className="mt-[40px]" style={{ fontSize: 13 }} numberGapPx={14} />
             </RevealOnMount>
           </div>
 

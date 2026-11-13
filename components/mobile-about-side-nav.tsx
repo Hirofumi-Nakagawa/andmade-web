@@ -235,10 +235,17 @@ export function MobileAboutSideNav() {
   }
 
   return (
-    <div className="absolute inset-0">
+    // pointer-events-none — この箱は sticky を張り付かせるための領域で、
+    // ページの本文全体（幅いっぱい・全高）を覆っている。中身は左端の
+    // 縦組みナビだけなのに、そのままだと覆った範囲のタップを全部
+    // 吸ってしまう（FV の「Change Grad.」の 2 / 3 が押せなかったのは
+    // これ。SP は FV もこのラッパーの中に入っているため。PC 版は FV が
+    // ラッパーの外なので同じ問題は出ない）。実際に押せる必要があるのは
+    // 中の sticky（ナビ本体）だけなので、そちらで auto に戻す。
+    <div className="pointer-events-none absolute inset-0">
       <div
         ref={stickyRef}
-        className="sticky"
+        className="pointer-events-auto sticky"
         style={{
           top: STICKY_TOP_PX,
           willChange: "transform",

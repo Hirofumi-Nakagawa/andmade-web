@@ -25,13 +25,33 @@ import {
  * （"Change Grad."）に合わせてある。
  */
 
-/** 数字どうしの間隔（Figma: gap 5px）。 */
+/** 数字どうしの間隔（Figma: gap 5px）。SP は指で押すので広げる（下の
+ *  numberGapPx 参照）。 */
 const NUMBER_GAP_PX = 5;
+/** 当たり判定を数字の字面からどれだけ外へ広げるか（縦）。
+ *  12px の数字は実寸 7.5 × 9px しかなく、そのままでは指で押せない。
+ *  見た目は変えずに当たり判定だけ広げるため、ボタンの中に透明な箱を
+ *  重ねてある（レイアウトには影響しない absolute）。 */
+const HIT_PAD_Y_PX = 13;
 /** ラベルと数字群の間隔（Figma: gap 8px）。 */
 const LABEL_GAP_PX = 8;
 
-export function AboutGradSwitch({ className, style }: { className?: string; style?: React.CSSProperties }) {
+export function AboutGradSwitch({
+  className,
+  style,
+  numberGapPx = NUMBER_GAP_PX,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+  /** 数字どうしの間隔。PC は Figma どおり 5px、SP は指で押せるよう広げる。
+   *  当たり判定の横幅はこの値から決まる（隣と重ならない範囲いっぱい）。 */
+  numberGapPx?: number;
+}) {
   const active = useSyncExternalStore(subscribeAboutGradient, getAboutGradient, getAboutGradientServerSnapshot);
+  // 隣の当たり判定とぶつからない最大。間隔の半分から 0.5px 引いて、
+  // 隣接する判定が接するだけで重ならないようにする（重なると後ろの
+  // 兄弟が勝って、狙った数字と違うほうが反応する）。
+  const hitPadX = Math.max(1, numberGapPx / 2 - 0.5);
 
   return (
     // 12px / leading 1.2 / text-box-trim は Figma の指定そのまま。
@@ -41,7 +61,7 @@ export function AboutGradSwitch({ className, style }: { className?: string; styl
       style={{ gap: `calc(${LABEL_GAP_PX}px * var(--scale))`, ...style }}
     >
       <p className="font-normal [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Change Grad.</p>
-      <div className="flex items-center" style={{ gap: `calc(${NUMBER_GAP_PX}px * var(--scale))` }}>
+      <div className="flex items-center" style={{ gap: `calc(${numberGapPx}px * var(--scale))` }}>
         {ABOUT_GRADIENT_VARIANTS.map((variant) => (
           <button
             key={variant}
@@ -54,11 +74,18 @@ export function AboutGradSwitch({ className, style }: { className?: string; styl
             // data-ink-group — アイドル中のインク差し替えで、ひとかたまりで
             // 塗るための目印（lib/album-colors.ts 参照）。
             data-ink-group
-            className={`cursor-pointer font-medium transition-opacity hover:opacity-50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
+            className={`relative cursor-pointer font-medium transition-opacity hover:opacity-50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both] ${
               variant === active ? "opacity-50" : "opacity-100"
             }`}
           >
             {variant}
+            {/* 当たり判定だけを広げる透明な箱。ボタンの子なのでここへの
+                タップもボタンに入る。absolute なので組版には影響しない。 */}
+            <span
+              aria-hidden
+              className="absolute"
+              style={{ inset: `calc(${-HIT_PAD_Y_PX}px * var(--scale)) calc(${-hitPadX}px * var(--scale))` }}
+            />
           </button>
         ))}
       </div>
