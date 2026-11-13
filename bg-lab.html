@@ -686,10 +686,15 @@ const PALETTES = {
   "Cream（サイト基調・淡）":   ["#f6f6f4", "#e4ddd2", "#cdbfae", "#b0b7a8", "#8f8779"],
   "Contact（黒ベース）":       ["#000000", "#141b1f", "#002324", "#00143d", "#0b1028"],
   // ---- B 向け(高彩度・白地) ----
-  // 貼付のグリッチ風リファレンスから起こした5色。地は白で、ピンク・藤・
-  // ターコイズの虹彩系を並べ、差し色だけ高彩度の朱にしてある。
-  // 白の占める割合は「地（1色目）の面積」スライダーで動かす。
-  "Smear（虹彩・淡地）":       ["#ffffff", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
+  // 貼付のグリッチ風リファレンスから起こした5色。ピンク・藤・ターコイズの
+  // 虹彩系を並べ、差し色だけ高彩度の朱にしてある。
+  // 地は #f6f6f4 — サイトの背景色（app/globals.css の --background、
+  // layout.tsx の themeColor と同じ値）。純白ではなくこちらに合わせて
+  // あるのは、背景として敷いたときに地の部分がページの余白と地続きに
+  // 見えるようにするため（直接の指示）。**globals.css 側を変えたら
+  // ここも合わせること。**
+  // 地の占める割合は「地（1色目）の面積」スライダーで動かす。
+  "Smear（虹彩・淡地）":       ["#f6f6f4", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
   "Smear（赤×青×黒）":         ["#eceae5", "#e8381f", "#1736a8", "#1a1a1a", "#4fc8d8"],
   // ---- C 向け(1色目=紙) ----
   "Bloom（水彩・暖）":         ["#fff7e5", "#ff441a", "#f352ff", "#ff75ba", "#2e93ff"],
@@ -739,7 +744,9 @@ const PRESET_PARAMS = {
     speed: 0.1, scale: 3.5, warp: 2, octaves: 2, streak: 2, blurAngle: 90,
     contrast: 1.5, saturation: 1.15, cursorStrength: 0.15,
     grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
-    topColor: "#ffffff", topRange: 0.5, topMix: 0.75,
+    // 上部へ溶かす色も地と同じ #f6f6f4。白のままだと画面上端だけが
+    // ページの背景より明るく浮く。
+    topColor: "#f6f6f4", topRange: 0.5, topMix: 0.75,
     edgeSoft: 0.45, edgeNoise: 0.1, edgeNoiseScale: 2, edgeStretch: 4,
     lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
     bBleed: 0.05, bDrip: 0.4, bSpread: 0.35, bGround: 0.18,
