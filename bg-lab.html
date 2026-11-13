@@ -151,7 +151,9 @@
     <label>紙の粒状感（吸い込みムラ）<span class="row"><input type="range" id="cGranule" min="0" max="1" step="0.02" /><output></output></span></label>
     <label>重ねる枚数 <span class="row"><input type="range" id="cWashes" min="1" max="4" step="1" /><output></output></span></label>
     <label>呼吸（じわっと広がる揺らぎ）<span class="row"><input type="range" id="cBreath" min="0" max="0.15" step="0.005" /><output></output></span></label>
-    <div class="note">各ウォッシュを<strong>乗算</strong>で紙に重ねるので、重なった所が自然に濃く別の色相になる。縁の濃さを上げるほど「水彩らしさ」が出るが、上げすぎると輪郭線に見える</div>
+    <label>重なりの濃さ（0=重なっても暗くしない）<span class="row"><input type="range" id="cStack" min="0" max="1" step="0.02" /><output></output></span></label>
+    <label>混色の鋭さ（高=濃い色が勝つ / 低=よく混ざる）<span class="row"><input type="range" id="cMixSharp" min="0" max="1" step="0.02" /><output></output></span></label>
+    <div class="note">顔料を吸収の空間で混ぜてから紙に一度だけ乗せるので、重なった所は色相だけが変わる。暗く濁るのが好みなら「重なりの濃さ」を上げる（1で実際の絵の具に近い挙動）。補色どうしがオリーブに寄るのが気になるときは「混色の鋭さ」を上げる。縁の濃さを上げるほど「水彩らしさ」が出るが、上げすぎると輪郭線に見える</div>
   </div>
 
   <h2>ブラー（ストリーク）</h2>
@@ -264,6 +266,8 @@ uniform float u_cOpacity;  // 絵の具の濃さ(乗算の効き)
 uniform float u_cGranule;  // 紙の粒状感(吸い込みムラ)
 uniform int   u_cWashes;   // 重ねるウォッシュの枚数
 uniform float u_cBreath;   // ウォッシュがじわっと伸縮する量
+uniform float u_cStack;    // 重なった所をどれだけ濃くするか(0=濃くしない)
+uniform float u_cMixSharp; // 混色の鋭さ(高いほど濃いほうの色が勝つ)
 
 // ---- value noise + fbm（定番の軽量実装）----
 float hash(vec2 p) {
@@ -583,10 +587,33 @@ void main() {
   float coarse = fbm(sp * 0.6 + vec2(61.3, 17.9));
   float granule = 1.0 + (mix(fine, coarse, 0.5) - 0.5) * u_cGranule * 1.2;
 
-  vec3 col = u_c0;  // 紙
+  // ---- ウォッシュの合成 ----
+  // 顔料は「吸収」(absorbance = -log(色)) の空間で扱う。1枚ずつ順に
+  // col *= 顔料^濃度 と掛けていくと、重なった所では吸収がそのまま足し算で
+  // 積み上がり、赤+青+黄が一気に黒へ落ちる(= 暗く濁る)。
+  //
+  // そこで (1) 吸収は濃度で重み付けした**平均**を取り、(2) 全体の濃さは
+  // 別に決める、という2段に分ける。平均なので色相は混ざる(赤+青が紫に
+  // なる)が、枚数を重ねても勝手に暗くはならない。どれだけ濃くするかは
+  // u_cStack で選ぶ:
+  //   0 … いちばん濃い1枚と同じ濃さ。重なっても色が変わるだけで暗くならない
+  //   1 … 全部の濃度を足す(従来の挙動。実際の絵の具に近いが濁りやすい)
+  // 1枚しか掛かっていない所では max と sum が等しいので、u_cStack の値に
+  // 依らず従来とまったく同じ出方になる。
+  //
+  // 混ぜ方そのものにもレバーがある(u_cMixSharp)。素直に濃度で平均を取ると、
+  // 補色どうし(青と橙など)が重なった所が中間のオリーブやグレーに寄る —
+  // 暗くはないが、これも「濁り」として見える。重みを濃度の冪にして
+  // 尖らせると、濃いほうの顔料が勝って色が澄み、混ざるのは濃度が拮抗
+  // している細い帯だけになる。0 で素直な平均(いちばん混ざる)。
+  vec3 absorb = vec3(0.0);   // 重み付けした吸収の合計
+  float wSum  = 0.0;         // その重みの合計
+  float dSum = 0.0;          // 濃度の合計
+  float dMax = 0.0;          // いちばん濃いウォッシュの濃度
+  float mixPow = 1.0 + u_cMixSharp * 3.0;
 
-  // ウォッシュを順に乗算で重ねる。枚数は u_cWashes。
-  // GLSL ES 1.00 はループ上限が定数必須なので、A の fbm と同じ break 方式。
+  // 枚数は u_cWashes。GLSL ES 1.00 はループ上限が定数必須なので、
+  // A の fbm と同じ break 方式。
   for (int i = 0; i < 4; i++) {
     if (i >= u_cWashes) break;
 
@@ -596,8 +623,7 @@ void main() {
     float field = fbm(sp * (0.8 + 0.22 * float(i)) + off) + dn;
 
     // しきい値 = 塗る面積。高いほど塗られる範囲が狭くなる(紙が多く残る)。
-    // 全面が塗り重なると乗算で真っ黒に潰れるので、ここが水彩らしさの
-    // 分かれ目になる。
+    // 紙がどれだけ残るかで水彩らしさが決まるので、ここが主レバー。
     //
     // 呼吸: しきい値をゆっくり上下させると、塗り面の輪郭が外へ内へと
     // じわじわ動く(「滲みが広がっていく」ように見える)。枚ごとに位相を
@@ -608,14 +634,25 @@ void main() {
     float dens = washDensity(field, thr, granule) * u_cOpacity;
 
     vec3 pig = i == 0 ? u_c1 : (i == 1 ? u_c2 : (i == 2 ? u_c3 : u_c4));
-    // 顔料の重なりは Beer–Lambert(透過率の冪乗)で合成する。
-    //   col *= pig^dens
-    // dens=0 で下地そのまま、1 で顔料色そのもの、1を超えるとさらに濃くなる。
+    // max は log(0) 回避。
+    float w = pow(dens, mixPow);
+    absorb += (-log(max(pig, vec3(0.004)))) * w;
+    wSum += w;
+    dSum += dens;
+    dMax = max(dMax, dens);
+  }
+
+  vec3 col = u_c0;  // 紙
+  if (dSum > 0.0) {
+    // 重み付き平均の吸収 = 混ぜたあとの顔料の色。
+    vec3 mixedAbsorb = absorb / max(wSum, 1e-5);
+    // 乗せる厚み。重なっていない所は dMax == dSum なので従来と同じ。
+    float thickness = mix(dMax, dSum, u_cStack);
+    // Beer–Lambert。exp(-吸収 * 厚み) は 顔料^厚み と同じで、厚み 0 で紙の
+    // まま、1 で顔料色そのもの、1 を超えるとさらに濃くなる。
     // mix(白, 顔料, 不透明度) の線形合成だと濃度1で頭打ちになり、
-    // 「乾き際の縁だけ内側より濃い」という水彩の肝が出せない。冪乗なら
-    // 縁(rimで dens>1)が自然に内側より暗くなり、薄い所もきれいに紙へ
-    // 戻っていく。max は pow の 0 の冪でのゼロ割れ回避。
-    col *= pow(max(pig, vec3(0.004)), vec3(dens));
+    // 「乾き際の縁だけ内側より濃い」という水彩の肝が出せない。
+    col *= exp(-mixedAbsorb * thickness);
   }
 
   col = (col - 0.5) * u_contrast + 0.5;
@@ -655,7 +692,7 @@ const PALETTES = {
   "Smear（虹彩・淡地）":       ["#ffffff", "#ef7fc2", "#a7b2ea", "#1fc9d4", "#f6341f"],
   "Smear（赤×青×黒）":         ["#eceae5", "#e8381f", "#1736a8", "#1a1a1a", "#4fc8d8"],
   // ---- C 向け(1色目=紙) ----
-  "Bloom（水彩・暖）":         ["#f3efe6", "#e8431d", "#f2a71b", "#d9418c", "#1d3f96"],
+  "Bloom（水彩・暖）":         ["#fff7e5", "#ff441a", "#ffb81f", "#ff75ba", "#2e93ff"],
   "Bloom（水彩・寒）":         ["#f1f0ec", "#1b3f8f", "#1f9d94", "#7a53b8", "#2f6b3a"],
 };
 
@@ -709,13 +746,20 @@ const PRESET_PARAMS = {
     edgeNoise: 0.03, edgeNoiseScale: 2, edgeStretch: 6,
     bBleed: 0.06, bDrip: 0.9, bSpread: 0.5, bGround: 0,
   },
+  // C の既定値。ラボで詰めた設定をそのまま持ってきたもの(直接の指示)。
+  // B 専用の値(bBleed 等)は意図的に入れていない — Smear 側と同じ理由で、
+  // B モードでこのパレットを選んだときに B の調整を巻き戻さないため。
   "Bloom（水彩・暖）": {
-    speed: 0.05, scale: 2.1, warp: 1.1, octaves: 3, streak: 0, blurAngle: 90,
-    contrast: 1.0, saturation: 1.05, cursorStrength: 0.08,
-    grain: 0.035, grainSize: 1, grainFps: 8, renderScale: 0.8,
-    topColor: "#ffffff", topRange: 0, topMix: 1,
-    edgeNoise: 0.02, edgeNoiseScale: 1.5, edgeStretch: 0,
-    cCoverage: 0.30, cBloom: 0.13, cEdge: 1.1, cOpacity: 0.55, cGranule: 0.35, cWashes: 4, cBreath: 0.03,
+    speed: 0.08, scale: 2.5, warp: 1, octaves: 2, streak: 0, blurAngle: 90,
+    contrast: 1, saturation: 1, cursorStrength: 0.15,
+    grain: 0.08, grainSize: 1, grainFps: 10, renderScale: 1,
+    topColor: "#ffffff", topRange: 0.5, topMix: 0.5,
+    edgeSoft: 0.1, edgeNoise: 0.08, edgeNoiseScale: 1.5, edgeStretch: 0,
+    lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
+    cCoverage: 0.05, cBloom: 0.2, cEdge: 0.2, cOpacity: 0.74, cGranule: 0.58, cWashes: 4, cBreath: 0.1,
+    // 重なりを暗くしない側に寄せてある(直接の指示「重なり部分が暗くて
+    // 濁る」への対処)。絵の具らしく濁らせたいときだけ上げる。
+    cStack: 0.15, cMixSharp: 0.55,
   },
   "Bloom（水彩・寒）": {
     speed: 0.045, scale: 1.8, warp: 1.3, octaves: 3, streak: 0, blurAngle: 90,
@@ -724,6 +768,7 @@ const PRESET_PARAMS = {
     topColor: "#ffffff", topRange: 0, topMix: 1,
     edgeNoise: 0.015, edgeNoiseScale: 1.5, edgeStretch: 0,
     cCoverage: 0.34, cBloom: 0.16, cEdge: 1.4, cOpacity: 0.55, cGranule: 0.45, cWashes: 3, cBreath: 0.04,
+    cStack: 0.25, cMixSharp: 0.4,
   },
 };
 
@@ -747,6 +792,7 @@ const BASE_PARAMS = {
   lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
   bBleed: 0.09, bDrip: 0.55, bSpread: 0.35, bGround: 0,
   cCoverage: 0.32, cBloom: 0.13, cEdge: 1.0, cOpacity: 0.6, cGranule: 0.35, cWashes: 4, cBreath: 0.03,
+  cStack: 0.25, cMixSharp: 0.4,
 };
 
 /* ================= WebGL セットアップ ================= */
@@ -772,7 +818,7 @@ const UNIFORM_NAMES = [
   "u_edgeSoft","u_edgeNoise","u_edgeNoiseScale","u_edgeStretch",
   "u_lineColor","u_lineWidth","u_lineAlpha","u_lineCoverage","u_lineBlur",
   "u_bBleed","u_bDrip","u_bSpread","u_bGround",
-  "u_cCoverage","u_cBloom","u_cEdge","u_cOpacity","u_cGranule","u_cWashes","u_cBreath",
+  "u_cCoverage","u_cBloom","u_cEdge","u_cOpacity","u_cGranule","u_cWashes","u_cBreath","u_cStack","u_cMixSharp",
 ];
 
 // モードごとに1本ずつプログラムを作って持っておく(切替のたびに
@@ -869,7 +915,7 @@ const sliders = ["speed","scale","warp","octaves","streak","blurAngle","contrast
                  "topRange","topMix","edgeSoft","edgeNoise","edgeNoiseScale","edgeStretch",
                  "lineWidth","lineAlpha","lineCoverage","lineBlur",
                  "bBleed","bDrip","bSpread","bGround",
-                 "cCoverage","cBloom","cEdge","cOpacity","cGranule","cWashes","cBreath"];
+                 "cCoverage","cBloom","cEdge","cOpacity","cGranule","cWashes","cBreath","cStack","cMixSharp"];
 for (const key of sliders) {
   const el = document.getElementById(key);
   el.value = params[key];
@@ -1042,6 +1088,8 @@ function frame(now) {
   gl.uniform1f(U.u_cGranule, params.cGranule);
   gl.uniform1i(U.u_cWashes, Math.round(params.cWashes));
   gl.uniform1f(U.u_cBreath, params.cBreath);
+  gl.uniform1f(U.u_cStack, params.cStack);
+  gl.uniform1f(U.u_cMixSharp, params.cMixSharp);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
   requestAnimationFrame(frame);
