@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLenis } from "lenis/react";
 import type Lenis from "lenis";
 import { fullViewportHeightPx, installViewportHeightVar } from "@/lib/viewport-height";
@@ -101,6 +101,15 @@ const FADE_MS = 450;
  *  詰めていき、最終的に 0（同時）に落ち着いた。定数自体は残してあるので、
  *  また遅らせたくなったら値を戻すだけでよい。 */
 const REVEAL_DELAY_MS = 0;
+/** バリアント切替時のフェードアウト時間（直接の指示「切り替え時にパッと
+ *  切り替わっているのでフェードアウトも加えて」）。
+ *
+ *  流れは「今のグラデが消える → 差し替わる → 新しいグラデが出る」。
+ *  戻り（フェードイン）は FADE_MS を使い回す — ページ初回表示と同じ
+ *  速さにして、切替後の出方を初回表示に揃えるため（グラデが開く
+ *  REVEAL_MS もそちらに合わせて頭から再生される）。
+ *  消えるほうだけ短いのは、待たされる時間を増やさないため。 */
+const SWITCH_FADE_OUT_MS = 300;
 /** グラデが開き切るまでの時間。1100 → 1400 → 1150（"速度を少しだけ上げて"）。 */
 const REVEAL_MS = 1150;
 
@@ -791,12 +800,34 @@ export function AboutBlendBackground() {
   // 自分の時計から入れる（同じ時計を2か所で持たないため）。
   const replayRevealRef = useRef(false);
 
+  // 切替中（フェードアウト中）は canvas の不透明度を 0 にする。
+  const [switching, setSwitching] = useState(false);
+  // 初回マウントはフェードアウトしない — そこは useFadeIn による
+  // ページ初回表示のフェードインが担当しているので、二重に動かさない。
+  const mountedRef = useRef(false);
+
   useEffect(() => {
-    variantRef.current = variant;
-    resizeRef.current?.();
-    replayRevealRef.current = true;
-    // ブラウザUIの色もバリアントで変わる。スクロールを待たずに即反映する。
-    syncBrowserUiColor(settleRef.current, variant);
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      variantRef.current = variant;
+      return;
+    }
+    // ① まず今のグラデを消す。この間も古いバリアントを描き続ける
+    //    （描画を止めると最後のフレームで固まって見える）。
+    setSwitching(true);
+    const timer = window.setTimeout(() => {
+      // ② 見えなくなってから差し替える。内部解像度・ブラウザUIの色・
+      //    登場演出の再生予約もこのタイミングで一緒に。ここで色を変えるのは、
+      //    フェードアウト中にブラウザUIだけ先に新しい色へ飛ぶのを避けるため。
+      variantRef.current = variant;
+      resizeRef.current?.();
+      replayRevealRef.current = true;
+      syncBrowserUiColor(settleRef.current, variant);
+      // ③ 戻す。下の style が opacity 1 / FADE_MS に切り替わる。
+      setSwitching(false);
+    }, SWITCH_FADE_OUT_MS);
+    // 連打された場合は前の予約を捨てて測り直す（不透明度は 0 のまま）。
+    return () => window.clearTimeout(timer);
   }, [variant]);
 
   // About を離れたら 1 に戻す（lib/about-gradient-store.ts の doc comment
@@ -1041,8 +1072,9 @@ export function AboutBlendBackground() {
         height: "var(--viewport-height, 100dvh)",
         display: "block",
         pointerEvents: "none",
-        opacity: shown ? 1 : 0,
-        transition: `opacity ${FADE_MS}ms ease-out`,
+        opacity: shown && !switching ? 1 : 0,
+        // 消えるときだけ短く。戻りはページ初回表示と同じ FADE_MS。
+        transition: `opacity ${switching ? SWITCH_FADE_OUT_MS : FADE_MS}ms ease-out`,
       }}
     />
   );
