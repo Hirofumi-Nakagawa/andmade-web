@@ -698,6 +698,15 @@ const PALETTES = {
 
 /* パレット固有の推奨パラメータ一式 — パレット選択時に色と一緒に全スライダー
    へ反映される(定義がないパレットは従来通り色だけ変わる)。
+   グレイン(量 0.06 / 粒度 1 / 12fps)は全プリセット共通にしてある — サイトに
+   組み込み済みの About / Contact と同じ値(直接の指示「グレインは既存の背景に
+   全部合わせておいて」)。ここを揃えておくと、モードやパレットを切り替えた
+   ときの差が「色と形」だけになり、見比べの条件が揃う。
+   ※ 画面上での粒の**大きさ**は renderScale にも影響される(内部解像度を
+     落とすほど1粒が画面上で大きくなる)。renderScale はプリセットごとの
+     見え方に直結するので揃えていない。粒の大きさまで厳密に合わせたい
+     ときは renderScale も 0.7 にすること。
+
    sky / Contact はどちらも実際にサイトへ組み込み済みの現行値そのまま:
      sky              → components/about-blend-background.tsx の SETTINGS
      Contact（黒ベース）→ components/contact-blend-background.tsx の SETTINGS
@@ -729,7 +738,7 @@ const PRESET_PARAMS = {
   "Smear（虹彩・淡地）": {
     speed: 0.1, scale: 3.5, warp: 2, octaves: 2, streak: 2, blurAngle: 90,
     contrast: 1.5, saturation: 1.15, cursorStrength: 0.15,
-    grain: 0.08, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
     topColor: "#ffffff", topRange: 0.5, topMix: 0.75,
     edgeSoft: 0.45, edgeNoise: 0.1, edgeNoiseScale: 2, edgeStretch: 4,
     lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
@@ -741,7 +750,7 @@ const PRESET_PARAMS = {
   "Smear（赤×青×黒）": {
     speed: 0.07, scale: 2.0, warp: 2.0, octaves: 2, streak: 1.4, blurAngle: 90,
     contrast: 1.05, saturation: 1.1, cursorStrength: 0.12,
-    grain: 0.05, grainSize: 1, grainFps: 12, renderScale: 0.7,
+    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
     topColor: "#ffffff", topRange: 0, topMix: 1,
     edgeNoise: 0.03, edgeNoiseScale: 2, edgeStretch: 6,
     bBleed: 0.06, bDrip: 0.9, bSpread: 0.5, bGround: 0,
@@ -752,7 +761,7 @@ const PRESET_PARAMS = {
   "Bloom（水彩・暖）": {
     speed: 0.08, scale: 2.8, warp: 0.5, octaves: 2, streak: 0, blurAngle: 90,
     contrast: 1, saturation: 1, cursorStrength: 0.15,
-    grain: 0.08, grainSize: 1, grainFps: 10, renderScale: 1,
+    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 1,
     topColor: "#ffffff", topRange: 0.5, topMix: 0.5,
     edgeSoft: 0.1, edgeNoise: 0.08, edgeNoiseScale: 1.5, edgeStretch: 0,
     lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
@@ -764,7 +773,7 @@ const PRESET_PARAMS = {
   "Bloom（水彩・寒）": {
     speed: 0.045, scale: 1.8, warp: 1.3, octaves: 3, streak: 0, blurAngle: 90,
     contrast: 1.0, saturation: 1.0, cursorStrength: 0.08,
-    grain: 0.035, grainSize: 1, grainFps: 8, renderScale: 0.8,
+    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.8,
     topColor: "#ffffff", topRange: 0, topMix: 1,
     edgeNoise: 0.015, edgeNoiseScale: 1.5, edgeStretch: 0,
     cCoverage: 0.34, cBloom: 0.16, cEdge: 1.4, cOpacity: 0.55, cGranule: 0.45, cWashes: 3, cBreath: 0.04,
