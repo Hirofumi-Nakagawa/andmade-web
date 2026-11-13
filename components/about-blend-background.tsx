@@ -361,9 +361,10 @@ const SETTINGS_3 = {
   edgeNoise: 0.08,
   edgeNoiseScale: 1.5,
   edgeStretch: 0,
-  // 0.05 → 0.14（直接の指示「紙のエリアをもっと多く」）。しきい値への
-  // 写像の上端も bg-lab 側で 0.78 → 0.92 に広げてある（下の THR 参照）。
-  coverage: 0.14,
+  // 0.05 → 0.14（紙をもっと多く）→ 0.19（増やしすぎたので少し戻す）。
+  // いずれも直接の指示。しきい値への写像の上端は bg-lab 側で 0.78 →
+  // 0.92 に広げてある（下の THR 参照）。
+  coverage: 0.19,
   bloom: 0.2,
   edge: 0.2,
   opacity: 0.74,
@@ -505,9 +506,15 @@ void main() {
   vec2 n1 = vec2(w3, w4) / sum;
   float spread = 1.0 / max(dot(n0, n0) + dot(n1, n1), 1e-4);
   float cw = mix(CONTRAST, 1.0, clamp((spread - 1.0) / 3.0, 0.0, 1.0));
-  // settle でコントラスト・彩度とも 1.0 へ戻す — 収束後の全面色が
-  // 「補正済みの C0 もどき」ではなく C0 そのものになるように。
-  col = (col - 0.5) * mix(cw, 1.0, s) + 0.5;
+  // コントラストの軸は 0.5 ではなく**地の色 C0**。
+  // 0.5 を軸にすると、明るい地色（#eae8e3 ≒ 0.92）が
+  // (0.92 - 0.5) * 1.5 + 0.5 = 1.13 で振り切れて白にクリップされる —
+  // 地の色を指定しても FV が真っ白に見えていたのはこれ（直接の指示
+  // 「2のグラデの色も eae8e3 に」への対処）。C0 を軸にすれば地は
+  // そのまま C0 で出て、他の色だけが C0 から離れる方向に開く。
+  // settle では 1.0 へ戻す — 収束後の全面色が「補正済みの C0 もどき」
+  // ではなく C0 そのものになるように。
+  col = (col - C0) * mix(cw, 1.0, s) + C0;
   col = satAdjust(col, mix(SAT, 1.0, s));
 
   // 画面上部の色帯（1 と同じく u_settle のみに追従。登場アニメの影響は受けない）。
@@ -561,8 +568,8 @@ const float TOP_MIX   = ${glf(SETTINGS_3.topMix)};
 // 完全に消えて紙だけになる。THR + これ が**ちょうど**そこに届く量にする
 // ——大きすぎると途中で収束し切ってしまい、スクロールの後半は何も
 // 動かない（1.2 だと s=0.2 あたりで紙になっていた。実測で確認）。
-//   必要量 = 1.0 + BLOOM - THR = 1.0 + 0.2 - 0.839 ≒ 0.36
-const float SETTLE_THR = 0.38;
+//   必要量 = 1.0 + BLOOM - THR = 1.0 + 0.2 - 0.810 ≒ 0.39
+const float SETTLE_THR = 0.41;
 
 void main() {
   vec2 uv = gl_FragCoord.xy / u_res;
@@ -778,10 +785,16 @@ export function AboutBlendBackground() {
   // 内部解像度がバリアントで違うので、切り替わったら resize をやり直す
   // 必要がある。その関数を init effect から預かる。
   const resizeRef = useRef<(() => void) | null>(null);
+  // 切り替えのたびに「グラデが開く」登場演出をやり直す（直接の指示
+  // 「切り替え時に、1が最初に表示されるときと同じようにグラデが表示される
+  // 仕様に」）。ここでは予約だけして、実際の起点時刻は描画ループ側が
+  // 自分の時計から入れる（同じ時計を2か所で持たないため）。
+  const replayRevealRef = useRef(false);
 
   useEffect(() => {
     variantRef.current = variant;
     resizeRef.current?.();
+    replayRevealRef.current = true;
     // ブラウザUIの色もバリアントで変わる。スクロールを待たずに即反映する。
     syncBrowserUiColor(settleRef.current, variant);
   }, [variant]);
@@ -940,6 +953,9 @@ export function AboutBlendBackground() {
     resizeRef.current = resize;
 
     const startTime = performance.now();
+    // 登場演出の起点（秒）。マウント時は 0、バリアント切替のたびに
+    // そのときの経過時間へ進めて、グラデが開くところからやり直す。
+    let revealStart = 0;
     let rafId = 0;
 
     function render() {
@@ -960,7 +976,11 @@ export function AboutBlendBackground() {
       gl.uniform1f(uTime, t);
       gl.uniform2f(uMouse, mouseSmoothed[0], mouseSmoothed[1]);
       // t は秒。REVEAL_DELAY_MS 待ってから REVEAL_MS かけて 0→1。
-      const revealT = Math.min(Math.max((t * 1000 - REVEAL_DELAY_MS) / REVEAL_MS, 0), 1);
+      if (replayRevealRef.current) {
+        replayRevealRef.current = false;
+        revealStart = t;
+      }
+      const revealT = Math.min(Math.max(((t - revealStart) * 1000 - REVEAL_DELAY_MS) / REVEAL_MS, 0), 1);
 // s（= 1 - u_reveal）が実際に見た目を動かすのは 0.33 以下の範囲だけ
       // —— それより上ではしきい値が色の値域の外にあり、どの色も出てこない。
       //

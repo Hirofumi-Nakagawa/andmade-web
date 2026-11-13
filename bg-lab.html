@@ -524,8 +524,13 @@ void main() {
 
   // コントラストは「混ざっている所ほど弱く」効かせる。全面に均一に掛けると、
   // 混色でできた中間色まで持ち上がって色がきつくなるため。
+  //
+  // 軸は 0.5 ではなく**1色目（地）の色**。0.5 を軸にすると明るい地色が
+  // 振り切れて白にクリップされる（#eae8e3 ≒ 0.92 はコントラスト1.5 で
+  // 1.13 になる）。地を軸にすれば地はそのまま出て、他の色だけが地から
+  // 離れる方向に開く。
   float cw = mix(u_contrast, 1.0, clamp((spread - 1.0) / 3.0, 0.0, 1.0));
-  col = (col - 0.5) * cw + 0.5;
+  col = (col - u_c0) * cw + u_c0;
   col = satAdjust(col, u_saturation);
 
   gl_FragColor = vec4(finish(col, uv), 1.0);
@@ -774,7 +779,7 @@ const PRESET_PARAMS = {
     topColor: "#ffffff", topRange: 0.5, topMix: 0.5,
     edgeSoft: 0.1, edgeNoise: 0.08, edgeNoiseScale: 1.5, edgeStretch: 0,
     lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
-    cCoverage: 0.14, cBloom: 0.2, cEdge: 0.2, cOpacity: 0.74, cGranule: 0.58, cWashes: 4, cBreath: 0.1,
+    cCoverage: 0.19, cBloom: 0.2, cEdge: 0.2, cOpacity: 0.74, cGranule: 0.58, cWashes: 4, cBreath: 0.1,
     // 重なりを暗くしない側に寄せてある(直接の指示「重なり部分が暗くて
     // 濁る」への対処)。絵の具らしく濁らせたいときだけ上げる。
     cStack: 0.15, cMixSharp: 0.55,
