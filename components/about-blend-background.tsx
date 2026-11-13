@@ -108,8 +108,9 @@ const REVEAL_DELAY_MS = 0;
  *  戻り（フェードイン）は FADE_MS を使い回す — ページ初回表示と同じ
  *  速さにして、切替後の出方を初回表示に揃えるため（グラデが開く
  *  REVEAL_MS もそちらに合わせて頭から再生される）。
- *  消えるほうだけ短いのは、待たされる時間を増やさないため。 */
-const SWITCH_FADE_OUT_MS = 300;
+ *  消えるほうだけ短いのは、待たされる時間を増やさないため
+ *  （300ms → 200ms。直接の指示「もう少しだけ速く」）。 */
+const SWITCH_FADE_OUT_MS = 200;
 /** グラデが開き切るまでの時間。1100 → 1400 → 1150（"速度を少しだけ上げて"）。 */
 const REVEAL_MS = 1150;
 
@@ -763,7 +764,28 @@ function syncBrowserUiColor(settle: number, variant: AboutGradientVariant) {
   meta.setAttribute("content", color);
 }
 
+/**
+ * 文書（html / body）の背景色の変化を、切替のあいだだけなめらかにする。
+ *
+ * 切替中は canvas の不透明度が 0 まで落ちるので、その裏の文書の地色が
+ * そのまま見える。バリアントごとに地色が違うため、差し替えた瞬間に色が
+ * 飛んで見えていた（直接の指示「切り替え時に背景色もフェードインで」）。
+ *
+ * **常時は掛けない。** この色はスクロールのたびに書き換わる値でもあり
+ * （syncBrowserUiColor の doc comment 参照）、transition を付けっぱなしに
+ * するとスクロールに色が遅れて付いてくる。切替のあいだだけ有効にして、
+ * 終わったら外す。null で解除。
+ */
+function setUiColorTransition(ms: number | null) {
+  const value = ms === null ? null : `background-color ${ms}ms ease-out`;
+  for (const el of [document.documentElement, document.body]) {
+    if (value === null) el.style.removeProperty("transition");
+    else el.style.setProperty("transition", value);
+  }
+}
+
 function restoreBrowserUiColor() {
+  setUiColorTransition(null);
   document.documentElement.style.removeProperty("--status-bar-mask");
   document.documentElement.style.removeProperty("background-color");
   document.body.style.removeProperty("background-color");
@@ -815,19 +837,27 @@ export function AboutBlendBackground() {
     // ① まず今のグラデを消す。この間も古いバリアントを描き続ける
     //    （描画を止めると最後のフレームで固まって見える）。
     setSwitching(true);
-    const timer = window.setTimeout(() => {
+    const timers: number[] = [];
+    timers.push(window.setTimeout(() => {
       // ② 見えなくなってから差し替える。内部解像度・ブラウザUIの色・
       //    登場演出の再生予約もこのタイミングで一緒に。ここで色を変えるのは、
       //    フェードアウト中にブラウザUIだけ先に新しい色へ飛ぶのを避けるため。
+      // 文書の地色も canvas と同じ FADE_MS かけて新しい色へ送る。
+      // transition を**先に**立ててから色を入れること（同じタスク内なら
+      // スタイルの再計算は最後に1回なので、直前の色から補間が始まる）。
+      setUiColorTransition(FADE_MS);
       variantRef.current = variant;
       resizeRef.current?.();
       replayRevealRef.current = true;
       syncBrowserUiColor(settleRef.current, variant);
       // ③ 戻す。下の style が opacity 1 / FADE_MS に切り替わる。
       setSwitching(false);
-    }, SWITCH_FADE_OUT_MS);
+    }, SWITCH_FADE_OUT_MS));
+    // フェードインが終わったら transition を外す — スクロール追従の色が
+    // 遅れないように（setUiColorTransition の doc comment 参照）。
+    timers.push(window.setTimeout(() => setUiColorTransition(null), SWITCH_FADE_OUT_MS + FADE_MS + 60));
     // 連打された場合は前の予約を捨てて測り直す（不透明度は 0 のまま）。
-    return () => window.clearTimeout(timer);
+    return () => timers.forEach(window.clearTimeout);
   }, [variant]);
 
   // About を離れたら 1 に戻す（lib/about-gradient-store.ts の doc comment
