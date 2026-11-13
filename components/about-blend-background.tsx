@@ -346,6 +346,10 @@ const SETTINGS_2 = {
   drip: 0.4,
   spread: 0.35,
   ground: 0.18,
+  /** 混色の濁り止め。0 で素の重み付き平均（＝離れた色相が混ざるとグレーに
+   *  落ちる）、1 で濁ったぶんを全部地の色へ抜く。シェーダー側の
+   *  「混色の濁り止め」ブロック参照。 */
+  clean: 0.85,
 } as const;
 
 const SETTINGS_3 = {
@@ -413,6 +417,11 @@ float fbm2(vec2 p) {
   v += 0.25 * noise(p * 2.03 + vec2(17.0, 9.0));
   return v / 0.75;
 }
+// その色の鮮やかさ（最大成分と最小成分の差）。混色で濁ったかどうかの
+// 判定に使う — グレーに寄るほど 0 に近づく。
+float chroma(vec3 c) {
+  return max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+}
 vec3 satAdjust(vec3 c, float s) {
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   return mix(vec3(l), c, s);
@@ -437,6 +446,7 @@ const float BLEED  = ${glf(SETTINGS_2.bleed)};
 const float DRIP   = ${glf(SETTINGS_2.drip)};
 const float SPREAD = ${glf(SETTINGS_2.spread)};
 const float GROUND = ${glf(SETTINGS_2.ground)};
+const float CLEAN  = ${glf(SETTINGS_2.clean)};
 const vec3 C0 = ${glslColor(SETTINGS_2.colors[0])}; // 地 = settleの収束先
 const vec3 C1 = ${glslColor(SETTINGS_2.colors[1])};
 const vec3 C2 = ${glslColor(SETTINGS_2.colors[2])};
@@ -497,7 +507,10 @@ void main() {
   float f1 = fbm2(sp * 1.13 + vec2(11.3,  4.1)) + dn + SPREAD *  0.10;
   float f2 = fbm2(sp * 0.91 + vec2( 3.7, 19.5)) + dn + SPREAD * -0.06;
   float f3 = fbm2(sp * 1.37 + vec2(23.1,  8.8)) + dn + SPREAD *  0.04;
-  float f4 = fbm2(sp * 0.64 + vec2( 7.9, 31.2)) + dn + SPREAD * -0.12;
+  // C4（このパレットでは朱）は係数を -0.12 → -0.50 に。差し色として
+  // 出したいだけなのに面積が多かったため（直接の指示「赤エリアを減らす」）。
+  // 単体で描いて数えた値: 4シードの平均で面積 2.0% → 0.5%。
+  float f4 = fbm2(sp * 0.64 + vec2( 7.9, 31.2)) + dn + SPREAD * -0.50;
 
   // softmax。最大値を引いてから exp に入れる（オーバーフロー回避。引いた分は
   // 正規化で相殺されるので結果は変わらない）。
@@ -509,6 +522,22 @@ void main() {
   float w4 = exp((f4 - m) / BLEED);
   float sum = w0 + w1 + w2 + w3 + w4;
   vec3 col = (C0 * w0 + C1 * w1 + C2 * w2 + C3 * w3 + C4 * w4) / sum;
+
+  // ---- 混色の濁り止め ----
+  // 重み付き平均は RGB 上の線形補間なので、離れた色相どうし（朱と
+  // ターコイズなど）が混ざると互いを打ち消してグレーに落ちる。これが
+  // 「重なりが濁って汚い暗い色味になる」の正体（直接の指示）。
+  //
+  // 混ぜる前の鮮やかさ（各色のクロマを同じ重みで平均したもの）と、
+  // 混ぜた後の鮮やかさを比べ、落ちたぶんだけ**地の色**へ寄せる。
+  //   ・近い色相どうし（桃と藤）は混ぜても鮮やかさが落ちないので素通り
+  //   ・遠い色相どうしはグレーではなく淡い地色に抜ける＝濁らない
+  // グレーに落とすより地色に抜くほうが、色面どうしが地の上に重なって
+  // 見えるぶん水彩に近い読みになる。
+  float chromaBefore = (chroma(C0) * w0 + chroma(C1) * w1 + chroma(C2) * w2
+                      + chroma(C3) * w3 + chroma(C4) * w4) / sum;
+  float dull = clamp((chromaBefore - chroma(col)) / max(chromaBefore, 0.001), 0.0, 1.0);
+  col = mix(col, C0, dull * CLEAN);
 
   // 何色が実際に効いているか（逆参加率）。混ざっている所ほどコントラストを
   // 弱める — 全面に均一に掛けると混色でできた中間色まで持ち上がるため。

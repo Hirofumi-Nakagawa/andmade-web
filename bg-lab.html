@@ -138,6 +138,7 @@
     <label>垂れ（スキージで引いた感じ）<span class="row"><input type="range" id="bDrip" min="0" max="2" step="0.05" /><output></output></span></label>
     <label>色の偏り（1色に寄る↔均等）<span class="row"><input type="range" id="bSpread" min="0" max="1" step="0.05" /><output></output></span></label>
     <label>地（1色目）の面積 <span class="row"><input type="range" id="bGround" min="-0.2" max="0.6" step="0.01" /><output></output></span></label>
+    <label>濁り止め（混ざった所を地の色へ抜く）<span class="row"><input type="range" id="bClean" min="0" max="1" step="0.05" /><output></output></span></label>
     <div class="note">5色ぜんぶが常に効いていて、場所ごとの配合だけが変わる方式。溶け合いを絞ると境界がくっきりし、広げると混ざって濁る。ブラー（ストリーク）の向きが垂れの向きになる</div>
   </div>
 
@@ -257,6 +258,7 @@ uniform float u_bBleed;   // 重みの温度。小さいほど1色が勝ち、�
 uniform float u_bDrip;    // 縦の垂れ(スキージ)の強さ
 uniform float u_bSpread;  // 各色の場に与えるばらつき(0で全色ほぼ同条件)
 uniform float u_bGround;  // 1色目(地)の場に足す下駄。上げるほど地の面積が増える
+uniform float u_bClean;   // 混色の濁り止め(濁ったぶんを地の色へ抜く量)
 
 // C(水彩)専用
 uniform float u_cCoverage; // 塗る面積(しきい値)
@@ -304,6 +306,10 @@ mat2 rot(float a) {
 }
 
 // 彩度調整(B/C)。輝度(Rec.709)を軸に寄せる/離す。
+// その色の鮮やかさ(最大成分と最小成分の差)。混色で濁ったかどうかの判定用。
+float chroma(vec3 c) {
+  return max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+}
 vec3 satAdjust(vec3 c, float s) {
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
   return mix(vec3(l), c, s);
@@ -467,7 +473,9 @@ vec3 blendAll(vec2 sp, float dn, out float spread) {
   float f1 = fbm(sp * 1.13 + vec2(11.3,  4.1)) + dn + u_bSpread *  0.10;
   float f2 = fbm(sp * 0.91 + vec2( 3.7, 19.5)) + dn + u_bSpread * -0.06;
   float f3 = fbm(sp * 1.37 + vec2(23.1,  8.8)) + dn + u_bSpread *  0.04;
-  float f4 = fbm(sp * 0.64 + vec2( 7.9, 31.2)) + dn + u_bSpread * -0.12;
+    // 5色目は係数を大きめに振ってある — 差し色として少量だけ出したい枠
+  // （-0.12 → -0.50、直接の指示で赤の面積を減らしたとき）。
+  float f4 = fbm(sp * 0.64 + vec2( 7.9, 31.2)) + dn + u_bSpread * -0.50;
 
   float m = max(max(max(f0, f1), max(f2, f3)), f4);
   float k = max(u_bBleed, 0.005);
@@ -484,7 +492,19 @@ vec3 blendAll(vec2 sp, float dn, out float spread) {
   vec2 n1 = vec2(w3, w4) / sum;
   spread = 1.0 / max(dot(n0, n0) + dot(n1, n1), 1e-4);
 
-  return (u_c0 * w0 + u_c1 * w1 + u_c2 * w2 + u_c3 * w3 + u_c4 * w4) / sum;
+  vec3 col = (u_c0 * w0 + u_c1 * w1 + u_c2 * w2 + u_c3 * w3 + u_c4 * w4) / sum;
+
+  // ---- 混色の濁り止め ----
+  // 重み付き平均は RGB 上の線形補間なので、離れた色相どうし(朱と
+  // ターコイズなど)が混ざると互いを打ち消してグレーに落ちる。
+  // 混ぜる前の鮮やかさ(各色のクロマを同じ重みで平均したもの)と混ぜた後を
+  // 比べ、落ちたぶんだけ**1色目(地)の色**へ寄せる。
+  //   ・近い色相どうしは鮮やかさが落ちないので素通り
+  //   ・遠い色相どうしはグレーではなく淡い地色に抜ける＝濁らない
+  float chromaBefore = (chroma(u_c0) * w0 + chroma(u_c1) * w1 + chroma(u_c2) * w2
+                      + chroma(u_c3) * w3 + chroma(u_c4) * w4) / sum;
+  float dull = clamp((chromaBefore - chroma(col)) / max(chromaBefore, 0.001), 0.0, 1.0);
+  return mix(col, u_c0, dull * u_bClean);
 }
 
 void main() {
@@ -756,7 +776,7 @@ const PRESET_PARAMS = {
     topColor: "#eae8e3", topRange: 0.5, topMix: 0.75,
     edgeSoft: 0.45, edgeNoise: 0.1, edgeNoiseScale: 2, edgeStretch: 4,
     lineColor: "#27272a", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.5, lineBlur: 1,
-    bBleed: 0.05, bDrip: 0.4, bSpread: 0.35, bGround: 0.18,
+    bBleed: 0.05, bDrip: 0.4, bSpread: 0.35, bGround: 0.18, bClean: 0.85,
     // この構図ありきで詰めた値なので、シードも一緒に固定する。
     // 別の出方を見たいときは「シード変更」ボタン。
     seed: 75.33248802042414,
@@ -767,7 +787,7 @@ const PRESET_PARAMS = {
     grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
     topColor: "#ffffff", topRange: 0, topMix: 1,
     edgeNoise: 0.03, edgeNoiseScale: 2, edgeStretch: 6,
-    bBleed: 0.06, bDrip: 0.9, bSpread: 0.5, bGround: 0,
+    bBleed: 0.06, bDrip: 0.9, bSpread: 0.5, bGround: 0, bClean: 0.85,
   },
   // C の既定値。ラボで詰めた設定をそのまま持ってきたもの(直接の指示)。
   // B 専用の値(bBleed 等)は意図的に入れていない — Smear 側と同じ理由で、
@@ -813,7 +833,7 @@ const BASE_PARAMS = {
   topColor: "#ebfdff", topRange: 0.9, topMix: 1,
   edgeSoft: 0.1, edgeNoise: 0.01, edgeNoiseScale: 1, edgeStretch: 2,
   lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
-  bBleed: 0.09, bDrip: 0.55, bSpread: 0.35, bGround: 0,
+  bBleed: 0.09, bDrip: 0.55, bSpread: 0.35, bGround: 0, bClean: 0.85,
   cCoverage: 0.48, cBloom: 0.13, cEdge: 1.0, cOpacity: 0.6, cGranule: 0.35, cWashes: 4, cBreath: 0.03,
   cStack: 0.25, cMixSharp: 0.4,
 };
@@ -840,7 +860,7 @@ const UNIFORM_NAMES = [
   "u_topCol","u_topRange","u_topMix",
   "u_edgeSoft","u_edgeNoise","u_edgeNoiseScale","u_edgeStretch",
   "u_lineColor","u_lineWidth","u_lineAlpha","u_lineCoverage","u_lineBlur",
-  "u_bBleed","u_bDrip","u_bSpread","u_bGround",
+  "u_bBleed","u_bDrip","u_bSpread","u_bGround","u_bClean",
   "u_cCoverage","u_cBloom","u_cEdge","u_cOpacity","u_cGranule","u_cWashes","u_cBreath","u_cStack","u_cMixSharp",
 ];
 
@@ -937,7 +957,7 @@ const sliders = ["speed","scale","warp","octaves","streak","blurAngle","contrast
                  "grain","grainSize","grainFps","renderScale",
                  "topRange","topMix","edgeSoft","edgeNoise","edgeNoiseScale","edgeStretch",
                  "lineWidth","lineAlpha","lineCoverage","lineBlur",
-                 "bBleed","bDrip","bSpread","bGround",
+                 "bBleed","bDrip","bSpread","bGround","bClean",
                  "cCoverage","cBloom","cEdge","cOpacity","cGranule","cWashes","cBreath","cStack","cMixSharp"];
 for (const key of sliders) {
   const el = document.getElementById(key);
@@ -1104,6 +1124,7 @@ function frame(now) {
   gl.uniform1f(U.u_bDrip, params.bDrip);
   gl.uniform1f(U.u_bSpread, params.bSpread);
   gl.uniform1f(U.u_bGround, params.bGround);
+  gl.uniform1f(U.u_bClean, params.bClean);
   gl.uniform1f(U.u_cCoverage, params.cCoverage);
   gl.uniform1f(U.u_cBloom, params.cBloom);
   gl.uniform1f(U.u_cEdge, params.cEdge);
