@@ -744,11 +744,22 @@ const PALETTES = {
      見え方に直結するので揃えていない。粒の大きさまで厳密に合わせたい
      ときは renderScale も 0.7 にすること。
 
-   sky / Contact はどちらも実際にサイトへ組み込み済みの現行値そのまま:
-     sky              → components/about-blend-background.tsx の SETTINGS
-     Contact（黒ベース）→ components/contact-blend-background.tsx の SETTINGS
-   どちらかを触ったらもう片方も合わせること。
-   Smear / Bloom は B / C 用の出発点(組み込み先はまだ無い)。 */
+   **以下の4つは実際にサイトへ組み込み済みの現行値そのまま。**
+   片方を触ったらもう片方も合わせること（ラボから貼り直したときに
+   実装が巻き戻る／その逆が起きる）:
+     sky（blue×purple）  → components/about-blend-background.tsx の SETTINGS
+                            （About 背景の「1」）
+     Smear（虹彩・淡地）  → 同ファイルの SETTINGS_2（About 背景の「2」）
+     Bloom（水彩・暖）    → 同ファイルの SETTINGS_3（About 背景の「3」）
+     Contact（黒ベース）  → components/contact-blend-background.tsx の SETTINGS
+
+   Smear（赤×青×黒）/ Bloom（水彩・寒）は組み込み先が無い予備。
+
+   ※ 本番側にはラボに無いものが2つある。ラボへ持ち帰れないので注意:
+     ・登場演出（グラデが単色から開く u_reveal）
+     ・スクロール収束（画面全体が1色に寄る u_settle）
+    どちらも「ページに組み込んで初めて意味を持つ」挙動なので、ラボでは
+    常に完成形（reveal=1 / settle=0）に相当する絵だけが出ている。 */
 const PRESET_PARAMS = {
   "sky（blue×purple）": {
     speed: 0.15, scale: 3.5, warp: 1.2, octaves: 2, streak: 3.5, blurAngle: 90,
@@ -800,7 +811,11 @@ const PRESET_PARAMS = {
   "Bloom（水彩・暖）": {
     speed: 0.08, scale: 2.8, warp: 0.5, octaves: 2, streak: 0, blurAngle: 90,
     contrast: 1, saturation: 1, cursorStrength: 0.15,
-    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 1,
+    // renderScale 1 → 0.7。1 だと 1440x900 / DPR2 で毎フレーム 5.18M
+    // ピクセルになり、ウォッシュ4枚ぶんのノイズ計算と合わさって実測
+    // 33fps まで落ちた（About に組み込んでから判明）。0.7 で他バリアントと
+    // 同じ 2.54M / 60fps。粒は画面上では粗くなるが、そのぶん他と同条件。
+    grain: 0.06, grainSize: 1, grainFps: 12, renderScale: 0.7,
     topColor: "#ffffff", topRange: 0.5, topMix: 0.5,
     edgeSoft: 0.1, edgeNoise: 0.08, edgeNoiseScale: 1.5, edgeStretch: 0,
     lineColor: "#ebfdff", lineWidth: 0.03, lineAlpha: 0.5, lineCoverage: 0.3, lineBlur: 1,
