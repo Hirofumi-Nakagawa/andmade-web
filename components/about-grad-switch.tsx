@@ -61,7 +61,10 @@ export function AboutGradSwitch({
       className={`flex items-center whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] text-black ${className ?? ""}`}
       style={{ gap: `calc(${LABEL_GAP_PX}px * var(--scale))`, ...style }}
     >
-      <p className="font-normal [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Grd.</p>
+      {/* ラベルは medium・不透明度50%（直接の指示）。数字は medium の黒で、
+          選択中のものだけ 50% に落ちる —— ラベルは常に 50% なので、
+          「選ばれている数字」と並んだときに同じ濃さになる。 */}
+      <p className="font-medium opacity-50 [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Grd.</p>
       <div className="flex items-center" style={{ gap: `calc(${numberGapPx}px * var(--scale))` }}>
         {ABOUT_GRADIENT_VARIANTS.map((variant) => (
           <button
