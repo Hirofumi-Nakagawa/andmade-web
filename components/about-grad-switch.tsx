@@ -10,7 +10,7 @@ import {
 } from "@/lib/about-gradient-store";
 
 /**
- * About FV の「Change Grad. 1 2 3」— 背景グラデを3種から選ぶ切替。
+ * About FV の「Grd. 1 2 3」— 背景グラデを3種から選ぶ切替。
  * Figma node 1848:7。
  *
  * 選択中の数字は不透明度 50% にする（Figma では 1 が rgba(0,0,0,0.5)、
@@ -21,8 +21,9 @@ import {
  * （about-blend-background.tsx）とは親子関係に無く、PC と SP で別の木に
  * 居るので props では繋げないため。
  *
- * ラベルは Figma 上では "Chasnge Grad." と綴られているが、指示の文面
- * （"Change Grad."）に合わせてある。
+ * ラベルは Figma 上では "Chasnge Grad." だったが、"Change Grad." を経て
+ * 現在は "Grd."（直接の指示）。Figma とは綴りも長さも違うので、
+ * あちらを見て直さないこと。
  */
 
 /** 数字どうしの間隔（Figma: gap 5px）。SP は指で押すので広げる（下の
@@ -60,7 +61,7 @@ export function AboutGradSwitch({
       className={`flex items-center whitespace-nowrap text-[length:calc(12px*var(--scale))] leading-[1.2] text-black ${className ?? ""}`}
       style={{ gap: `calc(${LABEL_GAP_PX}px * var(--scale))`, ...style }}
     >
-      <p className="font-normal [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Change Grad.</p>
+      <p className="font-normal [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">Grd.</p>
       <div className="flex items-center" style={{ gap: `calc(${numberGapPx}px * var(--scale))` }}>
         {ABOUT_GRADIENT_VARIANTS.map((variant) => (
           <button

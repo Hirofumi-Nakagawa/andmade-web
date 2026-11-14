@@ -326,7 +326,7 @@ export default function About() {
               詰めるためのもので、グリッドの値ではないので --scale/--grid-scale
               は掛けない（画面幅で増減させない）。リード文は別の箱なので
               動かない。 */}
-          {/* 背景グラデの切替（Figma node 1848:7）。この箱の右端は
+          {/* 背景グラデの切替「Grd. 1 2 3」（Figma node 1848:7）。この箱の右端は
               198px*gs + 1218px*gs = 1416px*gs で、1440px 時に画面右 24px —
               Figma の右端とちょうど一致するので right-0 でよい。
 

@@ -1,7 +1,7 @@
 /**
  * About ページの背景グラデを3種から選ぶための小さな外部ストア。
  *
- * UI（components/about-grad-switch.tsx の「Change Grad. 1 2 3」）と
+ * UI（components/about-grad-switch.tsx の「Grd. 1 2 3」）と
  * 背景（components/about-blend-background.tsx）は親子関係に無く、PC と SP で
  * 別々の木に居るので、props では繋げない。lib/footer-mode-store.ts と
  * まったく同じ形の購読ストアにして、どちらも useSyncExternalStore で読む。

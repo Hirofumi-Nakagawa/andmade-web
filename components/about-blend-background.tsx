@@ -303,7 +303,7 @@ void main() {
 `;
 
 /* ============================================================================
-   バリアント 2 / 3 — FV の「Change Grad. 1 2 3」で切り替わる別案
+   バリアント 2 / 3 — FV の「Grd. 1 2 3」で切り替わる別案
    ============================================================================
    1（上の SETTINGS / FRAG_SRC）は従来どおり一切変えていない。2 と 3 は
    bg-lab.html の B（溶け合い）/ C（水彩）モードの移植で、パラメータは
@@ -862,7 +862,7 @@ export function AboutBlendBackground() {
   // component (and re-run nothing useful) 60x/sec while scrolling.
   const settleRef = useRef(0);
 
-  // FV の「Change Grad. 1 2 3」で選ばれているバリアント。
+  // FV の「Grd. 1 2 3」で選ばれているバリアント。
   const variant = useSyncExternalStore(subscribeAboutGradient, getAboutGradient, getAboutGradientServerSnapshot);
   // 描画ループは下の init effect の中で一度だけ組み立てるので、そこから
   // 現在値を読むための ref。state を直接読むとループを張り直すことになり、
