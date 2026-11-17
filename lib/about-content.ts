@@ -158,6 +158,7 @@ export const SERVICES_COL_1 = ["Creative & Art Direction", "Graphic Design", "In
 export const SERVICES_COL_2 = ["Branding", "Brand Identity", "Design System", "Naming", "Strategy"];
 
 export const AWARDS_COL_1 = [
+  "Japan Typography Annual 2027 - On Screen, Selected",
   "Web Grand Prix 2025 / Excellence Award",
   "Web Grand Prix 2024 / Grand Prize",
   "Awwwards / SOTD",
