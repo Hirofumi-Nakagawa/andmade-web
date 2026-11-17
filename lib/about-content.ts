@@ -164,9 +164,9 @@ export const AWARDS_COL_1 = [
   "Awwwards / SOTD",
   "CSSDA / WOTD",
   "FWA / FOTD",
-  "Good Design Awards 2019",
 ];
 export const AWARDS_COL_2 = [
+  "Good Design Awards 2019",
   "ADFEST 2018",
   "Code Awards 2018",
   "ACC Tokyo Creativity Awards 2018",
