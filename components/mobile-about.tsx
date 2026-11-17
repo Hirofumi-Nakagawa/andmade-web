@@ -486,7 +486,16 @@ export function MobileAbout() {
                 own entries, then COL_2's, in that same order) rather than
                 two side-by-side columns. */}
             <MobileAboutSection id={spSectionId(ABOUT_NAV_ITEMS[3].id)} label="Awards" index="04">
-              <div className="flex w-full flex-col items-start gap-[18px] text-justify text-[14px] leading-[1.8] whitespace-nowrap text-black">
+              {/* ここだけ whitespace-nowrap を外し、text-justify ではなく
+                  text-left にしてある。
+                  全項目が1行に収まる前提で nowrap にしていたが、
+                  "Japan Typography Annual 2027 - On Screen, Selected" は
+                  375px 幅だと画面幅を 5px 超え、"Selected" が画面外で
+                  切れていた（横スクロールは出ないので、ただ読めなくなる）。
+                  折り返しを許すと収まる。折り返したときに両端揃えだと
+                  1行目が引き伸ばされるので、あわせて左揃えに。
+                  他の項目は元から1行に収まるので見た目は変わらない。 */}
+              <div className="flex w-full flex-col items-start gap-[18px] text-left text-[14px] leading-[1.8] text-black">
                 {[...AWARDS_COL_1, ...AWARDS_COL_2].map((item) => (
                   <p key={item} className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
                     {item}

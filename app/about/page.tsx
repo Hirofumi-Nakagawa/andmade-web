@@ -529,7 +529,17 @@ export default function About() {
             </AboutSection>
 
             <AboutSection id={ABOUT_NAV_ITEMS[3].id} label="Awards" index="04">
-              <div className="flex w-full items-start pl-[calc(116px*var(--grid-scale))] text-justify text-[length:calc(15px*var(--scale))] leading-[1.8] text-black">
+              {/* ここだけ text-justify ではなく text-left。
+                  受賞名が1行に収まっているうちは両端揃えでも見た目は変わらない
+                  （両端揃えは「最終行以外」にしか効かないため、1行＝最終行の
+                  項目は素通りする）。ところが長い項目が折り返すと、その1行目
+                  だけが列幅いっぱいに引き伸ばされて単語間が極端に空く。
+                  さらにこの2列はガターが無く（左列の幅＝右列の左端）、
+                  引き伸ばされた行が右列の文字とくっついて見える。
+                  "Japan Typography Annual 2027 - On Screen, Selected" を足した
+                  あと、幅 1038px あたりでこれが出た（直接の指摘）。
+                  左揃えなら折り返しても自然に流れ、右列との間にも隙間が残る。 */}
+              <div className="flex w-full items-start pl-[calc(116px*var(--grid-scale))] text-left text-[length:calc(15px*var(--scale))] leading-[1.8] text-black">
                 <div className="flex w-[calc(464px*var(--grid-scale))] flex-col items-start gap-[calc(20px*var(--scale))]">
                   {AWARDS_COL_1.map((item) => (
                     <p key={item} className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
